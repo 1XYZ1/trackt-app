@@ -1,3 +1,4 @@
+@config "../../tailwind.config.ts";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -7,9 +8,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --font-heading: var(--font-heading);
+  --font-sans: var(--font-sans-family);
+  --font-mono: var(--font-mono-family);
+  --font-heading: var(--font-heading-family);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -62,6 +63,46 @@
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-foreground: var(--brand-primary-foreground);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-secondary-foreground: var(--brand-secondary-foreground);
+  --color-ticket-pendiente: var(--ticket-pendiente);
+  --color-ticket-pendiente-foreground: var(--ticket-pendiente-foreground);
+  --color-ticket-asignado: var(--ticket-asignado);
+  --color-ticket-asignado-foreground: var(--ticket-asignado-foreground);
+  --color-ticket-en-ejecucion: var(--ticket-en-ejecucion);
+  --color-ticket-en-ejecucion-foreground: var(--ticket-en-ejecucion-foreground);
+  --color-ticket-ejecutado: var(--ticket-ejecutado);
+  --color-ticket-ejecutado-foreground: var(--ticket-ejecutado-foreground);
+  --color-ticket-cerrado: var(--ticket-cerrado);
+  --color-ticket-cerrado-foreground: var(--ticket-cerrado-foreground);
+  --color-ticket-cancelado: var(--ticket-cancelado);
+  --color-ticket-cancelado-foreground: var(--ticket-cancelado-foreground);
+  --color-estado-pendiente-bg: var(--estado-pendiente-bg);
+  --color-estado-pendiente-border: var(--estado-pendiente-border);
+  --color-estado-pendiente-text: var(--estado-pendiente-text);
+  --color-estado-pendiente-dot: var(--estado-pendiente-dot);
+  --color-estado-asignado-bg: var(--estado-asignado-bg);
+  --color-estado-asignado-border: var(--estado-asignado-border);
+  --color-estado-asignado-text: var(--estado-asignado-text);
+  --color-estado-asignado-dot: var(--estado-asignado-dot);
+  --color-estado-en-ejecucion-bg: var(--estado-en-ejecucion-bg);
+  --color-estado-en-ejecucion-border: var(--estado-en-ejecucion-border);
+  --color-estado-en-ejecucion-text: var(--estado-en-ejecucion-text);
+  --color-estado-en-ejecucion-dot: var(--estado-en-ejecucion-dot);
+  --color-estado-ejecutado-bg: var(--estado-ejecutado-bg);
+  --color-estado-ejecutado-border: var(--estado-ejecutado-border);
+  --color-estado-ejecutado-text: var(--estado-ejecutado-text);
+  --color-estado-ejecutado-dot: var(--estado-ejecutado-dot);
+  --color-estado-cerrado-bg: var(--estado-cerrado-bg);
+  --color-estado-cerrado-border: var(--estado-cerrado-border);
+  --color-estado-cerrado-text: var(--estado-cerrado-text);
+  --color-estado-cerrado-dot: var(--estado-cerrado-dot);
+  --color-estado-cancelado-bg: var(--estado-cancelado-bg);
+  --color-estado-cancelado-border: var(--estado-cancelado-border);
+  --color-estado-cancelado-text: var(--estado-cancelado-text);
+  --color-estado-cancelado-dot: var(--estado-cancelado-dot);
   @keyframes skeleton {
   to {
     background-position: -200% 0;
@@ -140,6 +181,9 @@
 }
 
 :root {
+  --font-sans-family: Arial, Helvetica, sans-serif;
+  --font-mono-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-heading-family: Arial, Helvetica, sans-serif;
   --background: var(--color-white);
   --foreground: var(--color-neutral-800);
   --card: var(--color-white);
@@ -182,6 +226,46 @@
   --code: var(--color-white);
   --code-foreground: var(--foreground);
   --code-highlight: --alpha(var(--color-black) / 4%);
+  --brand-primary: #6152e8;
+  --brand-primary-foreground: var(--color-white);
+  --brand-secondary: #3a3a3a;
+  --brand-secondary-foreground: var(--color-white);
+  --ticket-pendiente: #262626;
+  --ticket-pendiente-foreground: #a0a0a0;
+  --ticket-asignado: #0c1a2e;
+  --ticket-asignado-foreground: #60a5fa;
+  --ticket-en-ejecucion: #1c1400;
+  --ticket-en-ejecucion-foreground: #fbbf24;
+  --ticket-ejecutado: #0a1f12;
+  --ticket-ejecutado-foreground: #4ade80;
+  --ticket-cerrado: #052e16;
+  --ticket-cerrado-foreground: #86efac;
+  --ticket-cancelado: #1c0a0a;
+  --ticket-cancelado-foreground: #f87171;
+  --estado-pendiente-bg: #262626;
+  --estado-pendiente-border: #3a3a3a;
+  --estado-pendiente-text: #a0a0a0;
+  --estado-pendiente-dot: #737373;
+  --estado-asignado-bg: #0c1a2e;
+  --estado-asignado-border: #1e3a5f;
+  --estado-asignado-text: #60a5fa;
+  --estado-asignado-dot: #3b82f6;
+  --estado-en-ejecucion-bg: #1c1400;
+  --estado-en-ejecucion-border: #3d2e00;
+  --estado-en-ejecucion-text: #fbbf24;
+  --estado-en-ejecucion-dot: #f59e0b;
+  --estado-ejecutado-bg: #0a1f12;
+  --estado-ejecutado-border: #14532d;
+  --estado-ejecutado-text: #4ade80;
+  --estado-ejecutado-dot: #22c55e;
+  --estado-cerrado-bg: #052e16;
+  --estado-cerrado-border: #166534;
+  --estado-cerrado-text: #86efac;
+  --estado-cerrado-dot: #16a34a;
+  --estado-cancelado-bg: #1c0a0a;
+  --estado-cancelado-border: #450a0a;
+  --estado-cancelado-text: #f87171;
+  --estado-cancelado-dot: #ef4444;
 }
 
 .dark {
@@ -226,6 +310,46 @@
   --code: color-mix(in srgb, var(--background) 98%, var(--color-white));
   --code-foreground: var(--foreground);
   --code-highlight: --alpha(var(--color-white) / 4%);
+  --brand-primary: #6152e8;
+  --brand-primary-foreground: var(--color-neutral-950);
+  --brand-secondary: #3a3a3a;
+  --brand-secondary-foreground: var(--color-neutral-950);
+  --ticket-pendiente: #262626;
+  --ticket-pendiente-foreground: #a0a0a0;
+  --ticket-asignado: #0c1a2e;
+  --ticket-asignado-foreground: #60a5fa;
+  --ticket-en-ejecucion: #1c1400;
+  --ticket-en-ejecucion-foreground: #fbbf24;
+  --ticket-ejecutado: #0a1f12;
+  --ticket-ejecutado-foreground: #4ade80;
+  --ticket-cerrado: #052e16;
+  --ticket-cerrado-foreground: #86efac;
+  --ticket-cancelado: #1c0a0a;
+  --ticket-cancelado-foreground: #f87171;
+  --estado-pendiente-bg: #262626;
+  --estado-pendiente-border: #3a3a3a;
+  --estado-pendiente-text: #a0a0a0;
+  --estado-pendiente-dot: #737373;
+  --estado-asignado-bg: #0c1a2e;
+  --estado-asignado-border: #1e3a5f;
+  --estado-asignado-text: #60a5fa;
+  --estado-asignado-dot: #3b82f6;
+  --estado-en-ejecucion-bg: #1c1400;
+  --estado-en-ejecucion-border: #3d2e00;
+  --estado-en-ejecucion-text: #fbbf24;
+  --estado-en-ejecucion-dot: #f59e0b;
+  --estado-ejecutado-bg: #0a1f12;
+  --estado-ejecutado-border: #14532d;
+  --estado-ejecutado-text: #4ade80;
+  --estado-ejecutado-dot: #22c55e;
+  --estado-cerrado-bg: #052e16;
+  --estado-cerrado-border: #166534;
+  --estado-cerrado-text: #86efac;
+  --estado-cerrado-dot: #16a34a;
+  --estado-cancelado-bg: #1c0a0a;
+  --estado-cancelado-border: #450a0a;
+  --estado-cancelado-text: #f87171;
+  --estado-cancelado-dot: #ef4444;
 }
 
 @layer base {

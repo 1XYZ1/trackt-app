@@ -1,36 +1,93 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Trackt System Design
 
-## Getting Started
+Demo profesional de interfaz SaaS para mantenimiento minero. El proyecto muestra el sistema visual base de Trackt: landing/demo publica, app shell, dashboard, ordenes de trabajo, sidebar, header, cards, tablas operacionales, paleta y componentes de interfaz.
 
-First, run the development server:
+## Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS v4
+- shadcn/ui + Base UI
+- Lucide Icons
+
+## Pantallas
+
+- `/` - Demo publica del System Design
+- `/login` - Pantalla de acceso
+- `/dashboard` - Centro de control operacional
+- `/ordenes` - Tabla de ordenes de trabajo
+- `/equipos` - Placeholder de flota
+- `/mantenciones` - Placeholder de mantenciones
+
+## Estilo Visual
+
+- SaaS premium
+- Industrial/minero
+- Tema oscuro
+- Componentes densos y operacionales
+- Estados por color: success, warning, danger, info y primary
+
+## Requisitos
+
+- Node.js 20+
+- npm
+- Git
+
+## Desarrollo Local
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abrir:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```txt
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Validacion
 
-## Learn More
+```bash
+npm run lint
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Variables De Entorno
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Para rutas protegidas con Supabase:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
 
-## Deploy on Vercel
+La demo publica `/` no requiere autenticacion.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy En Vercel
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Configuracion recomendada:
+
+```txt
+Framework: Next.js
+Install Command: npm install
+Build Command: npm run build
+Output Directory: dejar vacio
+```
+
+## GitHub
+
+Repositorio:
+
+```txt
+trackt-system-design
+```
+
+Comandos base:
+
+```bash
+git add -A
+git commit -m "Mejoras en demo del system design"
+git push
+```
