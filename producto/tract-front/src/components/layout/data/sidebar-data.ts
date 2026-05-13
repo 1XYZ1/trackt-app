@@ -36,6 +36,7 @@ export const sidebarData: SidebarData = {
         { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
         { title: 'Equipos', url: '/equipos', icon: Truck },
         { title: 'Mantenciones', url: '/mantenciones', icon: Wrench },
+        { title: 'Ordenes', url: '/ordenes-trabajo', icon: ClipboardList },
         { title: 'Tareas', url: '/tareas', icon: ClipboardList, badge: '3' },
         { title: 'Alertas', url: '/alertas', icon: AlertTriangle },
       ],
