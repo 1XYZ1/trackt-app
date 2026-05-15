@@ -37,6 +37,7 @@ enum TicketEstado {
   EN_EJECUCION
   EJECUTADO
   CERRADO
+  CANCELADO
 }
 
 enum Prioridad {

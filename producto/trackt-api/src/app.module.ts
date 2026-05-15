@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { EquiposModule } from './equipos/equipos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
+import { OrdenesModule } from './ordenes/ordenes.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     TenantModule,   // @Global — TenantService disponible en toda la app
     EquiposModule,
     UsuariosModule,
+    OrdenesModule,
   ],
   controllers: [AppController],
   providers: [AppService, SupabaseService, AuthGuard],
