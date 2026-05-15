@@ -1,4 +1,5 @@
 import type * as React from 'react';
+import type { UserRole } from '@/lib/auth/profile';
 
 export type User = {
   name: string;
@@ -16,6 +17,7 @@ type BaseNavItem = {
   title: string;
   badge?: string;
   icon?: React.ElementType;
+  roles?: UserRole[];
 };
 
 export type NavLink = BaseNavItem & {
@@ -33,6 +35,7 @@ export type NavItem = NavCollapsible | NavLink;
 export type NavGroup = {
   title: string;
   items: NavItem[];
+  roles?: UserRole[];
 };
 
 export type SidebarData = {

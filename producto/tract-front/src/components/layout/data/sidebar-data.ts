@@ -10,9 +10,7 @@ import {
   Bell,
   Palette,
   UserCog,
-  ShieldCheck,
   Command,
-  GalleryVerticalEnd,
 } from 'lucide-react';
 import type { SidebarData } from '../types';
 
@@ -21,12 +19,7 @@ export const sidebarData: SidebarData = {
     {
       name: 'Trackt',
       logo: Command,
-      plan: 'Gestión de equipos',
-    },
-    {
-      name: 'Demo Co.',
-      logo: GalleryVerticalEnd,
-      plan: 'Free',
+      plan: 'Gestion de equipos',
     },
   ],
   navGroups: [
@@ -37,22 +30,21 @@ export const sidebarData: SidebarData = {
         { title: 'Equipos', url: '/equipos', icon: Truck },
         { title: 'Mantenciones', url: '/mantenciones', icon: Wrench },
         { title: 'Ordenes', url: '/ordenes-trabajo', icon: ClipboardList },
-        { title: 'Tareas', url: '/tareas', icon: ClipboardList, badge: '3' },
         { title: 'Alertas', url: '/alertas', icon: AlertTriangle },
       ],
     },
     {
-      title: 'Administración',
+      title: 'Administracion',
+      roles: ['admin'],
       items: [
-        { title: 'Usuarios', url: '/usuarios', icon: Users },
-        { title: 'Permisos', url: '/permisos', icon: ShieldCheck },
+        { title: 'Usuarios', url: '/usuarios', icon: Users, roles: ['admin'] },
       ],
     },
     {
       title: 'Otros',
       items: [
         {
-          title: 'Configuración',
+          title: 'Configuracion',
           icon: Settings,
           items: [
             { title: 'Perfil', url: '/configuracion/perfil', icon: UserCog },

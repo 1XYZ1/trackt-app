@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { SupabaseService } from './supabase.service';
-import { AuthGuard } from './auth/auth.guard';
+import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { EquiposModule } from './equipos/equipos.module';
@@ -10,12 +9,13 @@ import { UsuariosModule } from './usuarios/usuarios.module';
 
 @Module({
   imports: [
-    PrismaModule,   // @Global — PrismaService disponible en toda la app
-    TenantModule,   // @Global — TenantService disponible en toda la app
+    PrismaModule,
+    AuthModule,
+    TenantModule,
     EquiposModule,
     UsuariosModule,
   ],
   controllers: [AppController],
-  providers: [AppService, SupabaseService, AuthGuard],
+  providers: [AppService],
 })
 export class AppModule {}

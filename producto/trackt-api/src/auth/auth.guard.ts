@@ -5,10 +5,15 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
+import { ProfileService } from './profile.service';
+import { AuthUser } from './types';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly profiles: ProfileService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
@@ -18,14 +23,27 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing token');
     }
 
-    const { data, error } = await this.supabase
-      .getClient()
-      .auth.getUser(token);
+    const { data, error } = await this.supabase.getClient().auth.getUser(token);
     if (error || !data.user) {
       throw new UnauthorizedException('Invalid token');
     }
 
-    req.user = data.user;
+    const profile = await this.profiles.getById(data.user.id);
+    if (!profile) {
+      throw new UnauthorizedException('Profile not found');
+    }
+
+    const authUser: AuthUser = {
+      id: data.user.id,
+      email: data.user.email,
+      role: profile.role,
+      tenantId: profile.tenant_id,
+      fullName: profile.full_name,
+      app_metadata: data.user.app_metadata,
+      user_metadata: data.user.user_metadata,
+    };
+
+    req.user = authUser;
     return true;
   }
 }

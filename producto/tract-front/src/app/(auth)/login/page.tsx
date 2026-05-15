@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { Activity, AlertCircle, Lock, Mail } from "lucide-react";
-import { login, signup } from "../../actions/auth";
+import { Activity, AlertCircle } from 'lucide-react';
+import { LoginForm } from './login-form';
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string; message?: string }>;
@@ -15,8 +14,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         className="pointer-events-none absolute inset-0 opacity-[0.35]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
-          backgroundSize: "32px 32px",
+            'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
         }}
       />
       <div className="pointer-events-none absolute -top-40 -left-40 h-[420px] w-[420px] rounded-full bg-cyan-500/10 blur-3xl" />
@@ -33,7 +32,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </h1>
           </div>
           <p className="text-sm text-zinc-400">
-            Gestion de mantenimiento minero
+            Plataforma de mantenimiento industrial
           </p>
         </div>
 
@@ -67,85 +66,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               </div>
             )}
 
-            <form className="space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  className="font-medium text-xs text-zinc-300 uppercase tracking-wide"
-                  htmlFor="email"
-                >
-                  Correo electronico
-                </label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                  <input
-                    autoComplete="email"
-                    className="h-11 w-full rounded-lg border border-white/10 bg-zinc-950/60 pr-3 pl-10 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20"
-                    id="email"
-                    name="email"
-                    placeholder="tu@empresa.cl"
-                    required
-                    type="email"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label
-                    className="font-medium text-xs text-zinc-300 uppercase tracking-wide"
-                    htmlFor="password"
-                  >
-                    Contrasena
-                  </label>
-                  <Link
-                    className="text-cyan-400 text-xs transition hover:text-cyan-300"
-                    href="/forgot-password"
-                  >
-                    Olvidaste tu contrasena?
-                  </Link>
-                </div>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                  <input
-                    autoComplete="current-password"
-                    className="h-11 w-full rounded-lg border border-white/10 bg-zinc-950/60 pr-3 pl-10 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20"
-                    id="password"
-                    name="password"
-                    placeholder="********"
-                    required
-                    type="password"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2.5 pt-2">
-                <button
-                  className="h-11 w-full rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 font-semibold text-sm text-white shadow-cyan-500/20 shadow-lg transition hover:from-cyan-400 hover:to-blue-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 active:scale-[0.99]"
-                  formAction={login}
-                >
-                  Iniciar sesion
-                </button>
-
-                <button
-                  className="h-11 w-full rounded-lg border border-white/10 bg-white/[0.03] font-medium text-sm text-zinc-200 transition hover:border-white/20 hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-white/10"
-                  formAction={signup}
-                >
-                  Crear cuenta
-                </button>
-              </div>
-            </form>
+            <LoginForm />
           </div>
 
           <div className="border-white/5 border-t px-7 py-4 sm:px-8">
             <p className="text-center text-xs text-zinc-500">
-              Plataforma segura - Acceso restringido al personal autorizado
+              Plataforma segura. Acceso restringido al personal autorizado.
             </p>
           </div>
         </div>
 
         <p className="mt-6 text-center text-xs text-zinc-600">
-          Copyright {new Date().getFullYear()} Trackt - Mining Maintenance
-          Cloud
+          Copyright {new Date().getFullYear()} Trackt
         </p>
       </div>
     </div>
