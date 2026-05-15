@@ -46,7 +46,7 @@ interface CountRow {
 }
 
 // Respuesta pública normalizada
-interface UsuarioPublico {
+export interface UsuarioPublico {
   id: string;
   email: string | null;
   fullName: string | null;

@@ -15,6 +15,11 @@ export class AppController {
     return this.appService.getHello();
   }
 
+  @Get('hola')
+  getHola(): { message: string } {
+    return { message: 'hola mundo' };
+  }
+
   @Get('messages')
   async getMessages() {
     const { data, error } = await this.supabaseService

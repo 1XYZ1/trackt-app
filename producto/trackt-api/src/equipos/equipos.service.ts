@@ -38,7 +38,9 @@ export class EquiposService {
   async findAll(
     tenantId: string,
     query: ListEquiposQueryDto,
-  ): Promise<PaginatedResult<typeof LIST_SELECT>> {
+  ): Promise<
+    PaginatedResult<Prisma.EquipoGetPayload<{ select: typeof LIST_SELECT }>>
+  > {
     const { page = 1, limit = 10, search } = query;
 
     const where: Prisma.EquipoWhereInput = {
