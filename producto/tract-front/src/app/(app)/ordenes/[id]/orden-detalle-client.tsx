@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { toast } from "sonner";
+import { useState } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -12,12 +12,14 @@ import {
   Wrench,
 } from "lucide-react";
 import { EmptyState, StatusBadge, TicketCard } from "@/components/core";
+import { CrearTicketSheet } from "@/components/tickets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOrden } from "@/hooks/use-ordenes";
 
 export function OrdenDetalleClient({ id }: { id: string }) {
+  const [createTicketOpen, setCreateTicketOpen] = useState(false);
   const { data: orden, error, isLoading } = useOrden(id);
 
   if (isLoading) {
@@ -65,8 +67,7 @@ export function OrdenDetalleClient({ id }: { id: string }) {
           </p>
         </div>
         <Button
-          disabled
-          onClick={() => toast.info("Disponible en UI-04")}
+          onClick={() => setCreateTicketOpen(true)}
           size="sm"
           variant="outline"
         >
@@ -165,6 +166,12 @@ export function OrdenDetalleClient({ id }: { id: string }) {
           )}
         </CardContent>
       </Card>
+
+      <CrearTicketSheet
+        onOpenChange={setCreateTicketOpen}
+        open={createTicketOpen}
+        ordenId={orden.id}
+      />
     </div>
   );
 }
