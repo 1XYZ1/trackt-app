@@ -91,8 +91,16 @@ async function parseJsonResponse<T>(
 }
 
 // TODO(api): quitar fallback mock cuando API-05 este disponible en backend.
+const USE_MOCK_FALLBACK = process.env.NODE_ENV !== "production";
+
 function cloneMockTickets() {
   return structuredClone(mockTickets);
+}
+
+function logFallback(scope: string, err: unknown) {
+  if (typeof console !== "undefined") {
+    console.warn(`[mis-tickets:${scope}] usando mock por error:`, err);
+  }
 }
 
 export async function getMisTickets(): Promise<MisTicket[]> {
@@ -108,7 +116,9 @@ export async function getMisTickets(): Promise<MisTicket[]> {
     return tickets.filter((ticket) =>
       ["ASIGNADO", "EN_EJECUCION"].includes(ticket.estado),
     );
-  } catch {
+  } catch (err) {
+    if (!USE_MOCK_FALLBACK) throw err;
+    logFallback("getMisTickets", err);
     return cloneMockTickets().filter((ticket) =>
       ["ASIGNADO", "EN_EJECUCION"].includes(ticket.estado),
     );
@@ -124,7 +134,9 @@ export async function getMiTicketById(id: string): Promise<MisTicket> {
       response,
       "No se pudo cargar el ticket",
     );
-  } catch {
+  } catch (err) {
+    if (!USE_MOCK_FALLBACK) throw err;
+    logFallback("getMiTicketById", err);
     const ticket = cloneMockTickets().find((item) => item.id === id);
 
     if (!ticket) {
@@ -148,7 +160,9 @@ export async function iniciarEjecucion(ticketId: string): Promise<MisTicket> {
       response,
       "No se pudo iniciar el trabajo",
     );
-  } catch {
+  } catch (err) {
+    if (!USE_MOCK_FALLBACK) throw err;
+    logFallback("iniciarEjecucion", err);
     const ticket = await getMiTicketById(ticketId);
     return { ...ticket, estado: "EN_EJECUCION" };
   }
@@ -198,7 +212,9 @@ export async function subirEvidencia(
       id: signedUrl.evidenceId,
       url: signedUrl.publicUrl,
     };
-  } catch {
+  } catch (err) {
+    if (!USE_MOCK_FALLBACK) throw err;
+    logFallback("subirEvidencia", err);
     return {
       createdAt: new Date().toISOString(),
       fileName: file.name,
@@ -230,7 +246,9 @@ export async function finalizarEjecucion(
       response,
       "No se pudo finalizar el trabajo",
     );
-  } catch {
+  } catch (err) {
+    if (!USE_MOCK_FALLBACK) throw err;
+    logFallback("finalizarEjecucion", err);
     const ticket = await getMiTicketById(ticketId);
     return { ...ticket, estado: "EJECUTADO" };
   }
