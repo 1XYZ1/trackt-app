@@ -45,6 +45,7 @@ function TicketAction({ ticket }: { ticket: MisTicket }) {
 
   return (
     <div className="grid grid-cols-2 gap-2">
+      {/* TODO(UX): "Subir foto" deberia auto-abrir input via ?action=upload */}
       <Button
         className="h-12 text-base"
         render={<Link href={`/mis-tickets/${ticket.id}`} />}
