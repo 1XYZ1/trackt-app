@@ -4,12 +4,14 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Patch,
   Post,
   Query,
   Req,
   UseGuards,
+  forwardRef,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -32,6 +34,7 @@ interface RequestWithUser extends Request {
 export class OrdenesController {
   constructor(
     private readonly ordenesService: OrdenesService,
+    @Inject(forwardRef(() => TicketsService))
     private readonly ticketsService: TicketsService,
     private readonly tenantService: TenantService,
   ) {}

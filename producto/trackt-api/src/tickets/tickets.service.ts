@@ -1,7 +1,10 @@
 import {
   ConflictException,
+  ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import {
   OrdenTrabajoEstado,
@@ -15,8 +18,13 @@ import {
   getPrismaSkip,
   PaginatedResult,
 } from '../common/utils/pagination';
+import { OrdenesService } from '../ordenes/ordenes.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto';
+import { AsignarTicketDto } from './dto/asignar-ticket.dto';
+import { FinalizarTicketDto } from './dto/finalizar-ticket.dto';
+import { ValidarTicketDto } from './dto/validar-ticket.dto';
+import { CerrarTicketDto } from './dto/cerrar-ticket.dto';
 import { TicketResponseDto, UsuarioResumenDto } from './dto/ticket-response.dto';
 import {
   TICKET_DETAIL_INCLUDE,
@@ -28,7 +36,11 @@ import {
 
 @Injectable()
 export class TicketsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => OrdenesService))
+    private readonly ordenesService: OrdenesService,
+  ) {}
 
   /**
    * Crear ticket asociado a una OT.
@@ -180,6 +192,294 @@ export class TicketsService {
     }
     const users = await this.fetchUserSummaries(collectUserIds([ticket]));
     return mapTicketDetail(ticket, users);
+  }
+
+  // ---------- Transiciones de estado (TRA-27) ----------
+
+  /**
+   * Asignar mecánico a ticket. Solo admin. PENDIENTE → ASIGNADO.
+   */
+  async asignar(
+    tenantId: string,
+    userId: string,
+    ticketId: string,
+    dto: AsignarTicketDto,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.requireTicket(tenantId, ticketId);
+    if (ticket.estado !== TicketEstado.PENDIENTE) {
+      throw new ConflictException(
+        `Solo se puede asignar un ticket en estado PENDIENTE (actual: ${ticket.estado})`,
+      );
+    }
+
+    const mecanico = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id::text AS id
+      FROM public.profiles
+      WHERE id = ${dto.mecanicoId}::uuid
+        AND tenant_id = ${tenantId}
+        AND role = 'mechanic'::user_role
+      LIMIT 1
+    `;
+    if (mecanico.length === 0) {
+      throw new NotFoundException(
+        `Mecánico "${dto.mecanicoId}" no encontrado en el tenant`,
+      );
+    }
+
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: {
+          estado: TicketEstado.ASIGNADO,
+          mecanicoId: dto.mecanicoId,
+          jefeId: ticket.jefeId ?? userId,
+          fechaAsignacion: now,
+        },
+      });
+      await this.recordEvento(
+        tx,
+        ticketId,
+        ticket.estado,
+        TicketEstado.ASIGNADO,
+        userId,
+        'Asignado a mecánico',
+      );
+      return this.buildResponse(tx, ticketId);
+    });
+  }
+
+  /**
+   * Iniciar ejecución. Solo el mecánico asignado. ASIGNADO → EN_EJECUCION.
+   */
+  async iniciar(
+    tenantId: string,
+    userId: string,
+    ticketId: string,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.requireTicket(tenantId, ticketId);
+    if (ticket.estado !== TicketEstado.ASIGNADO) {
+      throw new ConflictException(
+        `Solo se puede iniciar un ticket en estado ASIGNADO (actual: ${ticket.estado})`,
+      );
+    }
+    if (ticket.mecanicoId !== userId) {
+      throw new ForbiddenException(
+        'Solo el mecánico asignado puede iniciar el ticket',
+      );
+    }
+
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: {
+          estado: TicketEstado.EN_EJECUCION,
+          fechaInicioEjecucion: now,
+        },
+      });
+      await this.recordEvento(
+        tx,
+        ticketId,
+        ticket.estado,
+        TicketEstado.EN_EJECUCION,
+        userId,
+        'Inicio de ejecución',
+      );
+      return this.buildResponse(tx, ticketId);
+    });
+  }
+
+  /**
+   * Finalizar ejecución. Solo el mecánico asignado. EN_EJECUCION → EJECUTADO.
+   */
+  async finalizar(
+    tenantId: string,
+    userId: string,
+    ticketId: string,
+    dto: FinalizarTicketDto,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.requireTicket(tenantId, ticketId);
+    if (ticket.estado !== TicketEstado.EN_EJECUCION) {
+      throw new ConflictException(
+        `Solo se puede finalizar un ticket en estado EN_EJECUCION (actual: ${ticket.estado})`,
+      );
+    }
+    if (ticket.mecanicoId !== userId) {
+      throw new ForbiddenException(
+        'Solo el mecánico asignado puede finalizar el ticket',
+      );
+    }
+
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: {
+          estado: TicketEstado.EJECUTADO,
+          fechaFinEjecucion: now,
+        },
+      });
+      await this.recordEvento(
+        tx,
+        ticketId,
+        ticket.estado,
+        TicketEstado.EJECUTADO,
+        userId,
+        dto.observacion ?? 'Ejecución finalizada',
+      );
+      return this.buildResponse(tx, ticketId);
+    });
+  }
+
+  /**
+   * Validar ticket EJECUTADO. Solo admin.
+   * - aprobado=true  → CERRADO + cascada OT (puede cerrar la OT).
+   * - aprobado=false → vuelve a EN_EJECUCION (re-trabajo); limpia fechaFinEjecucion.
+   */
+  async validar(
+    tenantId: string,
+    userId: string,
+    ticketId: string,
+    dto: ValidarTicketDto,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.requireTicket(tenantId, ticketId);
+    if (ticket.estado !== TicketEstado.EJECUTADO) {
+      throw new ConflictException(
+        `Solo se puede validar un ticket en estado EJECUTADO (actual: ${ticket.estado})`,
+      );
+    }
+
+    const now = new Date();
+    const nuevoEstado = dto.aprobado
+      ? TicketEstado.CERRADO
+      : TicketEstado.EN_EJECUCION;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: dto.aprobado
+          ? {
+              estado: TicketEstado.CERRADO,
+              fechaValidacion: now,
+              fechaCierre: now,
+            }
+          : {
+              estado: TicketEstado.EN_EJECUCION,
+              fechaFinEjecucion: null,
+              fechaValidacion: now,
+            },
+      });
+      await this.recordEvento(
+        tx,
+        ticketId,
+        ticket.estado,
+        nuevoEstado,
+        userId,
+        dto.observacion ??
+          (dto.aprobado ? 'Validado y cerrado' : 'Rechazado, vuelve a ejecución'),
+      );
+    });
+
+    if (dto.aprobado) {
+      await this.ordenesService.onTicketEstadoCambiado(tenantId, ticket.otId);
+    }
+
+    return this.findOne(tenantId, ticketId);
+  }
+
+  /**
+   * Cierre formal del ticket (TRA-27). Solo admin.
+   * Cubre el caso "validar y aprobar" y también cierres administrativos
+   * forzados desde EJECUTADO. Si el ticket está en otro estado, falla.
+   */
+  async cerrar(
+    tenantId: string,
+    userId: string,
+    ticketId: string,
+    dto: CerrarTicketDto,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.requireTicket(tenantId, ticketId);
+    if (ticket.estado !== TicketEstado.EJECUTADO) {
+      throw new ConflictException(
+        `Solo se puede cerrar un ticket en estado EJECUTADO (actual: ${ticket.estado})`,
+      );
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: {
+          estado: TicketEstado.CERRADO,
+          fechaValidacion: ticket.fechaValidacion ?? now,
+          fechaCierre: now,
+        },
+      });
+      await this.recordEvento(
+        tx,
+        ticketId,
+        ticket.estado,
+        TicketEstado.CERRADO,
+        userId,
+        dto.observacion ?? 'Cierre formal',
+      );
+    });
+
+    await this.ordenesService.onTicketEstadoCambiado(tenantId, ticket.otId);
+
+    return this.findOne(tenantId, ticketId);
+  }
+
+  // ---------- Helpers privados ----------
+
+  private async requireTicket(tenantId: string, ticketId: string) {
+    const ticket = await this.prisma.ticket.findFirst({
+      where: { id: ticketId, tenantId },
+      select: {
+        id: true,
+        estado: true,
+        otId: true,
+        mecanicoId: true,
+        jefeId: true,
+        fechaValidacion: true,
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket "${ticketId}" no encontrado`);
+    }
+    return ticket;
+  }
+
+  private async recordEvento(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+    estadoAnterior: TicketEstado,
+    estadoNuevo: TicketEstado,
+    usuarioId: string,
+    observacion?: string,
+  ): Promise<void> {
+    await tx.eventoEstadoTicket.create({
+      data: {
+        ticketId,
+        estadoAnterior,
+        estadoNuevo,
+        usuarioId,
+        observacion,
+      },
+    });
+  }
+
+  private async buildResponse(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+  ): Promise<TicketResponseDto> {
+    const row = await tx.ticket.findUniqueOrThrow({
+      where: { id: ticketId },
+      include: TICKET_DETAIL_INCLUDE,
+    });
+    const users = await this.fetchUserSummaries(collectUserIds([row]));
+    return mapTicketDetail(row, users);
   }
 
   /**

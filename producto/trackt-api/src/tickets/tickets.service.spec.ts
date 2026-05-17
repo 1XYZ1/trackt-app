@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   OrdenTrabajoEstado,
   Prioridad,
@@ -6,6 +10,7 @@ import {
 } from '@prisma/client';
 import { TicketsService } from './tickets.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrdenesService } from '../ordenes/ordenes.service';
 
 /**
  * Mock del PrismaService.
@@ -29,6 +34,7 @@ function buildPrismaMock() {
       findMany: jest.fn(),
       findUniqueOrThrow: jest.fn(),
       count: jest.fn(),
+      update: jest.fn(),
     },
     eventoEstadoTicket: {
       create: jest.fn(),
@@ -117,16 +123,22 @@ describe('TicketsService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
   let service: TicketsService;
 
+  let ordenesService: { onTicketEstadoCambiado: jest.Mock };
+
   beforeEach(() => {
     prisma = buildPrismaMock();
-    service = new TicketsService(prisma as unknown as PrismaService);
+    ordenesService = { onTicketEstadoCambiado: jest.fn() };
+    service = new TicketsService(
+      prisma as unknown as PrismaService,
+      ordenesService as unknown as OrdenesService,
+    );
   });
 
   // ---------- createFromOrden ----------
 
   describe('createFromOrden', () => {
     function mockCreateChain({
-      otEstado = OrdenTrabajoEstado.PENDIENTE,
+      otEstado = OrdenTrabajoEstado.PENDIENTE as OrdenTrabajoEstado,
       lastCodigo = null as string | null,
       updateManyCount = 1,
     } = {}) {
@@ -523,6 +535,260 @@ describe('TicketsService', () => {
       await expect(service.findOne(TENANT, TICKET_ID)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  // ---------- Transiciones de estado (TRA-27) ----------
+
+  function mockTicket(
+    estado: TicketEstado,
+    mecanicoId: string | null = null,
+  ) {
+    prisma.ticket.findFirst.mockResolvedValueOnce({
+      id: TICKET_ID,
+      estado,
+      otId: OT_ID,
+      mecanicoId,
+      jefeId: USER,
+      fechaValidacion: null,
+    });
+    prisma.ticket.findUniqueOrThrow.mockResolvedValue({
+      id: TICKET_ID,
+      tenantId: TENANT,
+      otId: OT_ID,
+      codigo: 'TKT-2026-0001',
+      titulo: 't',
+      descripcion: 'd',
+      estado,
+      prioridad: Prioridad.MEDIA,
+      mecanicoId,
+      jefeId: USER,
+      createdAt: new Date('2026-01-01T10:00:00Z'),
+      updatedAt: new Date('2026-01-01T10:00:00Z'),
+      fechaAsignacion: null,
+      fechaInicioEjecucion: null,
+      fechaFinEjecucion: null,
+      fechaValidacion: null,
+      fechaCierre: null,
+      ot: { id: OT_ID, codigo: 'OT-1', equipo: null },
+      eventos: [],
+    });
+  }
+
+  describe('asignar', () => {
+    const MEC = '00000000-0000-0000-0000-000000000099';
+    const dto = { mecanicoId: MEC };
+
+    it('happy path: PENDIENTE → ASIGNADO con mecanico válido del tenant', async () => {
+      mockTicket(TicketEstado.PENDIENTE);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: MEC }]); // mecanico lookup
+      prisma.ticket.update.mockResolvedValue({});
+      prisma.eventoEstadoTicket.create.mockResolvedValue({});
+
+      await service.asignar(TENANT, USER, TICKET_ID, dto);
+
+      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updateArgs.data.estado).toBe(TicketEstado.ASIGNADO);
+      expect(updateArgs.data.mecanicoId).toBe(MEC);
+      expect(prisma.eventoEstadoTicket.create).toHaveBeenCalled();
+    });
+
+    it('falla con Conflict si ticket no está PENDIENTE', async () => {
+      mockTicket(TicketEstado.ASIGNADO);
+
+      await expect(
+        service.asignar(TENANT, USER, TICKET_ID, dto),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('falla con NotFound si mecanico no existe en el tenant', async () => {
+      mockTicket(TicketEstado.PENDIENTE);
+      prisma.$queryRaw.mockResolvedValueOnce([]); // mecanico no encontrado
+
+      await expect(
+        service.asignar(TENANT, USER, TICKET_ID, dto),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('iniciar', () => {
+    const MEC = '00000000-0000-0000-0000-000000000099';
+
+    it('happy path: mecanico asignado inicia ejecucion', async () => {
+      mockTicket(TicketEstado.ASIGNADO, MEC);
+      prisma.ticket.update.mockResolvedValue({});
+      prisma.eventoEstadoTicket.create.mockResolvedValue({});
+
+      await service.iniciar(TENANT, MEC, TICKET_ID);
+
+      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updateArgs.data.estado).toBe(TicketEstado.EN_EJECUCION);
+    });
+
+    it('falla con Forbidden si el caller no es el mecanico asignado', async () => {
+      mockTicket(TicketEstado.ASIGNADO, MEC);
+
+      await expect(
+        service.iniciar(TENANT, 'otro-user', TICKET_ID),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('falla con Conflict si no está ASIGNADO', async () => {
+      mockTicket(TicketEstado.PENDIENTE, MEC);
+
+      await expect(
+        service.iniciar(TENANT, MEC, TICKET_ID),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('finalizar', () => {
+    const MEC = '00000000-0000-0000-0000-000000000099';
+
+    it('happy path: EN_EJECUCION → EJECUTADO', async () => {
+      mockTicket(TicketEstado.EN_EJECUCION, MEC);
+      prisma.ticket.update.mockResolvedValue({});
+      prisma.eventoEstadoTicket.create.mockResolvedValue({});
+
+      await service.finalizar(TENANT, MEC, TICKET_ID, { observacion: 'ok' });
+
+      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updateArgs.data.estado).toBe(TicketEstado.EJECUTADO);
+    });
+
+    it('falla con Forbidden si no es el mecanico asignado', async () => {
+      mockTicket(TicketEstado.EN_EJECUCION, MEC);
+
+      await expect(
+        service.finalizar(TENANT, 'otro', TICKET_ID, {}),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('validar', () => {
+    it('aprobado → CERRADO + invoca cascada OT', async () => {
+      mockTicket(TicketEstado.EJECUTADO, 'mec-1');
+      prisma.ticket.update.mockResolvedValue({});
+      prisma.eventoEstadoTicket.create.mockResolvedValue({});
+      // findOne post-transaction
+      prisma.ticket.findFirst.mockResolvedValueOnce({
+        id: TICKET_ID,
+        tenantId: TENANT,
+        otId: OT_ID,
+        codigo: 'TKT-2026-0001',
+        titulo: 't',
+        descripcion: 'd',
+        estado: TicketEstado.CERRADO,
+        prioridad: Prioridad.MEDIA,
+        mecanicoId: 'mec-1',
+        jefeId: USER,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        fechaAsignacion: null,
+        fechaInicioEjecucion: null,
+        fechaFinEjecucion: null,
+        fechaValidacion: null,
+        fechaCierre: null,
+        ot: { id: OT_ID, codigo: 'OT-1', equipo: null },
+        eventos: [],
+      });
+
+      await service.validar(TENANT, USER, TICKET_ID, { aprobado: true });
+
+      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updateArgs.data.estado).toBe(TicketEstado.CERRADO);
+      expect(ordenesService.onTicketEstadoCambiado).toHaveBeenCalledWith(
+        TENANT,
+        OT_ID,
+      );
+    });
+
+    it('rechazado → vuelve a EN_EJECUCION sin invocar cascada', async () => {
+      mockTicket(TicketEstado.EJECUTADO, 'mec-1');
+      prisma.ticket.update.mockResolvedValue({});
+      prisma.eventoEstadoTicket.create.mockResolvedValue({});
+      prisma.ticket.findFirst.mockResolvedValueOnce({
+        id: TICKET_ID,
+        tenantId: TENANT,
+        otId: OT_ID,
+        codigo: 'TKT-2026-0001',
+        titulo: 't',
+        descripcion: 'd',
+        estado: TicketEstado.EN_EJECUCION,
+        prioridad: Prioridad.MEDIA,
+        mecanicoId: 'mec-1',
+        jefeId: USER,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        fechaAsignacion: null,
+        fechaInicioEjecucion: null,
+        fechaFinEjecucion: null,
+        fechaValidacion: null,
+        fechaCierre: null,
+        ot: { id: OT_ID, codigo: 'OT-1', equipo: null },
+        eventos: [],
+      });
+
+      await service.validar(TENANT, USER, TICKET_ID, { aprobado: false });
+
+      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updateArgs.data.estado).toBe(TicketEstado.EN_EJECUCION);
+      expect(updateArgs.data.fechaFinEjecucion).toBeNull();
+      expect(ordenesService.onTicketEstadoCambiado).not.toHaveBeenCalled();
+    });
+
+    it('falla con Conflict si no está EJECUTADO', async () => {
+      mockTicket(TicketEstado.EN_EJECUCION, 'mec-1');
+
+      await expect(
+        service.validar(TENANT, USER, TICKET_ID, { aprobado: true }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('cerrar', () => {
+    it('EJECUTADO → CERRADO + invoca cascada OT', async () => {
+      mockTicket(TicketEstado.EJECUTADO, 'mec-1');
+      prisma.ticket.update.mockResolvedValue({});
+      prisma.eventoEstadoTicket.create.mockResolvedValue({});
+      prisma.ticket.findFirst.mockResolvedValueOnce({
+        id: TICKET_ID,
+        tenantId: TENANT,
+        otId: OT_ID,
+        codigo: 'TKT-2026-0001',
+        titulo: 't',
+        descripcion: 'd',
+        estado: TicketEstado.CERRADO,
+        prioridad: Prioridad.MEDIA,
+        mecanicoId: 'mec-1',
+        jefeId: USER,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        fechaAsignacion: null,
+        fechaInicioEjecucion: null,
+        fechaFinEjecucion: null,
+        fechaValidacion: null,
+        fechaCierre: null,
+        ot: { id: OT_ID, codigo: 'OT-1', equipo: null },
+        eventos: [],
+      });
+
+      await service.cerrar(TENANT, USER, TICKET_ID, {});
+
+      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updateArgs.data.estado).toBe(TicketEstado.CERRADO);
+      expect(ordenesService.onTicketEstadoCambiado).toHaveBeenCalledWith(
+        TENANT,
+        OT_ID,
+      );
+    });
+
+    it('falla con Conflict si no está EJECUTADO', async () => {
+      mockTicket(TicketEstado.CERRADO, 'mec-1');
+
+      await expect(
+        service.cerrar(TENANT, USER, TICKET_ID, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });
