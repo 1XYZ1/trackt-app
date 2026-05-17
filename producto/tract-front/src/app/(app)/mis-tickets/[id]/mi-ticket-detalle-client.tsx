@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Camera,
@@ -76,15 +76,27 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [observacion, setObservacion] = useState("");
-  const [localEvidence, setLocalEvidence] = useState<TicketEvidence[]>([]);
   const { data: ticket, error, isLoading } = useMiTicket(id);
   const uploadEvidence = useSubirEvidencia(id);
   const finishTicket = useFinalizarEjecucion(id);
 
   const evidencias = useMemo(
-    () => [...(ticket?.evidencias ?? []), ...localEvidence],
-    [localEvidence, ticket?.evidencias],
+    () => ticket?.evidencias ?? [],
+    [ticket?.evidencias],
   );
+  const evidenciasRef = useRef(evidencias);
+
+  useEffect(() => {
+    evidenciasRef.current = evidencias;
+  }, [evidencias]);
+
+  useEffect(() => {
+    return () => {
+      for (const e of evidenciasRef.current) {
+        if (e.url.startsWith("blob:")) URL.revokeObjectURL(e.url);
+      }
+    };
+  }, []);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -93,8 +105,7 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
     for (const file of files) {
       try {
         toast.loading(`Subiendo ${file.name}...`, { id: file.name });
-        const evidence = await uploadEvidence.mutateAsync(file);
-        setLocalEvidence((current) => [...current, evidence]);
+        await uploadEvidence.mutateAsync(file);
         toast.success("Foto subida", { id: file.name });
       } catch (uploadError) {
         toast.error(
