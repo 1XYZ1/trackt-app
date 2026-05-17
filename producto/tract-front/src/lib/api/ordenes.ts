@@ -1,4 +1,5 @@
 import type { Equipo } from "@/lib/api/equipos";
+import { authFetch } from "@/lib/api/http";
 import type { TicketResumen, TracktEstado, UsuarioResumen } from "@/components/core";
 
 export type OrdenEstado = TracktEstado;
@@ -47,14 +48,14 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 export async function getOrdenes(): Promise<OrdenTrabajo[]> {
   assertApiBaseUrl();
 
-  const response = await fetch(`${API_BASE_URL}/ordenes`);
+  const response = await authFetch(`${API_BASE_URL}/ordenes`);
   return parseJsonResponse<OrdenTrabajo[]>(response);
 }
 
 export async function getOrdenById(id: string): Promise<OrdenTrabajo> {
   assertApiBaseUrl();
 
-  const response = await fetch(`${API_BASE_URL}/ordenes/${id}`);
+  const response = await authFetch(`${API_BASE_URL}/ordenes/${id}`);
   return parseJsonResponse<OrdenTrabajo>(response);
 }
 
@@ -63,7 +64,7 @@ export async function createOrden(
 ): Promise<OrdenTrabajo> {
   assertApiBaseUrl();
 
-  const response = await fetch(`${API_BASE_URL}/ordenes`, {
+  const response = await authFetch(`${API_BASE_URL}/ordenes`, {
     body: JSON.stringify(payload),
     headers: {
       "Content-Type": "application/json",

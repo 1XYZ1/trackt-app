@@ -1,4 +1,5 @@
 import type { Equipo } from "@/lib/api/equipos";
+import { authFetch } from "@/lib/api/http";
 import type { OrdenPrioridad } from "@/lib/api/ordenes";
 import type { TicketEstado, UsuarioResumen } from "@/components/core";
 
@@ -65,7 +66,7 @@ export function getTicketEquipoLabel(ticket: TicketTrabajo): string {
 export async function getTickets(): Promise<TicketTrabajo[]> {
   assertApiBaseUrl();
 
-  const response = await fetch(`${API_BASE_URL}/tickets`);
+  const response = await authFetch(`${API_BASE_URL}/tickets`);
   return parseJsonResponse<TicketTrabajo[]>(
     response,
     "No se pudieron cargar los tickets",
@@ -75,7 +76,7 @@ export async function getTickets(): Promise<TicketTrabajo[]> {
 export async function getTicketById(id: string): Promise<TicketTrabajo> {
   assertApiBaseUrl();
 
-  const response = await fetch(`${API_BASE_URL}/tickets/${id}`);
+  const response = await authFetch(`${API_BASE_URL}/tickets/${id}`);
   return parseJsonResponse<TicketTrabajo>(
     response,
     "No se pudo cargar el detalle del ticket",
@@ -88,7 +89,7 @@ export async function createTicketFromOrden(
 ): Promise<TicketTrabajo> {
   assertApiBaseUrl();
 
-  const response = await fetch(`${API_BASE_URL}/ordenes/${ordenId}/tickets`, {
+  const response = await authFetch(`${API_BASE_URL}/ordenes/${ordenId}/tickets`, {
     body: JSON.stringify(payload),
     headers: {
       "Content-Type": "application/json",

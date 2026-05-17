@@ -1,3 +1,5 @@
+import { authFetch } from "@/lib/api/http";
+
 export type Equipo = {
   id: string;
   codigo: string;
@@ -14,7 +16,7 @@ export async function getEquipos(): Promise<Equipo[]> {
     throw new Error("NEXT_PUBLIC_API_URL no esta configurada");
   }
 
-  const response = await fetch(`${API_BASE_URL}/equipos`);
+  const response = await authFetch(`${API_BASE_URL}/equipos`);
 
   if (!response.ok) {
     throw new Error("No se pudieron cargar los equipos");

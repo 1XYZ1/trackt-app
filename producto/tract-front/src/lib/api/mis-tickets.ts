@@ -1,4 +1,5 @@
 import type { TicketEstado, UsuarioResumen } from "@/components/core";
+import { authFetch } from "@/lib/api/http";
 
 export type MisTicketPrioridad = "BAJA" | "MEDIA" | "ALTA";
 
@@ -107,7 +108,7 @@ export async function getMisTickets(): Promise<MisTicket[]> {
   try {
     assertApiBaseUrl();
 
-    const response = await fetch(`${API_BASE_URL}/mis-tickets`);
+    const response = await authFetch(`${API_BASE_URL}/mis-tickets`);
     const tickets = await parseJsonResponse<MisTicket[]>(
       response,
       "No se pudieron cargar tus tickets",
@@ -129,7 +130,7 @@ export async function getMiTicketById(id: string): Promise<MisTicket> {
   try {
     assertApiBaseUrl();
 
-    const response = await fetch(`${API_BASE_URL}/mis-tickets/${id}`);
+    const response = await authFetch(`${API_BASE_URL}/mis-tickets/${id}`);
     return parseJsonResponse<MisTicket>(
       response,
       "No se pudo cargar el ticket",
@@ -151,7 +152,7 @@ export async function iniciarEjecucion(ticketId: string): Promise<MisTicket> {
   try {
     assertApiBaseUrl();
 
-    const response = await fetch(
+    const response = await authFetch(
       `${API_BASE_URL}/tickets/${ticketId}/iniciar-ejecucion`,
       { method: "POST" },
     );
@@ -175,7 +176,7 @@ export async function subirEvidencia(
   try {
     assertApiBaseUrl();
 
-    const signedUrlResponse = await fetch(
+    const signedUrlResponse = await authFetch(
       `${API_BASE_URL}/tickets/${ticketId}/evidencias/signed-url`,
       {
         body: JSON.stringify({
@@ -231,7 +232,7 @@ export async function finalizarEjecucion(
   try {
     assertApiBaseUrl();
 
-    const response = await fetch(
+    const response = await authFetch(
       `${API_BASE_URL}/tickets/${ticketId}/finalizar-ejecucion`,
       {
         body: JSON.stringify(payload),
