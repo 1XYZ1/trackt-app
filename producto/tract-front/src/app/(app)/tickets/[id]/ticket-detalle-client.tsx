@@ -1,23 +1,32 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  CheckCircle2,
   ClipboardList,
+  Image as ImageIcon,
   Loader2,
-  Play,
   RotateCcw,
   User,
+  UserPlus,
   Wrench,
 } from "lucide-react";
-import { toast } from "sonner";
 import { EmptyState, StatusBadge, TimelineItem } from "@/components/core";
 import type { TimelineEvento } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTicket } from "@/hooks/use-tickets";
+import { useRole } from "@/contexts/auth-context";
 import { getTicketEquipoLabel, type TicketTimelineEvent } from "@/lib/api/tickets";
+import { AsignarMecanicoDialog } from "@/components/tickets/asignar-mecanico-dialog";
+import {
+  ValidarTicketDialog,
+  type ValidarMode,
+} from "@/components/tickets/validar-ticket-dialog";
+import { EvidenciasGrid } from "@/components/tickets/evidencias-grid";
 
 function toTimelineEvento(evento: TicketTimelineEvent): TimelineEvento {
   const title = evento.estadoAnterior
@@ -36,6 +45,9 @@ function toTimelineEvento(evento: TicketTimelineEvent): TimelineEvento {
 
 export function TicketDetalleClient({ id }: { id: string }) {
   const { data: ticket, error, isLoading } = useTicket(id);
+  const role = useRole();
+  const [asignarOpen, setAsignarOpen] = useState(false);
+  const [validarMode, setValidarMode] = useState<ValidarMode | null>(null);
 
   if (isLoading) {
     return (
@@ -64,6 +76,10 @@ export function TicketDetalleClient({ id }: { id: string }) {
   const mecanicoLabel =
     ticket.mecanico?.nombre || ticket.mecanico?.email || "Sin mecanico asignado";
 
+  const isAdmin = role === "admin";
+  const canAsignar = isAdmin && ticket.estado === "PENDIENTE";
+  const canValidar = isAdmin && ticket.estado === "EJECUTADO";
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -89,25 +105,40 @@ export function TicketDetalleClient({ id }: { id: string }) {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {/* TODO(UI-05): wire estado/reasignar a endpoints reales */}
-          <Button
-            onClick={() => toast.info("Accion disponible en UI-05/UI-06")}
-            size="sm"
-            variant="outline"
-          >
-            <Play />
-            Cambiar estado
-          </Button>
-          <Button
-            onClick={() => toast.info("Accion disponible en UI-05/UI-06")}
-            size="sm"
-            variant="outline"
-          >
-            <RotateCcw />
-            Reasignar
-          </Button>
-        </div>
+        {(canAsignar || canValidar) && (
+          <div className="flex flex-wrap gap-2">
+            {canAsignar && (
+              <Button
+                onClick={() => setAsignarOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <UserPlus />
+                Asignar mecánico
+              </Button>
+            )}
+            {canValidar && (
+              <>
+                <Button
+                  onClick={() => setValidarMode("aprobar")}
+                  size="sm"
+                  variant="default"
+                >
+                  <CheckCircle2 />
+                  Aprobar y cerrar
+                </Button>
+                <Button
+                  onClick={() => setValidarMode("rechazar")}
+                  size="sm"
+                  variant="destructive"
+                >
+                  <RotateCcw />
+                  Rechazar
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
@@ -172,6 +203,39 @@ export function TicketDetalleClient({ id }: { id: string }) {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-lg border-border/70">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ImageIcon className="size-4" />
+            Evidencias
+          </CardTitle>
+          <p className="text-muted-foreground text-xs">
+            Fotos subidas por el mecánico durante la ejecución.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <EvidenciasGrid ticketId={ticket.id} />
+        </CardContent>
+      </Card>
+
+      {canAsignar && (
+        <AsignarMecanicoDialog
+          onOpenChange={setAsignarOpen}
+          open={asignarOpen}
+          ticketId={ticket.id}
+        />
+      )}
+      {canValidar && validarMode && (
+        <ValidarTicketDialog
+          mode={validarMode}
+          onOpenChange={(open) => {
+            if (!open) setValidarMode(null);
+          }}
+          open={Boolean(validarMode)}
+          ticketId={ticket.id}
+        />
+      )}
     </div>
   );
 }

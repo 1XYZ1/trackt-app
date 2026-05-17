@@ -4,6 +4,7 @@ import {
   Wrench,
   ClipboardList,
   Ticket,
+  CheckCircle2,
   Users,
   UserCog,
   Command,
@@ -33,6 +34,12 @@ export const sidebarData: SidebarData = {
       title: 'Administracion',
       roles: ['admin'],
       items: [
+        {
+          title: 'Pendientes de validar',
+          url: '/tickets?estado=EJECUTADO',
+          icon: CheckCircle2,
+          roles: ['admin'],
+        },
         { title: 'Usuarios', url: '/usuarios', icon: Users, roles: ['admin'] },
       ],
     },
