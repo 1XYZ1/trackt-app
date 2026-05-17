@@ -22,5 +22,6 @@ export async function getEquipos(): Promise<Equipo[]> {
     throw new Error("No se pudieron cargar los equipos");
   }
 
-  return response.json();
+  const result = (await response.json()) as { data: Equipo[] };
+  return result.data;
 }

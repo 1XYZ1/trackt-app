@@ -49,7 +49,8 @@ export async function getOrdenes(): Promise<OrdenTrabajo[]> {
   assertApiBaseUrl();
 
   const response = await authFetch(`${API_BASE_URL}/ordenes`);
-  return parseJsonResponse<OrdenTrabajo[]>(response);
+  const result = await parseJsonResponse<{ data: OrdenTrabajo[] }>(response);
+  return result.data;
 }
 
 export async function getOrdenById(id: string): Promise<OrdenTrabajo> {

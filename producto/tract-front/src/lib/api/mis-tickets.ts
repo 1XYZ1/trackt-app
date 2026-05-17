@@ -1,5 +1,9 @@
 import type { TicketEstado, UsuarioResumen } from "@/components/core";
 import { authFetch } from "@/lib/api/http";
+import { createClient } from "@/lib/supabase/client";
+import type { TicketTrabajo } from "@/lib/api/tickets";
+
+const supabase = createClient();
 
 export type MisTicketPrioridad = "BAJA" | "MEDIA" | "ALTA";
 
@@ -26,6 +30,17 @@ export type MisTicket = {
 
 export type FinalizarTicketPayload = {
   observacion: string;
+};
+
+// Shape de las evidencias del backend (POST /tickets/:id/evidencia + GET listForTicket)
+type EvidenciaResponseDto = {
+  id: string;
+  ticketId: string;
+  storagePath: string;
+  descripcion?: string | null;
+  subidoPorId: string;
+  createdAt: string;
+  downloadUrl: string;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -91,7 +106,6 @@ async function parseJsonResponse<T>(
   return response.json();
 }
 
-// TODO(api): quitar fallback mock cuando API-05 este disponible en backend.
 const USE_MOCK_FALLBACK = process.env.NODE_ENV !== "production";
 
 function cloneMockTickets() {
@@ -104,19 +118,64 @@ function logFallback(scope: string, err: unknown) {
   }
 }
 
+async function getCurrentUserId(): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.id) throw new Error("Sin sesión activa");
+  return user.id;
+}
+
+function adaptEvidencia(e: EvidenciaResponseDto): TicketEvidence {
+  return {
+    id: e.id,
+    fileName: e.storagePath.split("/").pop() ?? e.storagePath,
+    url: e.downloadUrl,
+    createdAt: e.createdAt,
+  };
+}
+
+function adaptToMisTicket(
+  ticket: TicketTrabajo,
+  evidencias: TicketEvidence[] = [],
+): MisTicket {
+  const equipoLabel = ticket.equipo
+    ? `${ticket.equipo.codigo} - ${ticket.equipo.nombre}`
+    : ticket.equipoNombre ?? "Equipo sin informacion";
+
+  return {
+    id: ticket.id,
+    codigo: ticket.codigo,
+    titulo: ticket.titulo,
+    descripcion: ticket.descripcion,
+    equipo: equipoLabel,
+    estado: ticket.estado as MisTicket["estado"],
+    prioridad: ticket.prioridad,
+    ordenId: ticket.ordenId,
+    ordenCodigo: ticket.ordenCodigo ?? "",
+    mecanico: ticket.mecanico,
+    evidencias,
+  };
+}
+
 export async function getMisTickets(): Promise<MisTicket[]> {
   try {
     assertApiBaseUrl();
+    const userId = await getCurrentUserId();
 
-    const response = await authFetch(`${API_BASE_URL}/mis-tickets`);
-    const tickets = await parseJsonResponse<MisTicket[]>(
+    const response = await authFetch(
+      `${API_BASE_URL}/tickets?mecanicoId=${userId}&limit=100`,
+    );
+    const result = await parseJsonResponse<{ data: TicketTrabajo[] }>(
       response,
       "No se pudieron cargar tus tickets",
     );
 
-    return tickets.filter((ticket) =>
-      ["ASIGNADO", "EN_EJECUCION"].includes(ticket.estado),
-    );
+    return result.data
+      .filter((ticket) =>
+        ["ASIGNADO", "EN_EJECUCION"].includes(ticket.estado),
+      )
+      .map((t) => adaptToMisTicket(t));
   } catch (err) {
     if (!USE_MOCK_FALLBACK) throw err;
     logFallback("getMisTickets", err);
@@ -130,11 +189,22 @@ export async function getMiTicketById(id: string): Promise<MisTicket> {
   try {
     assertApiBaseUrl();
 
-    const response = await authFetch(`${API_BASE_URL}/mis-tickets/${id}`);
-    return parseJsonResponse<MisTicket>(
-      response,
+    const [ticketResp, evidenciasResp] = await Promise.all([
+      authFetch(`${API_BASE_URL}/tickets/${id}`),
+      authFetch(`${API_BASE_URL}/tickets/${id}/evidencias`),
+    ]);
+
+    const ticket = await parseJsonResponse<TicketTrabajo>(
+      ticketResp,
       "No se pudo cargar el ticket",
     );
+    const evidencias = evidenciasResp.ok
+      ? ((await evidenciasResp.json()) as EvidenciaResponseDto[]).map(
+          adaptEvidencia,
+        )
+      : [];
+
+    return adaptToMisTicket(ticket, evidencias);
   } catch (err) {
     if (!USE_MOCK_FALLBACK) throw err;
     logFallback("getMiTicketById", err);
@@ -153,14 +223,15 @@ export async function iniciarEjecucion(ticketId: string): Promise<MisTicket> {
     assertApiBaseUrl();
 
     const response = await authFetch(
-      `${API_BASE_URL}/tickets/${ticketId}/iniciar-ejecucion`,
+      `${API_BASE_URL}/tickets/${ticketId}/iniciar`,
       { method: "POST" },
     );
 
-    return parseJsonResponse<MisTicket>(
+    const ticket = await parseJsonResponse<TicketTrabajo>(
       response,
       "No se pudo iniciar el trabajo",
     );
+    return adaptToMisTicket(ticket);
   } catch (err) {
     if (!USE_MOCK_FALLBACK) throw err;
     logFallback("iniciarEjecucion", err);
@@ -176,8 +247,9 @@ export async function subirEvidencia(
   try {
     assertApiBaseUrl();
 
+    // 1. Pedir signed URL al backend
     const signedUrlResponse = await authFetch(
-      `${API_BASE_URL}/tickets/${ticketId}/evidencias/signed-url`,
+      `${API_BASE_URL}/tickets/${ticketId}/evidencia/signed-url`,
       {
         body: JSON.stringify({
           contentType: file.type,
@@ -191,28 +263,46 @@ export async function subirEvidencia(
     );
     const signedUrl = await parseJsonResponse<{
       uploadUrl: string;
-      publicUrl: string;
-      evidenceId: string;
+      token: string;
+      storagePath: string;
+      expiresIn: number;
     }>(signedUrlResponse, "No se pudo preparar la subida");
 
+    // 2. PUT al storage. Supabase signed URL típicamente acepta auth header
+    // Bearer ${token} o el token incrustado en el URL — el backend retorna
+    // ambos para que el cliente decida. Probamos con Bearer.
     const uploadResponse = await fetch(signedUrl.uploadUrl, {
       body: file,
       headers: {
         "Content-Type": file.type,
+        Authorization: `Bearer ${signedUrl.token}`,
       },
       method: "PUT",
     });
 
     if (!uploadResponse.ok) {
-      throw new Error("No se pudo subir la evidencia");
+      throw new Error("No se pudo subir la evidencia al storage");
     }
 
-    return {
-      createdAt: new Date().toISOString(),
-      fileName: file.name,
-      id: signedUrl.evidenceId,
-      url: signedUrl.publicUrl,
-    };
+    // 3. Confirmar al backend que el archivo ya está subido
+    const confirmResponse = await authFetch(
+      `${API_BASE_URL}/tickets/${ticketId}/evidencia`,
+      {
+        body: JSON.stringify({
+          storagePath: signedUrl.storagePath,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const evidencia = await parseJsonResponse<EvidenciaResponseDto>(
+      confirmResponse,
+      "No se pudo confirmar la evidencia",
+    );
+
+    return adaptEvidencia(evidencia);
   } catch (err) {
     if (!USE_MOCK_FALLBACK) throw err;
     logFallback("subirEvidencia", err);
@@ -233,7 +323,7 @@ export async function finalizarEjecucion(
     assertApiBaseUrl();
 
     const response = await authFetch(
-      `${API_BASE_URL}/tickets/${ticketId}/finalizar-ejecucion`,
+      `${API_BASE_URL}/tickets/${ticketId}/finalizar`,
       {
         body: JSON.stringify(payload),
         headers: {
@@ -243,10 +333,11 @@ export async function finalizarEjecucion(
       },
     );
 
-    return parseJsonResponse<MisTicket>(
+    const ticket = await parseJsonResponse<TicketTrabajo>(
       response,
       "No se pudo finalizar el trabajo",
     );
+    return adaptToMisTicket(ticket);
   } catch (err) {
     if (!USE_MOCK_FALLBACK) throw err;
     logFallback("finalizarEjecucion", err);

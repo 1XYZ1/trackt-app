@@ -67,10 +67,11 @@ export async function getTickets(): Promise<TicketTrabajo[]> {
   assertApiBaseUrl();
 
   const response = await authFetch(`${API_BASE_URL}/tickets`);
-  return parseJsonResponse<TicketTrabajo[]>(
+  const result = await parseJsonResponse<{ data: TicketTrabajo[] }>(
     response,
     "No se pudieron cargar los tickets",
   );
+  return result.data;
 }
 
 export async function getTicketById(id: string): Promise<TicketTrabajo> {
