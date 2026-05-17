@@ -45,19 +45,43 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+// Backend OrdenTrabajoEstado: PENDIENTE | EN_PROCESO | CERRADA | CANCELADA
+// Frontend TracktEstado:      PENDIENTE | ASIGNADO | EN_EJECUCION | EJECUTADO | CERRADO | CANCELADO
+// StatusBadge usa el enum frontend — mapear para evitar undefined lookup.
+function adaptOrdenEstado(estado: string): OrdenEstado {
+  const map: Record<string, OrdenEstado> = {
+    PENDIENTE: "PENDIENTE",
+    EN_PROCESO: "EN_EJECUCION",
+    CERRADA: "CERRADO",
+    CANCELADA: "CANCELADO",
+    // passthrough por si backend converge al enum del frontend
+    ASIGNADO: "ASIGNADO",
+    EN_EJECUCION: "EN_EJECUCION",
+    EJECUTADO: "EJECUTADO",
+    CERRADO: "CERRADO",
+    CANCELADO: "CANCELADO",
+  };
+  return map[estado] ?? "PENDIENTE";
+}
+
+function adaptOrden(orden: OrdenTrabajo): OrdenTrabajo {
+  return { ...orden, estado: adaptOrdenEstado(orden.estado) };
+}
+
 export async function getOrdenes(): Promise<OrdenTrabajo[]> {
   assertApiBaseUrl();
 
   const response = await authFetch(`${API_BASE_URL}/ordenes`);
   const result = await parseJsonResponse<{ data: OrdenTrabajo[] }>(response);
-  return result.data;
+  return result.data.map(adaptOrden);
 }
 
 export async function getOrdenById(id: string): Promise<OrdenTrabajo> {
   assertApiBaseUrl();
 
   const response = await authFetch(`${API_BASE_URL}/ordenes/${id}`);
-  return parseJsonResponse<OrdenTrabajo>(response);
+  const orden = await parseJsonResponse<OrdenTrabajo>(response);
+  return adaptOrden(orden);
 }
 
 export async function createOrden(
@@ -77,5 +101,5 @@ export async function createOrden(
     throw new Error("No se pudo crear la orden de trabajo");
   }
 
-  return response.json();
+  return adaptOrden(await response.json());
 }
