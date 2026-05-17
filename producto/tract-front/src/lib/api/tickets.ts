@@ -103,3 +103,72 @@ export async function createTicketFromOrden(
     "No se pudo crear el ticket",
   );
 }
+
+// ---------- Transiciones de estado (TRA-31) ----------
+
+export type AsignarTicketPayload = {
+  mecanicoId: string;
+};
+
+export type ValidarTicketPayload = {
+  aprobado: boolean;
+  observacion?: string;
+};
+
+export type CerrarTicketPayload = {
+  observacion?: string;
+};
+
+async function postTicketTransition<T extends object>(
+  ticketId: string,
+  path: string,
+  payload: T,
+  errorMessage: string,
+): Promise<TicketTrabajo> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/tickets/${ticketId}/${path}`,
+    {
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+  );
+  return parseJsonResponse<TicketTrabajo>(response, errorMessage);
+}
+
+export function asignarTicket(
+  ticketId: string,
+  payload: AsignarTicketPayload,
+): Promise<TicketTrabajo> {
+  return postTicketTransition(
+    ticketId,
+    "asignar",
+    payload,
+    "No se pudo asignar el ticket",
+  );
+}
+
+export function validarTicket(
+  ticketId: string,
+  payload: ValidarTicketPayload,
+): Promise<TicketTrabajo> {
+  return postTicketTransition(
+    ticketId,
+    "validar",
+    payload,
+    "No se pudo validar el ticket",
+  );
+}
+
+export function cerrarTicket(
+  ticketId: string,
+  payload: CerrarTicketPayload,
+): Promise<TicketTrabajo> {
+  return postTicketTransition(
+    ticketId,
+    "cerrar",
+    payload,
+    "No se pudo cerrar el ticket",
+  );
+}

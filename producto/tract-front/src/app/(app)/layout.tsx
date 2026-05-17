@@ -1,6 +1,7 @@
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { Header } from '@/components/layout/header';
+import { Footer } from '@/components/layout/footer';
 import { AuthProvider } from '@/contexts/auth-context';
 import { requireSession } from '@/lib/auth/require-role';
 
@@ -25,6 +26,7 @@ export default async function AppLayout({
         <SidebarInset>
           <Header />
           <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</div>
+          <Footer />
         </SidebarInset>
       </SidebarProvider>
     </AuthProvider>

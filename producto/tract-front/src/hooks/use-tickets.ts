@@ -2,10 +2,16 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  asignarTicket,
+  cerrarTicket,
   createTicketFromOrden,
   getTicketById,
   getTickets,
+  validarTicket,
+  type AsignarTicketPayload,
+  type CerrarTicketPayload,
   type CreateTicketPayload,
+  type ValidarTicketPayload,
 } from "@/lib/api/tickets";
 
 export function useTickets() {
@@ -37,4 +43,33 @@ export function useCreateTicketFromOrden(ordenId: string) {
       ]);
     },
   });
+}
+
+function useTicketTransition<TPayload>(
+  ticketId: string,
+  mutationFn: (id: string, payload: TPayload) => Promise<unknown>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: TPayload) => mutationFn(ticketId, payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tickets"] }),
+        queryClient.invalidateQueries({ queryKey: ["tickets", ticketId] }),
+        queryClient.invalidateQueries({ queryKey: ["ordenes"] }),
+      ]);
+    },
+  });
+}
+
+export function useAsignarTicket(ticketId: string) {
+  return useTicketTransition<AsignarTicketPayload>(ticketId, asignarTicket);
+}
+
+export function useValidarTicket(ticketId: string) {
+  return useTicketTransition<ValidarTicketPayload>(ticketId, validarTicket);
+}
+
+export function useCerrarTicket(ticketId: string) {
+  return useTicketTransition<CerrarTicketPayload>(ticketId, cerrarTicket);
 }
