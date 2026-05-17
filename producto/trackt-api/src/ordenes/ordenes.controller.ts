@@ -20,6 +20,8 @@ import { OrdenesService } from './ordenes.service';
 import { CreateOrdenDto } from './dto/create-orden.dto';
 import { UpdateOrdenDto } from './dto/update-orden.dto';
 import { ListOrdenesQueryDto } from './dto/list-ordenes-query.dto';
+import { TicketsService } from '../tickets/tickets.service';
+import { CreateTicketDto } from '../tickets/dto/create-ticket.dto';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -30,6 +32,7 @@ interface RequestWithUser extends Request {
 export class OrdenesController {
   constructor(
     private readonly ordenesService: OrdenesService,
+    private readonly ticketsService: TicketsService,
     private readonly tenantService: TenantService,
   ) {}
 
@@ -74,5 +77,21 @@ export class OrdenesController {
   async cancelar(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.ordenesService.cancelar(tenantId, id);
+  }
+
+  @Roles('admin', 'mechanic')
+  @Post(':otId/tickets')
+  async createTicket(
+    @Req() req: RequestWithUser,
+    @Param('otId') otId: string,
+    @Body() dto: CreateTicketDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.ticketsService.createFromOrden(
+      tenantId,
+      req.user.id,
+      otId,
+      dto,
+    );
   }
 }

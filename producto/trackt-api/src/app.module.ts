@@ -7,6 +7,7 @@ import { TenantModule } from './common/tenant/tenant.module';
 import { EquiposModule } from './equipos/equipos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { OrdenesModule } from './ordenes/ordenes.module';
+import { TicketsModule } from './tickets/tickets.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { OrdenesModule } from './ordenes/ordenes.module';
     EquiposModule,
     UsuariosModule,
     OrdenesModule,
+    TicketsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
