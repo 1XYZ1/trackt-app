@@ -5,7 +5,7 @@ export interface NotificacionPayload {
   ticketCodigo?: string;
   ordenId?: string;
   ordenCodigo?: string;
-  actor?: { id: string; fullName: string | null };
+  actor?: { id: string; fullName?: string | null };
   mensaje?: string;
   [key: string]: unknown;
 }
