@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ClipboardList, Loader2, Plus, SlidersHorizontal } from "lucide-react";
-import { EmptyState, OtCard, type OtResumen } from "@/components/core";
+import { ClipboardList, Plus, SlidersHorizontal } from "lucide-react";
+import {
+  EmptyState,
+  ListSkeleton,
+  OtCard,
+  type OtResumen,
+} from "@/components/core";
 import { EquipoSelect } from "@/components/equipos";
 import { NuevaOrdenSheet } from "@/components/ordenes";
 import { Badge } from "@/components/ui/badge";
@@ -175,12 +180,7 @@ export function OrdenesClient() {
         </CardHeader>
 
         <CardContent>
-          {isLoading && (
-            <div className="flex items-center gap-2 py-16 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando ordenes...
-            </div>
-          )}
+          {isLoading && <ListSkeleton count={4} columns={2} />}
 
           {!isLoading && error && (
             <EmptyState

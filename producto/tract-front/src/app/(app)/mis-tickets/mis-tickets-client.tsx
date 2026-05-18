@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Camera, Loader2, Play, Ticket, Wrench } from "lucide-react";
+import { Camera, Play, Ticket, Wrench } from "lucide-react";
+import { ListSkeleton } from "@/components/core";
 import { toast } from "sonner";
 import { EmptyState, StatusBadge } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
@@ -114,12 +115,7 @@ export function MisTicketsClient() {
         </p>
       </div>
 
-      {isLoading && (
-        <div className="flex items-center gap-2 py-16 text-muted-foreground text-sm">
-          <Loader2 className="size-4 animate-spin" />
-          Cargando tus tickets...
-        </div>
-      )}
+      {isLoading && <ListSkeleton count={3} columns={1} />}
 
       {!isLoading && error && (
         <EmptyState

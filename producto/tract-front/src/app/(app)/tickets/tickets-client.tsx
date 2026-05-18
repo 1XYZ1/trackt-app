@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { ListFilter, Loader2, Search, Ticket } from "lucide-react";
+import { ListFilter, Search, Ticket } from "lucide-react";
 import {
   EmptyState,
+  ListSkeleton,
   TicketCard,
   type TicketEstado,
   type TicketResumen,
@@ -220,12 +221,7 @@ export function TicketsClient({
         </CardHeader>
 
         <CardContent>
-          {isLoading && (
-            <div className="flex items-center gap-2 py-16 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando tickets...
-            </div>
-          )}
+          {isLoading && <ListSkeleton count={4} columns={2} />}
 
           {!isLoading && error && (
             <EmptyState
