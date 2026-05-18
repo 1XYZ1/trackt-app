@@ -7,6 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import {
+  NotificacionTipo,
   OrdenTrabajoEstado,
   Prioridad,
   Prisma,
@@ -18,6 +19,7 @@ import {
   getPrismaSkip,
   PaginatedResult,
 } from '../common/utils/pagination';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto';
@@ -40,6 +42,7 @@ export class TicketsService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => OrdenesService))
     private readonly ordenesService: OrdenesService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   /**
@@ -248,6 +251,19 @@ export class TicketsService {
         'Asignado a mecánico',
       );
     });
+    await this.notificaciones.emit(
+      tenantId,
+      dto.mecanicoId,
+      NotificacionTipo.TICKET_ASIGNADO,
+      {
+        ticketId: ticket.id,
+        ticketCodigo: ticket.codigo,
+        ticketTitulo: ticket.titulo,
+        ordenId: ticket.otId,
+        actor: { id: userId },
+        mensaje: `Te asignaron el ticket ${ticket.codigo}`,
+      },
+    );
     return this.findOne(tenantId, ticketId);
   }
 
@@ -289,6 +305,21 @@ export class TicketsService {
         'Inicio de ejecución',
       );
     });
+    if (ticket.jefeId) {
+      await this.notificaciones.emit(
+        tenantId,
+        ticket.jefeId,
+        NotificacionTipo.TICKET_INICIADO,
+        {
+          ticketId: ticket.id,
+          ticketCodigo: ticket.codigo,
+          ticketTitulo: ticket.titulo,
+          ordenId: ticket.otId,
+          actor: { id: userId },
+          mensaje: `El mecánico inició ${ticket.codigo}`,
+        },
+      );
+    }
     return this.findOne(tenantId, ticketId);
   }
 
@@ -331,6 +362,21 @@ export class TicketsService {
         dto.observacion ?? 'Ejecución finalizada',
       );
     });
+    if (ticket.jefeId) {
+      await this.notificaciones.emit(
+        tenantId,
+        ticket.jefeId,
+        NotificacionTipo.TICKET_FINALIZADO,
+        {
+          ticketId: ticket.id,
+          ticketCodigo: ticket.codigo,
+          ticketTitulo: ticket.titulo,
+          ordenId: ticket.otId,
+          actor: { id: userId },
+          mensaje: `${ticket.codigo} listo para validar`,
+        },
+      );
+    }
     return this.findOne(tenantId, ticketId);
   }
 
@@ -387,6 +433,27 @@ export class TicketsService {
       await this.ordenesService.onTicketEstadoCambiado(tenantId, ticket.otId);
     }
 
+    if (ticket.mecanicoId) {
+      await this.notificaciones.emit(
+        tenantId,
+        ticket.mecanicoId,
+        dto.aprobado
+          ? NotificacionTipo.TICKET_VALIDADO
+          : NotificacionTipo.TICKET_RECHAZADO,
+        {
+          ticketId: ticket.id,
+          ticketCodigo: ticket.codigo,
+          ticketTitulo: ticket.titulo,
+          ordenId: ticket.otId,
+          actor: { id: userId },
+          observacion: dto.observacion,
+          mensaje: dto.aprobado
+            ? `${ticket.codigo} validado y cerrado`
+            : `${ticket.codigo} rechazado: revisa los comentarios`,
+        },
+      );
+    }
+
     return this.findOne(tenantId, ticketId);
   }
 
@@ -430,6 +497,23 @@ export class TicketsService {
 
     await this.ordenesService.onTicketEstadoCambiado(tenantId, ticket.otId);
 
+    if (ticket.mecanicoId) {
+      await this.notificaciones.emit(
+        tenantId,
+        ticket.mecanicoId,
+        NotificacionTipo.TICKET_CERRADO,
+        {
+          ticketId: ticket.id,
+          ticketCodigo: ticket.codigo,
+          ticketTitulo: ticket.titulo,
+          ordenId: ticket.otId,
+          actor: { id: userId },
+          observacion: dto.observacion,
+          mensaje: `${ticket.codigo} cerrado`,
+        },
+      );
+    }
+
     return this.findOne(tenantId, ticketId);
   }
 
@@ -440,6 +524,8 @@ export class TicketsService {
       where: { id: ticketId, tenantId },
       select: {
         id: true,
+        codigo: true,
+        titulo: true,
         estado: true,
         otId: true,
         mecanicoId: true,

@@ -11,6 +11,7 @@ import {
 import { TicketsService } from './tickets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 /**
  * Mock del PrismaService.
@@ -125,13 +126,16 @@ describe('TicketsService', () => {
   let service: TicketsService;
 
   let ordenesService: { onTicketEstadoCambiado: jest.Mock };
+  let notificaciones: { emit: jest.Mock };
 
   beforeEach(() => {
     prisma = buildPrismaMock();
     ordenesService = { onTicketEstadoCambiado: jest.fn() };
+    notificaciones = { emit: jest.fn().mockResolvedValue(undefined) };
     service = new TicketsService(
       prisma as unknown as PrismaService,
       ordenesService as unknown as OrdenesService,
+      notificaciones as unknown as NotificacionesService,
     );
   });
 
@@ -544,6 +548,8 @@ describe('TicketsService', () => {
     // 1ra llamada: requireTicket() en cada transición.
     prisma.ticket.findFirst.mockResolvedValueOnce({
       id: TICKET_ID,
+      codigo: 'TKT-2026-0001',
+      titulo: 't',
       estado,
       otId: OT_ID,
       mecanicoId,
