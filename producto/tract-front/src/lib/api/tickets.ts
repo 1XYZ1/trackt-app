@@ -110,6 +110,22 @@ export type AsignarTicketPayload = {
   mecanicoId: string;
 };
 
+export type ReasignarTicketPayload = {
+  mecanicoId: string;
+  motivo?: string;
+};
+
+export type CargaMecanico = {
+  mecanicoId: string;
+  nombre: string | null;
+  email: string | null;
+  pendientes: number;
+  asignados: number;
+  enEjecucion: number;
+  ejecutados: number;
+  totalAbiertos: number;
+};
+
 export type ValidarTicketPayload = {
   aprobado: boolean;
   observacion?: string;
@@ -147,6 +163,52 @@ export function asignarTicket(
     payload,
     "No se pudo asignar el ticket",
   );
+}
+
+async function extractError(
+  response: Response,
+  fallback: string,
+): Promise<string> {
+  try {
+    const body = (await response.json()) as {
+      message?: string | string[];
+    };
+    if (Array.isArray(body.message)) return body.message.join(", ");
+    if (typeof body.message === "string" && body.message) return body.message;
+  } catch {
+    // sin body json
+  }
+  return fallback;
+}
+
+export async function reasignarTicket(
+  ticketId: string,
+  payload: ReasignarTicketPayload,
+): Promise<TicketTrabajo> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/tickets/${ticketId}/reasignar`,
+    {
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo reasignar el ticket"),
+    );
+  }
+  return (await response.json()) as TicketTrabajo;
+}
+
+export async function getCargaMecanicos(): Promise<CargaMecanico[]> {
+  assertApiBaseUrl();
+  const response = await authFetch(`${API_BASE_URL}/tickets/carga-mecanicos`);
+  if (!response.ok) {
+    throw new Error("No se pudo cargar la carga de mecánicos");
+  }
+  return (await response.json()) as CargaMecanico[];
 }
 
 export function validarTicket(

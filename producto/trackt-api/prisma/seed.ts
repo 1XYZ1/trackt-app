@@ -16,7 +16,7 @@
 import { PrismaClient, Prioridad } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
 
-type UserRole = 'admin' | 'mechanic';
+type UserRole = 'admin' | 'jefe_taller' | 'mechanic';
 
 interface SeedUser {
   id: string;
@@ -111,6 +111,12 @@ const demoUsers: SeedUser[] = [
     fullName: 'Andrés Admin',
   },
   {
+    id: '00000000-0000-0000-0000-0000000000a1',
+    email: 'jefe@trackt.demo',
+    role: 'jefe_taller',
+    fullName: 'Javier Jefe',
+  },
+  {
     id: '00000000-0000-0000-0000-000000000002',
     email: 'mecanico1@trackt.demo',
     role: 'mechanic',
@@ -136,7 +142,7 @@ const demoUsers: SeedUser[] = [
   },
 ];
 
-const [DEMO_ADMIN, DEMO_MEC1, DEMO_MEC2, DEMO_MEC3, DEMO_MEC4] = demoUsers;
+const [DEMO_ADMIN, _DEMO_JEFE, DEMO_MEC1, DEMO_MEC2, DEMO_MEC3, DEMO_MEC4] = demoUsers;
 
 const demoTenant: SeedTenant = {
   id: 'demo',

@@ -33,7 +33,7 @@ export class EquiposController {
     private readonly tenantService: TenantService,
   ) {}
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get()
   async findAll(
     @Req() req: RequestWithUser,
@@ -43,7 +43,7 @@ export class EquiposController {
     return this.equiposService.findAll(tenantId, query);
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get(':id')
   async findOne(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);

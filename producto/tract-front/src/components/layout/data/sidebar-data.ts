@@ -8,6 +8,8 @@ import {
   Users,
   UserCog,
   Command,
+  Gauge,
+  Package,
 } from 'lucide-react';
 import type { SidebarData } from '../types';
 
@@ -34,37 +36,55 @@ export const sidebarData: SidebarData = {
     },
     {
       title: 'General',
-      roles: ['admin'],
+      roles: ['admin', 'jefe_taller'],
       items: [
         {
           title: 'Dashboard',
           url: '/dashboard',
           icon: LayoutDashboard,
-          roles: ['admin'],
+          roles: ['admin', 'jefe_taller'],
         },
         {
           title: 'Equipos',
           url: '/equipos',
           icon: Truck,
-          roles: ['admin'],
+          roles: ['admin', 'jefe_taller'],
         },
         {
           title: 'Mantenciones',
           url: '/mantenciones',
           icon: Wrench,
-          roles: ['admin'],
+          roles: ['admin', 'jefe_taller'],
         },
         {
           title: 'Ordenes',
           url: '/ordenes',
           icon: ClipboardList,
-          roles: ['admin'],
+          roles: ['admin', 'jefe_taller'],
         },
         {
           title: 'Tickets',
           url: '/tickets',
           icon: Ticket,
-          roles: ['admin'],
+          roles: ['admin', 'jefe_taller'],
+        },
+        {
+          title: 'Inventario',
+          url: '/inventario',
+          icon: Package,
+          roles: ['admin', 'jefe_taller'],
+        },
+      ],
+    },
+    {
+      title: 'Taller',
+      roles: ['admin', 'jefe_taller'],
+      items: [
+        {
+          title: 'Carga de mecanicos',
+          url: '/taller/carga',
+          icon: Gauge,
+          roles: ['admin', 'jefe_taller'],
         },
       ],
     },

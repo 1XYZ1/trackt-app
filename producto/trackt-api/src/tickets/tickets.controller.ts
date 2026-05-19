@@ -18,6 +18,7 @@ import { TenantService } from '../common/tenant/tenant.service';
 import { TicketsService } from './tickets.service';
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto';
 import { AsignarTicketDto } from './dto/asignar-ticket.dto';
+import { ReasignarTicketDto } from './dto/reasignar-ticket.dto';
 import { FinalizarTicketDto } from './dto/finalizar-ticket.dto';
 import { ValidarTicketDto } from './dto/validar-ticket.dto';
 import { CerrarTicketDto } from './dto/cerrar-ticket.dto';
@@ -34,26 +35,36 @@ export class TicketsController {
     private readonly tenantService: TenantService,
   ) {}
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get()
   async findAll(
     @Req() req: RequestWithUser,
     @Query() query: ListTicketsQueryDto,
   ) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.ticketsService.findAll(tenantId, query);
+    return this.ticketsService.findAll(tenantId, req.user, query);
   }
 
-  @Roles('admin', 'mechanic')
+  // GET /tickets/carga-mecanicos: resumen de carga operativa por mecánico.
+  // Solo admin y jefe_taller — mechanic no debe ver carga ajena.
+  // IMPORTANTE: declarado antes de :id para que Express no lo capture como :id.
+  @Roles('admin', 'jefe_taller')
+  @Get('carga-mecanicos')
+  async cargaMecanicos(@Req() req: RequestWithUser) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.ticketsService.getCargaMecanicos(tenantId);
+  }
+
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get(':id')
   async findOne(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.ticketsService.findOne(tenantId, id);
+    return this.ticketsService.findOne(tenantId, req.user, id);
   }
 
   // ---------- Transiciones de estado (TRA-27) ----------
 
-  @Roles('admin')
+  @Roles('admin', 'jefe_taller')
   @HttpCode(HttpStatus.OK)
   @Post(':id/asignar')
   async asignar(
@@ -63,6 +74,18 @@ export class TicketsController {
   ) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.ticketsService.asignar(tenantId, req.user.id, id, dto);
+  }
+
+  @Roles('admin', 'jefe_taller')
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/reasignar')
+  async reasignar(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Body() dto: ReasignarTicketDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.ticketsService.reasignar(tenantId, req.user.id, id, dto);
   }
 
   @Roles('mechanic')

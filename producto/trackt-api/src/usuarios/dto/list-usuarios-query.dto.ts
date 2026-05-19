@@ -21,12 +21,15 @@ export class ListUsuariosQueryDto extends PaginationQueryDto {
 
 /**
  * Normaliza el parámetro `rol` del query al valor interno de la BD.
- * Soporta español ("mecanico") y el valor interno ("mechanic").
+ * Soporta español ("mecanico", "jefe") y el valor interno ("mechanic", "jefe_taller").
  */
 export function normalizeRol(rol?: string): string | undefined {
   if (!rol) return undefined;
   const lower = rol.toLowerCase();
   if (lower === 'mecanico' || lower === 'mechanic') return 'mechanic';
   if (lower === 'admin') return 'admin';
+  if (lower === 'jefe' || lower === 'jefe_taller' || lower === 'jefe-taller') {
+    return 'jefe_taller';
+  }
   return lower; // pasar cualquier otro rol sin transformar (extensible)
 }

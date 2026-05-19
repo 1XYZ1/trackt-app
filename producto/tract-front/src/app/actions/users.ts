@@ -8,7 +8,9 @@ import { requireRole } from '@/lib/auth/require-role';
 const inviteSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(1).max(120),
-  role: z.enum(['admin', 'mechanic']),
+  // Solo admin invita (verificado por requireRole abajo). admin puede crear
+  // cualquier rol; jefe_taller no llega a este flujo.
+  role: z.enum(['admin', 'jefe_taller', 'mechanic']),
 });
 
 export type InviteUserResult =

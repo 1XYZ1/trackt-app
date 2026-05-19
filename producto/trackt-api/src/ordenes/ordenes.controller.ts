@@ -46,7 +46,7 @@ export class OrdenesController {
     return this.ordenesService.create(tenantId, req.user.id, dto);
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get()
   async findAll(
     @Req() req: RequestWithUser,
@@ -56,7 +56,7 @@ export class OrdenesController {
     return this.ordenesService.findAll(tenantId, query);
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get(':id')
   async findOne(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
@@ -82,7 +82,7 @@ export class OrdenesController {
     return this.ordenesService.cancelar(tenantId, id);
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Post(':otId/tickets')
   async createTicket(
     @Req() req: RequestWithUser,
