@@ -31,9 +31,9 @@ export function LoginForm() {
   const {
     register,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors },
   } = useForm<FormValues>({
-    mode: 'onChange',
+    mode: 'onTouched',
     resolver: zodResolver(schema),
   });
 
@@ -130,11 +130,10 @@ export function LoginForm() {
 
       <Button
         className="mt-2 h-11 w-full rounded-lg border-cyan-400/40 bg-cyan-400/90 font-semibold text-sm text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.18)] transition hover:bg-cyan-300 disabled:shadow-none"
-        disabled={!isValid || pending}
         loading={pending}
         type="submit"
       >
-        {pending ? 'Iniciando sesion...' : 'Iniciar sesion'}
+        Iniciar sesion
       </Button>
     </form>
   );

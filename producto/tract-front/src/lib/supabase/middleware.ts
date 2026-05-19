@@ -12,6 +12,11 @@ export async function updateSession(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!hasSupabaseEnv) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'Supabase env vars missing in production (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).',
+      );
+    }
     if (isPublic) return response;
 
     const url = request.nextUrl.clone();

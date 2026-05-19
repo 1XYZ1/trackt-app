@@ -78,9 +78,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <p className="font-medium text-[11px] text-cyan-200 uppercase tracking-[0.18em]">
                   Ingreso al sistema
                 </p>
-                <h1 className="mt-2 font-semibold text-xl tracking-tight">
+                <h2 className="mt-2 font-semibold text-xl tracking-tight">
                   Bienvenido de nuevo
-                </h1>
+                </h2>
                 <p className="mt-1 text-muted-foreground text-sm">
                   Usa tus credenciales asignadas para acceder al panel TRACKT.
                 </p>
@@ -142,5 +142,5 @@ function normalizeAuthError(error: string) {
     return 'El correo aun no esta confirmado. Revisa tu bandeja de entrada.';
   }
 
-  return error;
+  return 'No se pudo iniciar sesion. Intenta nuevamente o contacta a soporte.';
 }
