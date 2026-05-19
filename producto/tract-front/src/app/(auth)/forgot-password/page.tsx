@@ -17,16 +17,19 @@ export default async function ForgotPasswordPage({
       description="Ingresa tu correo y enviaremos las instrucciones."
       eyebrow="Recuperacion"
       footer={
-        <Link className="text-cyan-300 transition hover:text-cyan-200" href="/login">
+        <Link
+          className="text-orange-300/90 transition hover:text-orange-200"
+          href="/login"
+        >
           Volver al inicio de sesion
         </Link>
       }
       title="Recuperar contrasena"
     >
       {message && !error && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-cyan-400/25 bg-cyan-400/10 px-3.5 py-3">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-200" />
-          <p className="text-cyan-50 text-sm">{message}</p>
+        <div className="mb-5 flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-3">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+          <p className="text-emerald-100 text-sm">{message}</p>
         </div>
       )}
 
@@ -37,7 +40,7 @@ export default async function ForgotPasswordPage({
             <p className="font-medium text-sm text-destructive">
               No se pudo enviar el enlace
             </p>
-            <p className="mt-0.5 text-muted-foreground text-xs">{error}</p>
+            <p className="mt-0.5 text-xs text-zinc-400">{error}</p>
           </div>
         </div>
       )}

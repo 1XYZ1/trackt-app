@@ -49,14 +49,14 @@ export function ForgotForm() {
       <div className="space-y-2">
         <Label
           htmlFor="email"
-          className="block text-center font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
+          className="block text-center font-medium text-xs text-zinc-500 uppercase tracking-[0.14em]"
         >
           Correo electronico
         </Label>
         <div className="relative">
           <Mail
             className={cn(
-              'pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors',
+              'pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500 transition-colors',
               errors.email && 'text-destructive',
             )}
           />
@@ -64,7 +64,7 @@ export function ForgotForm() {
             aria-invalid={Boolean(errors.email)}
             autoComplete="email"
             className={cn(
-              'h-11 rounded-lg border-border/70 bg-background/70 pl-10 text-sm transition-colors placeholder:text-muted-foreground/60 focus-visible:border-cyan-400/60 focus-visible:ring-cyan-400/20',
+              'h-11 rounded-lg border-zinc-700/70 bg-[#222222] pl-10 text-sm text-zinc-200 transition-colors placeholder:text-zinc-600 focus-visible:border-zinc-500 focus-visible:ring-zinc-600/20',
               errors.email &&
                 'border-destructive/60 focus-visible:border-destructive focus-visible:ring-destructive/20',
             )}
@@ -83,7 +83,7 @@ export function ForgotForm() {
       </div>
 
       <Button
-        className="h-11 w-full rounded-lg font-semibold text-sm"
+        className="h-11 w-full rounded-lg border border-zinc-600/70 bg-zinc-700 font-semibold text-sm text-zinc-100 transition hover:bg-zinc-600 disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600"
         disabled={!isValid || pending}
         loading={pending}
         type="submit"
