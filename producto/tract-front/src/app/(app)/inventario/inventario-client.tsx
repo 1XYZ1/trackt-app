@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  History,
   Loader2,
   Package,
   Pencil,
@@ -32,6 +34,7 @@ export function InventarioClient() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [bajoStock, setBajoStock] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [categoria, setCategoria] = useState("");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Repuesto | null>(null);
@@ -40,6 +43,7 @@ export function InventarioClient() {
   const [desactivarTarget, setDesactivarTarget] = useState<Repuesto | null>(null);
 
   const isAdmin = useHasRole("admin");
+  const canSeeMovimientos = useHasRole("admin", "jefe_taller");
   // admin y jefe_taller pueden ver inactivos (backend permite a ambos).
   const canSeeInactivos = useHasRole("admin", "jefe_taller");
 
@@ -54,7 +58,20 @@ export function InventarioClient() {
     bajoStock,
     includeInactive,
     search: debouncedQuery || undefined,
+    categoria: categoria || undefined,
   });
+
+  // Opciones de categoria derivadas del listado actual (deduplicar). Cuando
+  // hay filtro por categoria activo, traemos solo esa categoria — entonces
+  // hacemos un segundo fetch sin categoria para tener todas las opciones.
+  const categoriasDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of repuestos) {
+      if (r.categoria) set.add(r.categoria);
+    }
+    if (categoria) set.add(categoria); // mantener la seleccionada en options
+    return Array.from(set).sort();
+  }, [repuestos, categoria]);
 
   const filtered = (() => {
     const q = query.trim().toLowerCase();
@@ -157,7 +174,19 @@ export function InventarioClient() {
               {filtered.length === 1 ? "" : "s"} disponibles.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              className="h-8 rounded-md border border-input bg-transparent px-2 py-0 text-xs shadow-xs"
+              onChange={(e) => setCategoria(e.target.value)}
+              value={categoria}
+            >
+              <option value="">Todas las categorias</option>
+              {categoriasDisponibles.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
             <label className="flex items-center gap-2 text-muted-foreground text-xs">
               <input
                 checked={bajoStock}
@@ -177,6 +206,15 @@ export function InventarioClient() {
                 />
                 Incluir inactivos
               </label>
+            )}
+            {canSeeMovimientos && (
+              <Link
+                className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground hover:underline"
+                href="/inventario/movimientos"
+              >
+                <History className="size-3.5" />
+                Ver movimientos
+              </Link>
             )}
           </div>
         </CardHeader>
@@ -269,7 +307,12 @@ export function InventarioClient() {
                         key={r.id}
                       >
                         <td className="whitespace-nowrap px-5 py-3.5 font-mono font-semibold text-xs">
-                          {r.codigo}
+                          <Link
+                            className="hover:underline"
+                            href={`/inventario/repuestos/${r.id}`}
+                          >
+                            {r.codigo}
+                          </Link>
                         </td>
                         <td className="px-5 py-3.5 font-medium">{r.nombre}</td>
                         <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">

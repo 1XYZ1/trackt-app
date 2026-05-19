@@ -1,4 +1,5 @@
 export { AjusteStockDialog } from "./ajuste-stock-dialog";
+export { AprobarReservaDialog } from "./aprobar-reserva-dialog";
 export { DesactivarRepuestoDialog } from "./desactivar-repuesto-dialog";
 export { EntradaStockDialog } from "./entrada-stock-dialog";
 export { NuevaReservaDialog } from "./nueva-reserva-dialog";
