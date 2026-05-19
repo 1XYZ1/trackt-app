@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -21,12 +22,15 @@ import {
 } from '../common/utils/pagination';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
+import { AuthUser } from '../auth/types';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto';
 import { AsignarTicketDto } from './dto/asignar-ticket.dto';
+import { ReasignarTicketDto } from './dto/reasignar-ticket.dto';
 import { FinalizarTicketDto } from './dto/finalizar-ticket.dto';
 import { ValidarTicketDto } from './dto/validar-ticket.dto';
 import { CerrarTicketDto } from './dto/cerrar-ticket.dto';
+import { CargaMecanicoDto } from './dto/carga-mecanicos-response.dto';
 import { TicketResponseDto, UsuarioResumenDto } from './dto/ticket-response.dto';
 import {
   TICKET_DETAIL_INCLUDE,
@@ -158,8 +162,17 @@ export class TicketsService {
     return mapTicketDetail(ticketRow, users);
   }
 
+  /**
+   * Lista tickets del tenant con scoping por rol:
+   * - admin / jefe_taller: ven todos los tickets del tenant.
+   * - mechanic: solo tickets donde es el mecánico asignado.
+   *
+   * El filtro por rol se fuerza a nivel backend (no depende de RLS) porque
+   * NestJS conecta como service role y bypassa policies.
+   */
   async findAll(
     tenantId: string,
+    user: AuthUser,
     query: ListTicketsQueryDto,
   ): Promise<PaginatedResult<TicketResponseDto>> {
     const { page = 1, limit = 10, estado, mecanicoId, otId } = query;
@@ -167,8 +180,13 @@ export class TicketsService {
     const where: Prisma.TicketWhereInput = {
       tenantId,
       ...(estado && { estado }),
-      ...(mecanicoId && { mecanicoId }),
       ...(otId && { otId }),
+      // mechanic queda forzado a sus propios tickets, ignorando lo que pida el query.
+      ...(user.role === 'mechanic'
+        ? { mecanicoId: user.id }
+        : mecanicoId
+          ? { mecanicoId }
+          : {}),
     };
 
     const [rows, total] = await this.prisma.$transaction([
@@ -187,13 +205,45 @@ export class TicketsService {
     return buildPaginatedResult(data, total, page, limit);
   }
 
-  async findOne(tenantId: string, id: string): Promise<TicketResponseDto> {
+  /**
+   * Detalle de ticket.
+   * - admin / jefe_taller: cualquier ticket del tenant.
+   * - mechanic: solo si está asignado al ticket.
+   */
+  async findOne(
+    tenantId: string,
+    user: AuthUser,
+    id: string,
+  ): Promise<TicketResponseDto> {
     const ticket = await this.prisma.ticket.findFirst({
       where: { id, tenantId },
       include: TICKET_DETAIL_INCLUDE,
     });
     if (!ticket) {
       throw new NotFoundException(`Ticket con id "${id}" no encontrado`);
+    }
+    if (user.role === 'mechanic' && ticket.mecanicoId !== user.id) {
+      // Mismo mensaje que NotFound para no filtrar existencia.
+      throw new NotFoundException(`Ticket con id "${id}" no encontrado`);
+    }
+    const users = await this.fetchUserSummaries(collectUserIds([ticket]));
+    return mapTicketDetail(ticket, users);
+  }
+
+  /**
+   * Versión interna sin filtro por rol. Usada por las transiciones de estado,
+   * que ya verificaron permisos antes (via @Roles + lógica de service).
+   */
+  private async loadTicketResponse(
+    tenantId: string,
+    ticketId: string,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.prisma.ticket.findFirst({
+      where: { id: ticketId, tenantId },
+      include: TICKET_DETAIL_INCLUDE,
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket con id "${ticketId}" no encontrado`);
     }
     const users = await this.fetchUserSummaries(collectUserIds([ticket]));
     return mapTicketDetail(ticket, users);
@@ -264,7 +314,7 @@ export class TicketsService {
         mensaje: `Te asignaron el ticket ${ticket.codigo}`,
       },
     );
-    return this.findOne(tenantId, ticketId);
+    return this.loadTicketResponse(tenantId, ticketId);
   }
 
   /**
@@ -320,7 +370,7 @@ export class TicketsService {
         },
       );
     }
-    return this.findOne(tenantId, ticketId);
+    return this.loadTicketResponse(tenantId, ticketId);
   }
 
   /**
@@ -377,7 +427,7 @@ export class TicketsService {
         },
       );
     }
-    return this.findOne(tenantId, ticketId);
+    return this.loadTicketResponse(tenantId, ticketId);
   }
 
   /**
@@ -454,7 +504,7 @@ export class TicketsService {
       );
     }
 
-    return this.findOne(tenantId, ticketId);
+    return this.loadTicketResponse(tenantId, ticketId);
   }
 
   /**
@@ -514,7 +564,205 @@ export class TicketsService {
       );
     }
 
-    return this.findOne(tenantId, ticketId);
+    return this.loadTicketResponse(tenantId, ticketId);
+  }
+
+  // ---------- Gestión operativa (jefe_taller / admin) ----------
+
+  /**
+   * Reasignar ticket a otro mecánico.
+   * - Roles: admin, jefe_taller (validado por @Roles en el controller).
+   * - Estados permitidos: ASIGNADO, EN_EJECUCION.
+   * - Estados bloqueados: PENDIENTE (usar `asignar`), EJECUTADO, CERRADO, CANCELADO.
+   * - Motivo obligatorio cuando el ticket está EN_EJECUCION (impacto operativo).
+   * - Registra evento con metadata (mecánico anterior/nuevo, motivo) para
+   *   trazabilidad sin necesidad de nueva tabla.
+   * - Si el nuevo mecánico es el mismo que el actual, falla con 409.
+   */
+  async reasignar(
+    tenantId: string,
+    userId: string,
+    ticketId: string,
+    dto: ReasignarTicketDto,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.requireTicket(tenantId, ticketId);
+
+    const reasignables: TicketEstado[] = [
+      TicketEstado.ASIGNADO,
+      TicketEstado.EN_EJECUCION,
+    ];
+    if (!reasignables.includes(ticket.estado)) {
+      throw new ConflictException(
+        `No se puede reasignar un ticket en estado ${ticket.estado}`,
+      );
+    }
+
+    const motivo = dto.motivo?.trim();
+    if (ticket.estado === TicketEstado.EN_EJECUCION && !motivo) {
+      throw new BadRequestException(
+        'El motivo es obligatorio para reasignar un ticket EN_EJECUCION',
+      );
+    }
+
+    if (ticket.mecanicoId === dto.mecanicoId) {
+      throw new ConflictException(
+        'El ticket ya está asignado a ese mecánico',
+      );
+    }
+
+    // Validar que el nuevo mecánico exista en el tenant y tenga rol mechanic.
+    const mecanico = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id::text AS id
+      FROM public.profiles
+      WHERE id = ${dto.mecanicoId}::uuid
+        AND tenant_id = ${tenantId}
+        AND role = 'mechanic'::user_role
+      LIMIT 1
+    `;
+    if (mecanico.length === 0) {
+      throw new NotFoundException(
+        `Mecánico "${dto.mecanicoId}" no encontrado en el tenant`,
+      );
+    }
+
+    const mecanicoAnteriorId = ticket.mecanicoId;
+    const now = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: {
+          mecanicoId: dto.mecanicoId,
+          // Si vuelve a ASIGNADO desde EN_EJECUCION, limpiar fechaInicio.
+          ...(ticket.estado === TicketEstado.EN_EJECUCION && {
+            estado: TicketEstado.ASIGNADO,
+            fechaInicioEjecucion: null,
+          }),
+          fechaAsignacion: now,
+        },
+      });
+      // Evento de reasignación: usamos estadoAnterior=ASIGNADO/EN_EJECUCION y
+      // estadoNuevo=ASIGNADO; el detalle (mecánico previo/nuevo/motivo) va en
+      // observacion + metadata para trazabilidad sin nuevas columnas.
+      const observacion =
+        `Reasignado de ${mecanicoAnteriorId ?? 'sin mecánico'} a ${dto.mecanicoId}` +
+        (motivo ? ` — Motivo: ${motivo}` : '');
+      await tx.eventoEstadoTicket.create({
+        data: {
+          ticketId,
+          estadoAnterior: ticket.estado,
+          estadoNuevo: TicketEstado.ASIGNADO,
+          usuarioId: userId,
+          observacion,
+          metadata: {
+            tipo: 'REASIGNACION',
+            mecanicoAnteriorId,
+            mecanicoNuevoId: dto.mecanicoId,
+            motivo: motivo ?? null,
+          },
+        },
+      });
+    });
+
+    // Notificar al nuevo mecánico (reutiliza el tipo TICKET_ASIGNADO; no
+    // agregamos un tipo nuevo para no expandir el enum NotificacionTipo).
+    await this.notificaciones.emit(
+      tenantId,
+      dto.mecanicoId,
+      NotificacionTipo.TICKET_ASIGNADO,
+      {
+        ticketId: ticket.id,
+        ticketCodigo: ticket.codigo,
+        ticketTitulo: ticket.titulo,
+        ordenId: ticket.otId,
+        actor: { id: userId },
+        observacion: motivo,
+        mensaje: `Te reasignaron el ticket ${ticket.codigo}`,
+      },
+    );
+
+    return this.loadTicketResponse(tenantId, ticketId);
+  }
+
+  /**
+   * Carga de trabajo por mecánico del tenant.
+   * - Roles: admin, jefe_taller (validado por @Roles en el controller).
+   * - Devuelve solo perfiles con rol `mechanic` del tenant.
+   * - Cuenta tickets abiertos por estado (excluye CERRADO y CANCELADO).
+   * - Incluye mecánicos sin tickets (totalAbiertos = 0) para visibilidad.
+   */
+  async getCargaMecanicos(tenantId: string): Promise<CargaMecanicoDto[]> {
+    interface MecanicoRow {
+      id: string;
+      full_name: string | null;
+      email: string | null;
+    }
+    const mecanicos = await this.prisma.$queryRaw<MecanicoRow[]>`
+      SELECT p.id::text AS id, p.full_name, u.email
+      FROM public.profiles p
+      JOIN auth.users u ON u.id = p.id
+      WHERE p.tenant_id = ${tenantId}
+        AND p.role = 'mechanic'::user_role
+      ORDER BY p.full_name ASC NULLS LAST
+    `;
+
+    if (mecanicos.length === 0) return [];
+
+    const ids = mecanicos.map((m) => m.id);
+    const abiertos: TicketEstado[] = [
+      TicketEstado.PENDIENTE,
+      TicketEstado.ASIGNADO,
+      TicketEstado.EN_EJECUCION,
+      TicketEstado.EJECUTADO,
+    ];
+
+    const counts = await this.prisma.ticket.groupBy({
+      by: ['mecanicoId', 'estado'],
+      where: {
+        tenantId,
+        mecanicoId: { in: ids },
+        estado: { in: abiertos },
+      },
+      _count: { _all: true },
+    });
+
+    const buckets = new Map<string, CargaMecanicoDto>();
+    for (const m of mecanicos) {
+      buckets.set(m.id, {
+        mecanicoId: m.id,
+        nombre: m.full_name,
+        email: m.email,
+        pendientes: 0,
+        asignados: 0,
+        enEjecucion: 0,
+        ejecutados: 0,
+        totalAbiertos: 0,
+      });
+    }
+
+    for (const row of counts) {
+      if (!row.mecanicoId) continue;
+      const bucket = buckets.get(row.mecanicoId);
+      if (!bucket) continue;
+      const n = row._count._all;
+      switch (row.estado) {
+        case TicketEstado.PENDIENTE:
+          bucket.pendientes += n;
+          break;
+        case TicketEstado.ASIGNADO:
+          bucket.asignados += n;
+          break;
+        case TicketEstado.EN_EJECUCION:
+          bucket.enEjecucion += n;
+          break;
+        case TicketEstado.EJECUTADO:
+          bucket.ejecutados += n;
+          break;
+      }
+      bucket.totalAbiertos += n;
+    }
+
+    return Array.from(buckets.values());
   }
 
   // ---------- Helpers privados ----------

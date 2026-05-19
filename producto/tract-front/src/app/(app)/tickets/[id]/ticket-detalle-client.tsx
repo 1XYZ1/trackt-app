@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Image as ImageIcon,
   Loader2,
+  RefreshCw,
   RotateCcw,
   User,
   UserPlus,
@@ -22,11 +23,13 @@ import { useTicket } from "@/hooks/use-tickets";
 import { useRole } from "@/contexts/auth-context";
 import { getTicketEquipoLabel, type TicketTimelineEvent } from "@/lib/api/tickets";
 import { AsignarMecanicoDialog } from "@/components/tickets/asignar-mecanico-dialog";
+import { ReasignarTicketDialog } from "@/components/tickets/reasignar-ticket-dialog";
 import {
   ValidarTicketDialog,
   type ValidarMode,
 } from "@/components/tickets/validar-ticket-dialog";
 import { EvidenciasGrid } from "@/components/tickets/evidencias-grid";
+import { ReservasSection } from "@/components/inventario";
 
 function toTimelineEvento(evento: TicketTimelineEvent): TimelineEvento {
   const title = evento.estadoAnterior
@@ -47,6 +50,7 @@ export function TicketDetalleClient({ id }: { id: string }) {
   const { data: ticket, error, isLoading } = useTicket(id);
   const role = useRole();
   const [asignarOpen, setAsignarOpen] = useState(false);
+  const [reasignarOpen, setReasignarOpen] = useState(false);
   const [validarMode, setValidarMode] = useState<ValidarMode | null>(null);
 
   if (isLoading) {
@@ -77,7 +81,12 @@ export function TicketDetalleClient({ id }: { id: string }) {
     ticket.mecanico?.nombre || ticket.mecanico?.email || "Sin mecanico asignado";
 
   const isAdmin = role === "admin";
-  const canAsignar = isAdmin && ticket.estado === "PENDIENTE";
+  const isJefe = role === "jefe_taller";
+  // admin y jefe_taller pueden asignar/reasignar; admin valida/cierra.
+  const canAsignar = (isAdmin || isJefe) && ticket.estado === "PENDIENTE";
+  const canReasignar =
+    (isAdmin || isJefe) &&
+    (ticket.estado === "ASIGNADO" || ticket.estado === "EN_EJECUCION");
   const canValidar = isAdmin && ticket.estado === "EJECUTADO";
 
   return (
@@ -105,7 +114,7 @@ export function TicketDetalleClient({ id }: { id: string }) {
           </p>
         </div>
 
-        {(canAsignar || canValidar) && (
+        {(canAsignar || canReasignar || canValidar) && (
           <div className="flex flex-wrap gap-2">
             {canAsignar && (
               <Button
@@ -115,6 +124,16 @@ export function TicketDetalleClient({ id }: { id: string }) {
               >
                 <UserPlus />
                 Asignar mecánico
+              </Button>
+            )}
+            {canReasignar && (
+              <Button
+                onClick={() => setReasignarOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <RefreshCw />
+                Reasignar
               </Button>
             )}
             {canValidar && (
@@ -219,10 +238,25 @@ export function TicketDetalleClient({ id }: { id: string }) {
         </CardContent>
       </Card>
 
+      <ReservasSection
+        ticketEstado={ticket.estado}
+        ticketId={ticket.id}
+        ticketMecanicoId={ticket.mecanico?.id ?? null}
+      />
+
       {canAsignar && (
         <AsignarMecanicoDialog
           onOpenChange={setAsignarOpen}
           open={asignarOpen}
+          ticketId={ticket.id}
+        />
+      )}
+      {canReasignar && (
+        <ReasignarTicketDialog
+          mecanicoActualId={ticket.mecanico?.id ?? null}
+          onOpenChange={setReasignarOpen}
+          open={reasignarOpen}
+          ticketEstado={ticket.estado}
           ticketId={ticket.id}
         />
       )}

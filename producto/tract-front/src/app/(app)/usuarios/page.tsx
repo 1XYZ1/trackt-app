@@ -14,7 +14,7 @@ import { InviteForm } from './invite-form';
 
 interface ProfileRow {
   id: string;
-  role: 'admin' | 'mechanic';
+  role: 'admin' | 'mechanic' | 'jefe_taller';
   full_name: string | null;
   created_at: string;
 }

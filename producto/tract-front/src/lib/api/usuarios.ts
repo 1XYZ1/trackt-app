@@ -1,6 +1,6 @@
 import { authFetch } from "@/lib/api/http";
 
-export type UsuarioRol = "admin" | "mechanic";
+export type UsuarioRol = "admin" | "jefe_taller" | "mechanic";
 
 export type UsuarioPublico = {
   id: string;

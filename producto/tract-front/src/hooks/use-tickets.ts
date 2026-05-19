@@ -5,12 +5,15 @@ import {
   asignarTicket,
   cerrarTicket,
   createTicketFromOrden,
+  getCargaMecanicos,
   getTicketById,
   getTickets,
+  reasignarTicket,
   validarTicket,
   type AsignarTicketPayload,
   type CerrarTicketPayload,
   type CreateTicketPayload,
+  type ReasignarTicketPayload,
   type ValidarTicketPayload,
 } from "@/lib/api/tickets";
 
@@ -64,6 +67,17 @@ function useTicketTransition<TPayload>(
 
 export function useAsignarTicket(ticketId: string) {
   return useTicketTransition<AsignarTicketPayload>(ticketId, asignarTicket);
+}
+
+export function useReasignarTicket(ticketId: string) {
+  return useTicketTransition<ReasignarTicketPayload>(ticketId, reasignarTicket);
+}
+
+export function useCargaMecanicos() {
+  return useQuery({
+    queryFn: getCargaMecanicos,
+    queryKey: ["tickets", "carga-mecanicos"],
+  });
 }
 
 export function useValidarTicket(ticketId: string) {

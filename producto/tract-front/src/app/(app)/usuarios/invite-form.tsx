@@ -13,7 +13,7 @@ import { inviteUser } from '@/app/actions/users';
 const schema = z.object({
   email: z.string().email('Correo invalido'),
   fullName: z.string().min(1, 'Requerido').max(120),
-  role: z.enum(['admin', 'mechanic']),
+  role: z.enum(['admin', 'jefe_taller', 'mechanic']),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -73,7 +73,8 @@ export function InviteForm() {
             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
             {...register('role')}
           >
-            <option value="mechanic">Mechanic</option>
+            <option value="mechanic">Mecánico</option>
+            <option value="jefe_taller">Jefe de taller</option>
             <option value="admin">Admin</option>
           </select>
         </div>
