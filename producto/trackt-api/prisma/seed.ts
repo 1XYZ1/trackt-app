@@ -84,6 +84,16 @@ interface SeedEvento {
   createdAt: Date;
 }
 
+interface SeedRepuesto {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  categoria: string;
+  unidad: string;
+  stockMinimo: number;
+  stockInicial: number;
+}
+
 interface SeedTenant {
   id: string;
   nombre: string;
@@ -92,6 +102,7 @@ interface SeedTenant {
   ordenes: SeedOrden[];
   tickets: SeedTicket[];
   eventos: SeedEvento[];
+  repuestos?: SeedRepuesto[];
 }
 
 const PASSWORD = 'Trackt!2026';
@@ -366,6 +377,14 @@ const demoTenant: SeedTenant = {
     { ticketId: 'tk-demo-2008', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: DEMO_MEC2.id, observacion: 'Overhaul terminado, listo para validación.', createdAt: hoursAgo(10) },
     { ticketId: 'tk-demo-2008', estadoAnterior: 'EJECUTADO', estadoNuevo: 'CERRADO', usuarioId: DEMO_ADMIN.id, observacion: 'Validado y entregado a operación.', createdAt: hoursAgo(2) },
   ],
+  repuestos: [
+    { codigo: 'REP-DEMO-001', nombre: 'Filtro de aceite motor 793F', categoria: 'Filtros', unidad: 'unidad', stockMinimo: 5, stockInicial: 30 },
+    { codigo: 'REP-DEMO-002', nombre: 'Aceite hidráulico ISO 68', descripcion: 'Bidón 20L', categoria: 'Aceites', unidad: 'bidon', stockMinimo: 4, stockInicial: 12 },
+    { codigo: 'REP-DEMO-003', nombre: 'Pastilla de freno camión minero', categoria: 'Frenos', unidad: 'unidad', stockMinimo: 8, stockInicial: 6 },
+    { codigo: 'REP-DEMO-004', nombre: 'Sensor de temperatura motor', categoria: 'Eléctricos', unidad: 'unidad', stockMinimo: 3, stockInicial: 10 },
+    { codigo: 'REP-DEMO-005', nombre: 'Manguera hidráulica 1in x 2m', categoria: 'Hidráulica', unidad: 'metro', stockMinimo: 10, stockInicial: 40 },
+    { codigo: 'REP-DEMO-006', nombre: 'Neumático 40.00R57', categoria: 'Neumáticos', unidad: 'unidad', stockMinimo: 2, stockInicial: 4 },
+  ],
 };
 
 // ============================================================
@@ -577,6 +596,14 @@ const forestalTenant: SeedTenant = {
     { ticketId: 'tk-forestal-4006', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: FOR_MEC1.id, createdAt: hoursAgo(46) },
     { ticketId: 'tk-forestal-4006', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: FOR_MEC1.id, observacion: 'Espada cambiada, sierra operativa.', createdAt: hoursAgo(20) },
     { ticketId: 'tk-forestal-4006', estadoAnterior: 'EJECUTADO', estadoNuevo: 'CERRADO', usuarioId: FOR_ADMIN.id, observacion: 'Validado, equipo devuelto a operación.', createdAt: hoursAgo(6) },
+  ],
+  repuestos: [
+    { codigo: 'REP-FOR-001', nombre: 'Filtro de aire skidder', categoria: 'Filtros', unidad: 'unidad', stockMinimo: 4, stockInicial: 15 },
+    { codigo: 'REP-FOR-002', nombre: 'Aceite cadena motosierra', descripcion: 'Bidón 5L', categoria: 'Aceites', unidad: 'bidon', stockMinimo: 6, stockInicial: 18 },
+    { codigo: 'REP-FOR-003', nombre: 'Cable de winche forestal', categoria: 'Hidráulica', unidad: 'metro', stockMinimo: 20, stockInicial: 50 },
+    { codigo: 'REP-FOR-004', nombre: 'Batería 12V 100Ah', categoria: 'Eléctricos', unidad: 'unidad', stockMinimo: 2, stockInicial: 1 },
+    { codigo: 'REP-FOR-005', nombre: 'Disco de freno feller', categoria: 'Frenos', unidad: 'unidad', stockMinimo: 4, stockInicial: 8 },
+    { codigo: 'REP-FOR-006', nombre: 'Neumático forestal 24R21', categoria: 'Neumáticos', unidad: 'unidad', stockMinimo: 2, stockInicial: 3 },
   ],
 };
 
@@ -790,6 +817,14 @@ const construccionTenant: SeedTenant = {
     { ticketId: 'tk-construccion-6006', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: CON_MEC1.id, observacion: 'Dientes reemplazados.', createdAt: hoursAgo(24) },
     { ticketId: 'tk-construccion-6006', estadoAnterior: 'EJECUTADO', estadoNuevo: 'CERRADO', usuarioId: CON_ADMIN.id, observacion: 'Validado y devuelto a obra.', createdAt: hoursAgo(8) },
   ],
+  repuestos: [
+    { codigo: 'REP-CON-001', nombre: 'Filtro hidráulico excavadora', categoria: 'Filtros', unidad: 'unidad', stockMinimo: 4, stockInicial: 20 },
+    { codigo: 'REP-CON-002', nombre: 'Aceite motor 15W40', descripcion: 'Bidón 20L', categoria: 'Aceites', unidad: 'bidon', stockMinimo: 5, stockInicial: 14 },
+    { codigo: 'REP-CON-003', nombre: 'Diente de balde excavadora', categoria: 'Hidráulica', unidad: 'unidad', stockMinimo: 6, stockInicial: 22 },
+    { codigo: 'REP-CON-004', nombre: 'Manguera de freno camión', categoria: 'Frenos', unidad: 'metro', stockMinimo: 8, stockInicial: 5 },
+    { codigo: 'REP-CON-005', nombre: 'Alternador 24V', categoria: 'Eléctricos', unidad: 'unidad', stockMinimo: 2, stockInicial: 6 },
+    { codigo: 'REP-CON-006', nombre: 'Neumático 17.5R25', categoria: 'Neumáticos', unidad: 'unidad', stockMinimo: 2, stockInicial: 4 },
+  ],
 };
 
 const TENANTS: SeedTenant[] = [demoTenant, forestalTenant, construccionTenant];
@@ -857,6 +892,49 @@ async function seedEquipos(t: SeedTenant) {
         modelo: eq.modelo,
         ubicacion: eq.ubicacion,
       },
+    });
+  }
+}
+
+/**
+ * Idempotente: upsert por (tenantId, codigo). El stock se crea solo la
+ * primera vez; en re-ejecuciones no sobrescribimos el stockActual real para
+ * no destruir movimientos posteriores. Si quieres re-cargar stock inicial,
+ * borra inventario_stock antes del seed.
+ */
+async function seedRepuestos(t: SeedTenant) {
+  if (!t.repuestos || t.repuestos.length === 0) return;
+
+  for (const rep of t.repuestos) {
+    const repuesto = await prisma.repuesto.upsert({
+      where: { tenantId_codigo: { tenantId: t.id, codigo: rep.codigo } },
+      create: {
+        tenantId: t.id,
+        codigo: rep.codigo,
+        nombre: rep.nombre,
+        descripcion: rep.descripcion,
+        categoria: rep.categoria,
+        unidad: rep.unidad,
+        stockMinimo: rep.stockMinimo,
+      },
+      update: {
+        nombre: rep.nombre,
+        descripcion: rep.descripcion,
+        categoria: rep.categoria,
+        unidad: rep.unidad,
+        stockMinimo: rep.stockMinimo,
+      },
+    });
+
+    await prisma.inventarioStock.upsert({
+      where: { repuestoId: repuesto.id },
+      create: {
+        tenantId: t.id,
+        repuestoId: repuesto.id,
+        stockActual: rep.stockInicial,
+        stockReservado: 0,
+      },
+      update: {}, // no sobrescribir stock real en re-ejecuciones
     });
   }
 }
@@ -941,11 +1019,12 @@ async function seedSingleTenant(t: SeedTenant) {
   await seedTenantRow(t);
   await seedUsers(t);
   await seedEquipos(t);
+  await seedRepuestos(t);
   await seedOrdenes(t);
   await seedTickets(t);
   await seedEventos(t);
   console.log(
-    `✓ ${t.id} — ${t.users.length} users, ${t.equipos.length} equipos, ${t.ordenes.length} OT, ${t.tickets.length} tickets, ${t.eventos.length} eventos`,
+    `✓ ${t.id} — ${t.users.length} users, ${t.equipos.length} equipos, ${t.repuestos?.length ?? 0} repuestos, ${t.ordenes.length} OT, ${t.tickets.length} tickets, ${t.eventos.length} eventos`,
   );
 }
 

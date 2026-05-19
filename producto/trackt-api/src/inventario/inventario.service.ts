@@ -503,11 +503,21 @@ export class InventarioService {
         }
       }
 
+      // Si mechanic pide `solicitar: true`, la reserva queda en SOLICITADA y
+      // NO consume stockReservado hasta que admin/jefe la apruebe via
+      // POST /reservas-repuestos/:id/aprobar. Para admin/jefe el campo se
+      // ignora y la reserva se crea directamente RESERVADA.
+      const esSolicitud =
+        dto.solicitar === true && user.role === 'mechanic';
+      const estadoInicial = esSolicitud
+        ? ReservaRepuestoEstado.SOLICITADA
+        : ReservaRepuestoEstado.RESERVADA;
+
       const reserva = await tx.reservaRepuesto.create({
         data: {
           tenantId,
           ticketId,
-          estado: ReservaRepuestoEstado.RESERVADA,
+          estado: estadoInicial,
           creadoPorId: user.id,
           observacion: dto.observacion,
           items: {
@@ -520,7 +530,125 @@ export class InventarioService {
         include: RESERVA_DETAIL_INCLUDE,
       });
 
-      for (const it of items) {
+      // SOLICITADA salta el update de stockReservado y la emision de
+      // movimientos. Eso ocurrira en aprobarReserva al pasar a RESERVADA.
+      if (!esSolicitud) {
+        for (const it of items) {
+          const r = byId.get(it.repuestoId)!;
+          const stock = r.stock!;
+          const nuevoReservado = stock.stockReservado + it.cantidad;
+          await tx.inventarioStock.update({
+            where: { id: stock.id },
+            data: { stockReservado: nuevoReservado },
+          });
+          await tx.movimientoInventario.create({
+            data: {
+              tenantId,
+              repuestoId: it.repuestoId,
+              tipo: MovimientoInventarioTipo.RESERVA,
+              cantidad: it.cantidad,
+              stockResultante: stock.stockActual,
+              usuarioId: user.id,
+              ticketId,
+              reservaId: reserva.id,
+              observacion: dto.observacion,
+            },
+          });
+        }
+      }
+
+      return reserva;
+    });
+  }
+
+  /**
+   * Listado global de reservas en estado SOLICITADA del tenant (admin/jefe).
+   * Sin paginacion — el volumen esperado es bajo. Si crece, paginar.
+   */
+  async findReservasPendientes(tenantId: string) {
+    return this.prisma.reservaRepuesto.findMany({
+      where: { tenantId, estado: ReservaRepuestoEstado.SOLICITADA },
+      include: {
+        ...RESERVA_DETAIL_INCLUDE,
+        ticket: { select: { id: true, codigo: true, titulo: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Aprobar una reserva SOLICITADA → RESERVADA.
+   * - Roles: admin, jefe_taller (validado por @Roles en el controller).
+   * - Re-valida stock disponible (puede haber cambiado entre solicitud y
+   *   aprobacion).
+   * - Aplica stockReservado por item y emite movimiento RESERVA por item.
+   * - Setea aprobadoPorId = user.id.
+   */
+  async aprobarReserva(
+    tenantId: string,
+    user: AuthUser,
+    reservaId: string,
+    dto: { observacion?: string },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const reserva = await tx.reservaRepuesto.findFirst({
+        where: { id: reservaId, tenantId },
+        include: {
+          items: true,
+          ticket: { select: { id: true, mecanicoId: true } },
+        },
+      });
+      if (!reserva) {
+        throw new NotFoundException(
+          `Reserva con id "${reservaId}" no encontrada`,
+        );
+      }
+      if (reserva.estado !== ReservaRepuestoEstado.SOLICITADA) {
+        throw new ConflictException(
+          `Solo se pueden aprobar reservas en estado SOLICITADA (actual: ${reserva.estado})`,
+        );
+      }
+
+      // Locks ordenados antes de leer/mutar stocks.
+      const sortedItems = [...reserva.items].sort((a, b) =>
+        a.repuestoId.localeCompare(b.repuestoId),
+      );
+      for (const it of sortedItems) {
+        await this.lockRepuesto(tx, tenantId, it.repuestoId);
+      }
+
+      // Re-validar stock disponible item por item.
+      const repuestos = await tx.repuesto.findMany({
+        where: {
+          id: { in: sortedItems.map((i) => i.repuestoId) },
+          tenantId,
+        },
+        include: { stock: true },
+      });
+      const byId = new Map(repuestos.map((r) => [r.id, r]));
+      for (const it of sortedItems) {
+        const r = byId.get(it.repuestoId);
+        if (!r) {
+          throw new NotFoundException(
+            'Alguno de los repuestos de la reserva no existe en el tenant',
+          );
+        }
+        if (!r.activo) {
+          throw new ConflictException(
+            `El repuesto "${r.codigo}" esta inactivo`,
+          );
+        }
+        const stock = r.stock!;
+        const disponible = stock.stockActual - stock.stockReservado;
+        if (it.cantidad > disponible) {
+          throw new ConflictException(
+            `Stock insuficiente para "${r.codigo}": disponible ${disponible}, requerido ${it.cantidad}`,
+          );
+        }
+      }
+
+      // Aplicar stockReservado + movimientos RESERVA.
+      for (const it of sortedItems) {
         const r = byId.get(it.repuestoId)!;
         const stock = r.stock!;
         const nuevoReservado = stock.stockReservado + it.cantidad;
@@ -536,14 +664,21 @@ export class InventarioService {
             cantidad: it.cantidad,
             stockResultante: stock.stockActual,
             usuarioId: user.id,
-            ticketId,
+            ticketId: reserva.ticketId,
             reservaId: reserva.id,
             observacion: dto.observacion,
           },
         });
       }
 
-      return reserva;
+      return tx.reservaRepuesto.update({
+        where: { id: reservaId },
+        data: {
+          estado: ReservaRepuestoEstado.RESERVADA,
+          aprobadoPorId: user.id,
+        },
+        include: RESERVA_DETAIL_INCLUDE,
+      });
     });
   }
 
