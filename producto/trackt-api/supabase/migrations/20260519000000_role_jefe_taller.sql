@@ -42,12 +42,14 @@ BEGIN
 
   IF col_type IN ('text', 'character varying') THEN
     -- Buscar el check constraint actual y reemplazarlo.
+    -- LIMIT 1 evita comportamiento PG-dependiente si >1 constraint matchea.
     SELECT conname INTO constraint_name
     FROM pg_constraint c
     JOIN pg_class t ON t.oid = c.conrelid
     WHERE t.relname = 'profiles'
       AND c.contype = 'c'
-      AND pg_get_constraintdef(c.oid) ILIKE '%role%admin%mechanic%';
+      AND pg_get_constraintdef(c.oid) ILIKE '%role%admin%mechanic%'
+    LIMIT 1;
 
     IF constraint_name IS NOT NULL THEN
       EXECUTE format('ALTER TABLE public.profiles DROP CONSTRAINT %I', constraint_name);

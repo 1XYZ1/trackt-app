@@ -681,6 +681,26 @@ export class TicketsService {
       },
     );
 
+    // Notificar al mecánico anterior (si existía) para que sepa que perdió el
+    // ticket. Reutilizamos TICKET_ASIGNADO con un mensaje distinto en lugar de
+    // agregar un nuevo tipo de enum.
+    if (mecanicoAnteriorId && mecanicoAnteriorId !== dto.mecanicoId) {
+      await this.notificaciones.emit(
+        tenantId,
+        mecanicoAnteriorId,
+        NotificacionTipo.TICKET_ASIGNADO,
+        {
+          ticketId: ticket.id,
+          ticketCodigo: ticket.codigo,
+          ticketTitulo: ticket.titulo,
+          ordenId: ticket.otId,
+          actor: { id: userId },
+          observacion: motivo,
+          mensaje: `Se reasignó el ticket ${ticket.codigo} a otro mecánico`,
+        },
+      );
+    }
+
     return this.loadTicketResponse(tenantId, ticketId);
   }
 
