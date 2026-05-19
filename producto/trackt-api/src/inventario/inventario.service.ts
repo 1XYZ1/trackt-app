@@ -62,62 +62,77 @@ export class InventarioService {
 
   async createRepuesto(tenantId: string, userId: string, dto: CreateRepuestoDto) {
     const codigo = dto.codigo.trim();
-    const dup = await this.prisma.repuesto.findUnique({
-      where: { tenantId_codigo: { tenantId, codigo } },
-      select: { id: true },
-    });
-    if (dup) {
-      throw new ConflictException(
-        `Ya existe un repuesto con codigo "${codigo}" en este tenant`,
-      );
-    }
-
     const stockInicial = dto.stockInicial ?? 0;
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      const repuesto = await tx.repuesto.create({
-        data: {
-          tenantId,
-          codigo,
-          nombre: dto.nombre,
-          descripcion: dto.descripcion,
-          categoria: dto.categoria,
-          unidad: dto.unidad ?? 'unidad',
-          stockMinimo: dto.stockMinimo ?? 0,
-          metadata: dto.metadata as Prisma.InputJsonValue | undefined,
-        },
-      });
+    try {
+      const created = await this.prisma.$transaction(async (tx) => {
+        // Check de duplicado dentro de la tx: dos requests concurrentes
+        // serializan en la unique constraint y el segundo cae al catch P2002.
+        const dup = await tx.repuesto.findUnique({
+          where: { tenantId_codigo: { tenantId, codigo } },
+          select: { id: true },
+        });
+        if (dup) {
+          throw new ConflictException(
+            `Ya existe un repuesto con codigo "${codigo}" en este tenant`,
+          );
+        }
 
-      await tx.inventarioStock.create({
-        data: {
-          tenantId,
-          repuestoId: repuesto.id,
-          stockActual: stockInicial,
-          stockReservado: 0,
-        },
-      });
+        const repuesto = await tx.repuesto.create({
+          data: {
+            tenantId,
+            codigo,
+            nombre: dto.nombre,
+            descripcion: dto.descripcion,
+            categoria: dto.categoria,
+            unidad: dto.unidad ?? 'unidad',
+            stockMinimo: dto.stockMinimo ?? 0,
+            metadata: dto.metadata as Prisma.InputJsonValue | undefined,
+          },
+        });
 
-      if (stockInicial > 0) {
-        await tx.movimientoInventario.create({
+        await tx.inventarioStock.create({
           data: {
             tenantId,
             repuestoId: repuesto.id,
-            tipo: MovimientoInventarioTipo.ENTRADA,
-            cantidad: stockInicial,
-            stockResultante: stockInicial,
-            usuarioId: userId,
-            observacion: 'Stock inicial',
+            stockActual: stockInicial,
+            stockReservado: 0,
           },
         });
-      }
 
-      return tx.repuesto.findUniqueOrThrow({
-        where: { id: repuesto.id },
-        include: REPUESTO_DETAIL_INCLUDE,
+        if (stockInicial > 0) {
+          await tx.movimientoInventario.create({
+            data: {
+              tenantId,
+              repuestoId: repuesto.id,
+              tipo: MovimientoInventarioTipo.ENTRADA,
+              cantidad: stockInicial,
+              stockResultante: stockInicial,
+              usuarioId: userId,
+              observacion: 'Stock inicial',
+            },
+          });
+        }
+
+        return tx.repuesto.findUniqueOrThrow({
+          where: { id: repuesto.id },
+          include: REPUESTO_DETAIL_INCLUDE,
+        });
       });
-    });
 
-    return this.mapRepuesto(created);
+      return this.mapRepuesto(created);
+    } catch (err) {
+      // Race: dos requests pasaron el check antes de crear → P2002 en unique.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `Ya existe un repuesto con codigo "${codigo}" en este tenant`,
+        );
+      }
+      throw err;
+    }
   }
 
   async findAllRepuestos(
@@ -141,7 +156,24 @@ export class InventarioService {
           { categoria: { contains: search, mode: 'insensitive' } },
         ],
       }),
+      // bajoStock se evalua en BD usando la relacion stock 1:1:
+      //   stock_actual - stock_reservado <= stock_minimo
+      // Prisma no expone "columna - columna <= columna" en filtros nativos,
+      // por lo que delegamos al raw filter a continuacion.
     };
+
+    if (bajoStock) {
+      // Paginacion correcta con filtro derivado: traemos los ids que cumplen
+      // la condicion y luego cargamos las paginas con el where base.
+      const idsBajoStock = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT r.id
+        FROM repuestos r
+        JOIN inventario_stock s ON s.repuesto_id = r.id
+        WHERE r.tenant_id = ${tenantId}
+          AND (s.stock_actual - s.stock_reservado) <= r.stock_minimo
+      `;
+      where.id = { in: idsBajoStock.map((row) => row.id) };
+    }
 
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.repuesto.findMany({
@@ -154,15 +186,11 @@ export class InventarioService {
       this.prisma.repuesto.count({ where }),
     ]);
 
-    let data = rows.map((r) => this.mapRepuesto(r));
-    if (bajoStock) {
-      data = data.filter((r) => r.bajoStock);
-    }
-
-    return buildPaginatedResult(data, bajoStock ? data.length : total, page, limit);
+    const data = rows.map((r) => this.mapRepuesto(r));
+    return buildPaginatedResult(data, total, page, limit);
   }
 
-  async findOneRepuesto(tenantId: string, id: string) {
+  async findOneRepuesto(tenantId: string, user: AuthUser, id: string) {
     const repuesto = await this.prisma.repuesto.findFirst({
       where: { id, tenantId },
       include: REPUESTO_DETAIL_INCLUDE,
@@ -171,11 +199,17 @@ export class InventarioService {
       throw new NotFoundException(`Repuesto con id "${id}" no encontrado`);
     }
 
-    const movimientos = await this.prisma.movimientoInventario.findMany({
-      where: { repuestoId: id, tenantId },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
+    // Movimientos solo para admin/jefe_taller (consistente con
+    // findAllMovimientos). mechanic obtiene array vacio.
+    const verMovimientos =
+      user.role === 'admin' || user.role === 'jefe_taller';
+    const movimientos = verMovimientos
+      ? await this.prisma.movimientoInventario.findMany({
+          where: { repuestoId: id, tenantId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        })
+      : [];
 
     return {
       ...this.mapRepuesto(repuesto),
@@ -322,6 +356,11 @@ export class InventarioService {
       if (!repuesto) {
         throw new NotFoundException(
           `Repuesto con id "${repuestoId}" no encontrado`,
+        );
+      }
+      if (!repuesto.activo) {
+        throw new ConflictException(
+          'No se puede ajustar stock de un repuesto inactivo',
         );
       }
       const stock = repuesto.stock!;
@@ -702,6 +741,9 @@ export class InventarioService {
    * Toma un advisory lock por repuesto/tenant dentro de la transacción.
    * Sirve para serializar lecturas/escrituras de stock del mismo SKU.
    * El lock se libera automáticamente al commit/rollback.
+   *
+   * Usamos `hashtextextended` (PG11+) que devuelve int8 — menos colisiones
+   * que `hashtext` (int4) cuando hay muchos repuestos en el mismo tenant.
    */
   private async lockRepuesto(
     tx: Prisma.TransactionClient,
@@ -709,7 +751,7 @@ export class InventarioService {
     repuestoId: string,
   ): Promise<void> {
     const key = `inv:${tenantId}:${repuestoId}`;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
   }
 
   private mapRepuesto(

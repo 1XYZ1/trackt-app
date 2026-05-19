@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Loader2,
@@ -29,6 +29,7 @@ import type { Repuesto } from "@/lib/api/inventario";
 
 export function InventarioClient() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [bajoStock, setBajoStock] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
 
@@ -39,14 +40,27 @@ export function InventarioClient() {
   const [desactivarTarget, setDesactivarTarget] = useState<Repuesto | null>(null);
 
   const isAdmin = useHasRole("admin");
+  // admin y jefe_taller pueden ver inactivos (backend permite a ambos).
+  const canSeeInactivos = useHasRole("admin", "jefe_taller");
+
+  // Debounce search 300ms para no martillar el endpoint con cada tecla.
+  useEffect(() => {
+    const trimmed = query.trim();
+    const t = setTimeout(() => setDebouncedQuery(trimmed), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const { data: repuestos = [], error, isLoading } = useRepuestos({
     bajoStock,
     includeInactive,
+    search: debouncedQuery || undefined,
   });
 
-  const filtered = useMemo(() => {
+  const filtered = (() => {
     const q = query.trim().toLowerCase();
     if (!q) return repuestos;
+    // Mantener filtro cliente para feedback instantaneo mientras se debounce
+    // el server; al confirmarse el server ya devuelve la lista filtrada.
     return repuestos.filter(
       (r) =>
         r.codigo.toLowerCase().includes(q) ||
@@ -54,7 +68,7 @@ export function InventarioClient() {
         (r.categoria ?? "").toLowerCase().includes(q) ||
         (r.descripcion ?? "").toLowerCase().includes(q),
     );
-  }, [repuestos, query]);
+  })();
 
   const totalBajoStock = repuestos.filter((r) => r.bajoStock && r.activo).length;
 
@@ -153,7 +167,7 @@ export function InventarioClient() {
               />
               Solo bajo stock
             </label>
-            {isAdmin && (
+            {canSeeInactivos && (
               <label className="flex items-center gap-2 text-muted-foreground text-xs">
                 <input
                   checked={includeInactive}

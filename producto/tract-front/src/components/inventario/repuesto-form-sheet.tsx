@@ -88,19 +88,34 @@ export function RepuestoFormSheet({
   }, [repuesto, open, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
-    const payload = {
-      codigo: values.codigo.trim(),
-      nombre: values.nombre.trim(),
-      descripcion: values.descripcion?.trim() || undefined,
-      categoria: values.categoria?.trim() || undefined,
-      unidad: values.unidad?.trim() || undefined,
-      stockMinimo: values.stockMinimo ?? 0,
+    // En edit, string vacio = limpiar campo → null. En create, omitir.
+    const optionalField = (raw: string | undefined) => {
+      const trimmed = raw?.trim() ?? "";
+      if (trimmed) return trimmed;
+      return isEdit ? null : undefined;
     };
+
     try {
       if (isEdit && repuesto) {
+        const payload = {
+          codigo: values.codigo.trim(),
+          nombre: values.nombre.trim(),
+          descripcion: optionalField(values.descripcion),
+          categoria: optionalField(values.categoria),
+          unidad: values.unidad?.trim() || undefined,
+          stockMinimo: values.stockMinimo ?? 0,
+        };
         await updateRepuesto.mutateAsync({ id: repuesto.id, payload });
         toast.success("Repuesto actualizado");
       } else {
+        const payload = {
+          codigo: values.codigo.trim(),
+          nombre: values.nombre.trim(),
+          descripcion: optionalField(values.descripcion) ?? undefined,
+          categoria: optionalField(values.categoria) ?? undefined,
+          unidad: values.unidad?.trim() || undefined,
+          stockMinimo: values.stockMinimo ?? 0,
+        };
         await createRepuesto.mutateAsync({
           ...payload,
           stockInicial: values.stockInicial ?? 0,

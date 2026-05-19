@@ -94,9 +94,14 @@ export type CreateRepuestoPayload = {
   stockInicial?: number;
 };
 
-export type UpdateRepuestoPayload = Partial<
-  Omit<CreateRepuestoPayload, "stockInicial">
-> & {
+// descripcion / categoria aceptan null para limpiar el campo en BD.
+export type UpdateRepuestoPayload = {
+  codigo?: string;
+  nombre?: string;
+  descripcion?: string | null;
+  categoria?: string | null;
+  unidad?: string;
+  stockMinimo?: number;
   activo?: boolean;
 };
 

@@ -43,6 +43,7 @@ function buildPrismaMock() {
       findFirst: jest.fn(),
     },
     $executeRaw: jest.fn().mockResolvedValue(0),
+    $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(),
   };
 
@@ -194,22 +195,10 @@ describe('InventarioService', () => {
       expect(args.where).toEqual({ tenantId: TENANT });
     });
 
-    it('aplica filtro bajoStock en memoria sobre stockDisponible vs stockMinimo', async () => {
+    it('filtra bajoStock via SQL (raw) y pagina sobre el resultado', async () => {
+      // El raw query devuelve solo los ids que cumplen la condicion.
+      (prisma.$queryRaw as jest.Mock).mockResolvedValueOnce([{ id: 'b' }]);
       prisma.repuesto.findMany.mockResolvedValue([
-        {
-          id: 'a',
-          codigo: 'A',
-          nombre: 'A',
-          unidad: 'u',
-          stockMinimo: 5,
-          activo: true,
-          descripcion: null,
-          categoria: null,
-          metadata: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          stock: { stockActual: 10, stockReservado: 0 }, // dispon=10 > min=5 → NO bajo
-        },
         {
           id: 'b',
           codigo: 'B',
@@ -225,7 +214,7 @@ describe('InventarioService', () => {
           stock: { stockActual: 5, stockReservado: 2 }, // dispon=3 <= min=5 → bajo
         },
       ]);
-      prisma.repuesto.count.mockResolvedValue(2);
+      prisma.repuesto.count.mockResolvedValue(1);
 
       const result = await service.findAllRepuestos(TENANT, ADMIN, {
         page: 1,
@@ -233,9 +222,14 @@ describe('InventarioService', () => {
         bajoStock: true,
       });
 
+      // findMany se llama con where.id.in restringido a los ids del raw query.
+      const findArgs = prisma.repuesto.findMany.mock.calls[0][0];
+      expect(findArgs.where.id).toEqual({ in: ['b'] });
       expect(result.data).toHaveLength(1);
       expect(result.data[0].id).toBe('b');
       expect(result.data[0].bajoStock).toBe(true);
+      // total proviene del count del where (no de data.length).
+      expect(result.meta.total).toBe(1);
     });
   });
 

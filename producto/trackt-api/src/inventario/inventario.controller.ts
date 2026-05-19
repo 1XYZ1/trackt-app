@@ -65,7 +65,7 @@ export class InventarioController {
     @Param('id') id: string,
   ) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.inventarioService.findOneRepuesto(tenantId, id);
+    return this.inventarioService.findOneRepuesto(tenantId, req.user, id);
   }
 
   @Roles('admin')

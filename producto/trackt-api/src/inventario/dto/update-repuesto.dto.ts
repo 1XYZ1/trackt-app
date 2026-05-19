@@ -8,6 +8,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateRepuestoDto {
@@ -23,15 +24,19 @@ export class UpdateRepuestoDto {
   @MaxLength(120)
   nombre?: string;
 
+  // descripcion / categoria aceptan null para permitir limpiar el campo desde
+  // el form. undefined = no tocar; null = setear a null en BD.
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsString()
   @MaxLength(500)
-  descripcion?: string;
+  descripcion?: string | null;
 
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsString()
   @MaxLength(60)
-  categoria?: string;
+  categoria?: string | null;
 
   @IsOptional()
   @IsString()
