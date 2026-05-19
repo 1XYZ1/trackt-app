@@ -10,6 +10,7 @@ import { OrdenesModule } from './ordenes/ordenes.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { EvidenciasModule } from './evidencias/evidencias.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
+import { InventarioModule } from './inventario/inventario.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { NotificacionesModule } from './notificaciones/notificaciones.module';
     TicketsModule,
     EvidenciasModule,
     NotificacionesModule,
+    InventarioModule,
   ],
   controllers: [AppController],
   providers: [AppService],
