@@ -118,9 +118,16 @@ export type AjusteStockPayload = {
 export type CreateReservaPayload = {
   observacion?: string;
   items: { repuestoId: string; cantidad: number }[];
+  // Solo aplicable a mechanic. Si true, la reserva queda en estado SOLICITADA
+  // y requiere aprobacion de admin/jefe.
+  solicitar?: boolean;
 };
 
 export type ReservaActionPayload = {
+  observacion?: string;
+};
+
+export type AprobarReservaPayload = {
   observacion?: string;
 };
 
@@ -136,6 +143,8 @@ export type MovimientosFilters = {
   ticketId?: string;
   reservaId?: string;
   tipo?: MovimientoTipo;
+  desde?: string; // ISO date (YYYY-MM-DD o full ISO)
+  hasta?: string;
 };
 
 type Paginated<T> = {
@@ -296,6 +305,8 @@ export async function getMovimientos(
   if (filters.ticketId) qs.set("ticketId", filters.ticketId);
   if (filters.reservaId) qs.set("reservaId", filters.reservaId);
   if (filters.tipo) qs.set("tipo", filters.tipo);
+  if (filters.desde) qs.set("desde", filters.desde);
+  if (filters.hasta) qs.set("hasta", filters.hasta);
   qs.set("limit", "100");
 
   const response = await authFetch(
@@ -382,4 +393,39 @@ export async function consumirReserva(
     );
   }
   return (await response.json()) as ReservaRepuesto;
+}
+
+export async function aprobarReserva(
+  id: string,
+  payload: AprobarReservaPayload = {},
+): Promise<ReservaRepuesto> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/reservas-repuestos/${id}/aprobar`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo aprobar la reserva"),
+    );
+  }
+  return (await response.json()) as ReservaRepuesto;
+}
+
+/**
+ * Listado global de reservas pendientes (SOLICITADA). Solo admin/jefe_taller.
+ */
+export async function getReservasPendientes(): Promise<ReservaRepuesto[]> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/reservas-repuestos`,
+  );
+  if (!response.ok) {
+    throw new Error("No se pudieron cargar las reservas pendientes");
+  }
+  return (await response.json()) as ReservaRepuesto[];
 }
