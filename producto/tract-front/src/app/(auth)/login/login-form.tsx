@@ -31,9 +31,9 @@ export function LoginForm() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<FormValues>({
-    mode: 'onTouched',
+    mode: 'onChange',
     resolver: zodResolver(schema),
   });
 
@@ -85,7 +85,7 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <Label
             htmlFor="password"
             className="font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
@@ -94,7 +94,7 @@ export function LoginForm() {
           </Label>
           <Link
             href="/forgot-password"
-            className="text-cyan-300 text-xs transition hover:text-cyan-200"
+            className="whitespace-nowrap text-cyan-300 text-xs transition hover:text-cyan-200"
           >
             Olvidaste tu contrasena?
           </Link>
@@ -129,11 +129,12 @@ export function LoginForm() {
       </div>
 
       <Button
-        className="mt-2 h-11 w-full rounded-lg border-cyan-400/40 bg-cyan-400/90 font-semibold text-sm text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.18)] transition hover:bg-cyan-300 disabled:shadow-none"
+        className="mt-2 h-11 w-full rounded-lg font-semibold text-sm"
+        disabled={!isValid || pending}
         loading={pending}
         type="submit"
       >
-        Iniciar sesion
+        {pending ? 'Iniciando sesion...' : 'Iniciar sesion'}
       </Button>
     </form>
   );
