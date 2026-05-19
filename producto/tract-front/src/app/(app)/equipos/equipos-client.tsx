@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Pencil, Plus, PowerOff, Search, Truck } from "lucide-react";
 import { EmptyState } from "@/components/core";
 import { DesactivarEquipoDialog, EquipoFormSheet } from "@/components/equipos";
@@ -14,28 +14,27 @@ import type { Equipo } from "@/lib/api/equipos";
 
 export function EquiposClient() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Equipo | null>(null);
   const [toDeactivate, setToDeactivate] = useState<Equipo | null>(null);
 
   const isAdmin = useHasRole("admin");
-  const { data: equipos = [], error, isLoading } = useEquipos({ includeInactive });
 
-  const filteredEquipos = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+  // Debounce 300ms para que el search server-side no dispare a cada tecla.
+  useEffect(() => {
+    const trimmed = query.trim();
+    const t = setTimeout(() => setDebouncedQuery(trimmed), 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
-    if (!normalizedQuery) return equipos;
+  const { data: equipos = [], error, isLoading } = useEquipos({
+    includeInactive,
+    search: debouncedQuery || undefined,
+  });
 
-    return equipos.filter(
-      (equipo) =>
-        equipo.codigo.toLowerCase().includes(normalizedQuery) ||
-        equipo.nombre.toLowerCase().includes(normalizedQuery) ||
-        equipo.marca.toLowerCase().includes(normalizedQuery) ||
-        equipo.modelo.toLowerCase().includes(normalizedQuery) ||
-        equipo.ubicacion.toLowerCase().includes(normalizedQuery),
-    );
-  }, [equipos, query]);
+  const filteredEquipos = equipos;
 
   const openCreate = () => {
     setEditing(null);

@@ -86,19 +86,32 @@ export function EquipoFormSheet({
   }, [equipo, open, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
-    const payload = {
-      codigo: values.codigo.trim(),
-      nombre: values.nombre.trim(),
-      marca: values.marca?.trim() || undefined,
-      modelo: values.modelo?.trim() || undefined,
-      ubicacion: values.ubicacion?.trim() || undefined,
+    // En edit, string vacio = limpiar campo → enviar null. En create, omitir.
+    const optionalField = (raw: string | undefined) => {
+      const trimmed = raw?.trim() ?? "";
+      if (trimmed) return trimmed;
+      return isEdit ? null : undefined;
     };
 
     try {
       if (isEdit && equipo) {
+        const payload = {
+          codigo: values.codigo.trim(),
+          nombre: values.nombre.trim(),
+          marca: optionalField(values.marca),
+          modelo: optionalField(values.modelo),
+          ubicacion: optionalField(values.ubicacion),
+        };
         await updateEquipo.mutateAsync({ id: equipo.id, payload });
         toast.success("Equipo actualizado");
       } else {
+        const payload = {
+          codigo: values.codigo.trim(),
+          nombre: values.nombre.trim(),
+          marca: optionalField(values.marca) ?? undefined,
+          modelo: optionalField(values.modelo) ?? undefined,
+          ubicacion: optionalField(values.ubicacion) ?? undefined,
+        };
         await createEquipo.mutateAsync(payload);
         toast.success("Equipo creado");
       }

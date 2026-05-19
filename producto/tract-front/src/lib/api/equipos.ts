@@ -18,10 +18,18 @@ export type CreateEquipoPayload = {
   ubicacion?: string;
 };
 
-export type UpdateEquipoPayload = Partial<CreateEquipoPayload>;
+// Update permite null en campos opcionales para limpiarlos en BD.
+export type UpdateEquipoPayload = {
+  codigo?: string;
+  nombre?: string;
+  marca?: string | null;
+  modelo?: string | null;
+  ubicacion?: string | null;
+};
 
 export type EquiposFilters = {
   includeInactive?: boolean;
+  search?: string;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -54,6 +62,9 @@ export async function getEquipos(
   const params = new URLSearchParams();
   if (filters.includeInactive) {
     params.set("includeInactive", "true");
+  }
+  if (filters.search) {
+    params.set("search", filters.search);
   }
   // Pedimos un límite alto para mantener el comportamiento previo del listado
   // (todos los equipos en una sola página).
