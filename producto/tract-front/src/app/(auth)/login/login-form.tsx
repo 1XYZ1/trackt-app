@@ -47,11 +47,15 @@ export function LoginForm() {
   };
 
   return (
-    <form className="space-y-4" noValidate onSubmit={handleSubmit(onSubmit)}>
+    <form
+      className="mx-auto w-full max-w-[360px] space-y-4"
+      noValidate
+      onSubmit={handleSubmit(onSubmit)}
+    >
       <div className="space-y-2">
         <Label
           htmlFor="email"
-          className="font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
+          className="block text-center font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
         >
           Correo electronico
         </Label>
@@ -85,16 +89,16 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
+        <div className="space-y-1 text-center">
           <Label
             htmlFor="password"
-            className="font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
+            className="block font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
           >
             Contrasena
           </Label>
           <Link
             href="/forgot-password"
-            className="whitespace-nowrap text-cyan-300 text-xs transition hover:text-cyan-200"
+            className="inline-flex text-cyan-300 text-xs transition hover:text-cyan-200"
           >
             Olvidaste tu contrasena?
           </Link>

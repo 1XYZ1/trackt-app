@@ -41,11 +41,15 @@ export function ForgotForm() {
   };
 
   return (
-    <form className="space-y-4" noValidate onSubmit={handleSubmit(onSubmit)}>
+    <form
+      className="mx-auto w-full max-w-[360px] space-y-4"
+      noValidate
+      onSubmit={handleSubmit(onSubmit)}
+    >
       <div className="space-y-2">
         <Label
           htmlFor="email"
-          className="font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
+          className="block text-center font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
         >
           Correo electronico
         </Label>
