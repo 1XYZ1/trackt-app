@@ -57,6 +57,23 @@ enum NotificacionTipo {
   OT_CERRADA
 }
 
+enum MovimientoInventarioTipo {
+  ENTRADA
+  SALIDA
+  AJUSTE
+  RESERVA
+  LIBERACION
+  CONSUMO
+}
+
+enum ReservaRepuestoEstado {
+  SOLICITADA
+  RESERVADA
+  CONSUMIDA
+  LIBERADA
+  CANCELADA
+}
+
 // =========================
 // Modelos
 // =========================
@@ -72,6 +89,9 @@ model Tenant {
   ordenes        OrdenTrabajo[]
   tickets        Ticket[]
   notificaciones Notificacion[]
+  repuestos      Repuesto[]
+  reservas       ReservaRepuesto[]
+  movimientos    MovimientoInventario[]
 
   @@map("tenants")
 }
@@ -144,10 +164,12 @@ model Ticket {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ot         OrdenTrabajo         @relation(fields: [otId], references: [id], onDelete: Cascade)
-  eventos    EventoEstadoTicket[]
-  evidencias Evidencia[]
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ot          OrdenTrabajo           @relation(fields: [otId], references: [id], onDelete: Cascade)
+  eventos     EventoEstadoTicket[]
+  evidencias  Evidencia[]
+  reservas    ReservaRepuesto[]
+  movimientos MovimientoInventario[]
 
   @@unique([tenantId, codigo])
   @@index([tenantId, estado])
@@ -201,4 +223,108 @@ model Notificacion {
   @@index([usuarioId, leida])
   @@index([tenantId])
   @@map("notificaciones")
+}
+
+// =========================
+// Inventario (repuestos / reservas / movimientos)
+// =========================
+
+model Repuesto {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  codigo       String
+  nombre       String
+  descripcion  String?
+  categoria    String?
+  unidad       String   @default("unidad")
+  stockMinimo  Int      @default(0) @map("stock_minimo")
+  activo       Boolean  @default(true)
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stock       InventarioStock?
+  items       ReservaRepuestoItem[]
+  movimientos MovimientoInventario[]
+
+  @@unique([tenantId, codigo])
+  @@index([tenantId, activo])
+  @@map("repuestos")
+}
+
+model InventarioStock {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  repuestoId     String   @unique @map("repuesto_id")
+  stockActual    Int      @default(0) @map("stock_actual")
+  stockReservado Int      @default(0) @map("stock_reservado")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  repuesto Repuesto @relation(fields: [repuestoId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("inventario_stock")
+}
+
+model ReservaRepuesto {
+  id            String               @id @default(cuid())
+  tenantId      String               @map("tenant_id")
+  ticketId      String               @map("ticket_id")
+  estado        ReservaRepuestoEstado @default(RESERVADA)
+  creadoPorId   String               @map("creado_por_id") // auth.users.id
+  aprobadoPorId String?              @map("aprobado_por_id") // auth.users.id
+  observacion   String?
+  metadata      Json?
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket      Ticket                 @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  items       ReservaRepuestoItem[]
+  movimientos MovimientoInventario[]
+
+  @@index([tenantId, ticketId])
+  @@index([tenantId, estado])
+  @@map("reservas_repuestos")
+}
+
+model ReservaRepuestoItem {
+  id         String @id @default(cuid())
+  reservaId  String @map("reserva_id")
+  repuestoId String @map("repuesto_id")
+  cantidad   Int
+
+  reserva  ReservaRepuesto @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+  repuesto Repuesto        @relation(fields: [repuestoId], references: [id], onDelete: Restrict)
+
+  @@index([reservaId])
+  @@index([repuestoId])
+  @@map("reserva_repuesto_items")
+}
+
+model MovimientoInventario {
+  id               String                   @id @default(cuid())
+  tenantId         String                   @map("tenant_id")
+  repuestoId       String                   @map("repuesto_id")
+  tipo             MovimientoInventarioTipo
+  cantidad         Int // positivo o negativo; el signo describe el efecto sobre stockActual o stockReservado
+  stockResultante  Int                      @map("stock_resultante") // snapshot post-movimiento de stockActual
+  usuarioId        String                   @map("usuario_id") // auth.users.id
+  ticketId         String?                  @map("ticket_id")
+  reservaId        String?                  @map("reserva_id")
+  observacion      String?
+  metadata         Json?
+  createdAt        DateTime                 @default(now()) @map("created_at")
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  repuesto Repuesto         @relation(fields: [repuestoId], references: [id], onDelete: Cascade)
+  ticket   Ticket?          @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  reserva  ReservaRepuesto? @relation(fields: [reservaId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, repuestoId, createdAt])
+  @@index([reservaId])
+  @@index([ticketId])
+  @@map("movimientos_inventario")
 }
