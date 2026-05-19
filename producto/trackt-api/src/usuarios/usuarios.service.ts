@@ -46,7 +46,7 @@ interface CountRow {
 }
 
 // Respuesta pública normalizada
-interface UsuarioPublico {
+export interface UsuarioPublico {
   id: string;
   email: string | null;
   fullName: string | null;
@@ -71,7 +71,10 @@ export class UsuariosService {
     ];
 
     if (rolNormalizado) {
-      conditions.push(Prisma.sql`p.role = ${rolNormalizado}`);
+      // Cast a user_role enum: la columna `role` en Supabase está tipada
+      // como enum user_role (no TEXT). Comparar contra string sin cast
+      // dispara error de comparación de tipos en Postgres → 500.
+      conditions.push(Prisma.sql`p.role = ${rolNormalizado}::user_role`);
     }
 
     if (search) {

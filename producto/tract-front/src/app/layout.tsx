@@ -4,8 +4,8 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'Trackt System Design',
-  description: 'Demo SaaS industrial para mantenimiento minero.',
+  title: 'Trackt',
+  description: 'Plataforma de mantenimiento industrial.',
 };
 
 export default function RootLayout({

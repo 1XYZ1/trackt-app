@@ -44,6 +44,26 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Seed demo (TRA-17)
+
+Pobla la DB con data realista para QA y demos: 1 tenant `demo`, 5 usuarios (1 admin + 4 mecánicos), 3 equipos, 5 OT y 8 tickets cubriendo todos los estados.
+
+**Prerrequisitos:**
+- Variables en `.env`: `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (esta última desde Supabase Studio → Project Settings → API → `service_role` key).
+- Migration `20260517000000_profiles_tenant_id.sql` aplicada (vía Supabase CLI o Studio).
+
+```bash
+# Aplicar migrations
+supabase db push
+
+# Correr seed (re-ejecutable, idempotente)
+npm run db:seed
+```
+
+**Credenciales demo** (todas con password `Trackt!2026`):
+- Admin: `admin@trackt.demo`
+- Mecánicos: `mecanico1@trackt.demo` … `mecanico4@trackt.demo`
+
 ## Run tests
 
 ```bash

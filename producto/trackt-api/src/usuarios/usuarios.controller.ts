@@ -1,18 +1,18 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { UsuariosService } from './usuarios.service';
 import { ListUsuariosQueryDto } from './dto/list-usuarios-query.dto';
-import { TenantService, AuthUser } from '../common/tenant/tenant.service';
+import { TenantService } from '../common/tenant/tenant.service';
+import { AuthUser } from '../auth/types';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
 }
 
-/**
- * GET /usuarios            → lista paginada de usuarios del tenant
- * GET /usuarios?rol=mecanico → filtra por rol (mecanico → mechanic internamente)
- */
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('admin')
 @Controller('usuarios')
 export class UsuariosController {
   constructor(
@@ -25,7 +25,7 @@ export class UsuariosController {
     @Req() req: RequestWithUser,
     @Query() query: ListUsuariosQueryDto,
   ) {
-    const tenantId = await this.tenantService.resolveTenantId(req.user);
+    const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.usuariosService.findAll(tenantId, query);
   }
 }
