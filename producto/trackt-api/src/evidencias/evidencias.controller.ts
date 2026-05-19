@@ -30,7 +30,7 @@ export class EvidenciasController {
     private readonly tenantService: TenantService,
   ) {}
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @HttpCode(HttpStatus.OK)
   @Post(':id/evidencia/signed-url')
   async requestSignedUrl(
@@ -47,7 +47,7 @@ export class EvidenciasController {
     );
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Post(':id/evidencia')
   async confirm(
     @Req() req: RequestWithUser,
@@ -63,7 +63,7 @@ export class EvidenciasController {
     );
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get(':id/evidencias')
   async list(
     @Req() req: RequestWithUser,

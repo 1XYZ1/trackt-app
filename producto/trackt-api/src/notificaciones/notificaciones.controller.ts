@@ -29,7 +29,7 @@ export class NotificacionesController {
     private readonly tenantService: TenantService,
   ) {}
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get()
   async findAll(
     @Req() req: RequestWithUser,
@@ -39,7 +39,7 @@ export class NotificacionesController {
     return this.notificacionesService.findAll(tenantId, req.user.id, query);
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get('count-no-leidas')
   async countNoLeidas(@Req() req: RequestWithUser) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
@@ -50,7 +50,7 @@ export class NotificacionesController {
     return { count };
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Patch(':id/leer')
   async marcarLeida(
@@ -61,7 +61,7 @@ export class NotificacionesController {
     await this.notificacionesService.marcarLeida(tenantId, req.user.id, id);
   }
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @HttpCode(HttpStatus.OK)
   @Patch('leer-todas')
   async marcarTodasLeidas(@Req() req: RequestWithUser) {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -36,6 +37,7 @@ function buildPrismaMock() {
       findUniqueOrThrow: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
+      groupBy: jest.fn(),
     },
     eventoEstadoTicket: {
       create: jest.fn(),
@@ -416,12 +418,36 @@ describe('TicketsService', () => {
 
   // ---------- findAll ----------
 
+  function userAdmin(overrides: Partial<{ id: string }> = {}) {
+    return {
+      id: overrides.id ?? USER,
+      role: 'admin' as const,
+      tenantId: TENANT,
+    };
+  }
+
+  function userJefe() {
+    return {
+      id: 'user-jefe',
+      role: 'jefe_taller' as const,
+      tenantId: TENANT,
+    };
+  }
+
+  function userMechanic(id = 'mec-1') {
+    return {
+      id,
+      role: 'mechanic' as const,
+      tenantId: TENANT,
+    };
+  }
+
   describe('findAll', () => {
-    it('aplica filtros estado, mecanicoId y otId, y siempre filtra por tenant', async () => {
+    it('aplica filtros estado, mecanicoId y otId, y siempre filtra por tenant (admin)', async () => {
       prisma.ticket.findMany.mockResolvedValue([]);
       prisma.ticket.count.mockResolvedValue(0);
 
-      await service.findAll(TENANT, {
+      await service.findAll(TENANT, userAdmin(), {
         estado: TicketEstado.PENDIENTE,
         mecanicoId: 'mec-1',
         otId: OT_ID,
@@ -440,11 +466,35 @@ describe('TicketsService', () => {
       expect(findArgs.include).toMatchObject({ ot: expect.any(Object) });
     });
 
+    it('jefe_taller ve todos los tickets del tenant (sin scoping forzado)', async () => {
+      prisma.ticket.findMany.mockResolvedValue([]);
+      prisma.ticket.count.mockResolvedValue(0);
+
+      await service.findAll(TENANT, userJefe(), { page: 1, limit: 10 });
+
+      const findArgs = prisma.ticket.findMany.mock.calls[0][0];
+      expect(findArgs.where).toEqual({ tenantId: TENANT });
+    });
+
+    it('mechanic queda forzado a sus propios tickets (ignora mecanicoId del query)', async () => {
+      prisma.ticket.findMany.mockResolvedValue([]);
+      prisma.ticket.count.mockResolvedValue(0);
+
+      await service.findAll(TENANT, userMechanic('mec-1'), {
+        mecanicoId: 'otro-mecanico',
+        page: 1,
+        limit: 10,
+      });
+
+      const findArgs = prisma.ticket.findMany.mock.calls[0][0];
+      expect(findArgs.where).toEqual({ tenantId: TENANT, mecanicoId: 'mec-1' });
+    });
+
     it('omite filtros vacíos pero conserva el tenant', async () => {
       prisma.ticket.findMany.mockResolvedValue([]);
       prisma.ticket.count.mockResolvedValue(0);
 
-      await service.findAll(TENANT, { page: 1, limit: 5 });
+      await service.findAll(TENANT, userAdmin(), { page: 1, limit: 5 });
 
       const findArgs = prisma.ticket.findMany.mock.calls[0][0];
       expect(findArgs.where).toEqual({ tenantId: TENANT });
@@ -463,7 +513,7 @@ describe('TicketsService', () => {
         { id: 'mec-1', full_name: 'Mecanico 1' },
       ]);
 
-      const result = await service.findAll(TENANT, { page: 2, limit: 5 });
+      const result = await service.findAll(TENANT, userAdmin(), { page: 2, limit: 5 });
 
       expect(result.meta).toEqual({
         page: 2,
@@ -499,7 +549,7 @@ describe('TicketsService', () => {
         { id: USER, full_name: 'Andrés Admin' },
       ]);
 
-      const result = await service.findOne(TENANT, TICKET_ID);
+      const result = await service.findOne(TENANT, userAdmin(), TICKET_ID);
 
       const findArgs = prisma.ticket.findFirst.mock.calls[0][0];
       expect(findArgs.where).toEqual({ id: TICKET_ID, tenantId: TENANT });
@@ -525,17 +575,26 @@ describe('TicketsService', () => {
       prisma.ticket.findFirst.mockResolvedValue(row);
       prisma.$queryRaw.mockResolvedValue([]); // sin profiles
 
-      const result = await service.findOne(TENANT, TICKET_ID);
+      const result = await service.findOne(TENANT, userAdmin(), TICKET_ID);
 
       expect(result.mecanico).toEqual({ id: 'mec-huerfano' });
+    });
+
+    it('mechanic recibe 404 si el ticket no está asignado a él (no filtra existencia)', async () => {
+      const row = fakeTicketRow({ mecanicoId: 'otro-mec' });
+      prisma.ticket.findFirst.mockResolvedValue(row);
+
+      await expect(
+        service.findOne(TENANT, userMechanic('mec-self'), TICKET_ID),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('falla con NotFoundException si no existe', async () => {
       prisma.ticket.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne(TENANT, TICKET_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.findOne(TENANT, userAdmin(), TICKET_ID),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -797,6 +856,213 @@ describe('TicketsService', () => {
       await expect(
         service.cerrar(TENANT, USER, TICKET_ID, {}),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  // ---------- reasignar ----------
+
+  describe('reasignar', () => {
+    function mockReasignChain(opts: {
+      estado: TicketEstado;
+      currentMec?: string | null;
+      profileFound?: boolean;
+    }) {
+      prisma.ticket.findFirst.mockResolvedValueOnce({
+        id: TICKET_ID,
+        codigo: 'TKT-2026-0001',
+        titulo: 'Falla motor',
+        estado: opts.estado,
+        otId: OT_ID,
+        mecanicoId: opts.currentMec ?? null,
+        jefeId: USER,
+        fechaValidacion: null,
+      });
+      prisma.$queryRaw.mockResolvedValueOnce(
+        opts.profileFound === false ? [] : [{ id: 'mec-nuevo' }],
+      );
+      prisma.ticket.update.mockResolvedValue({});
+      prisma.eventoEstadoTicket.create.mockResolvedValue({});
+      // Para la respuesta final del loadTicketResponse
+      prisma.ticket.findFirst.mockResolvedValue(
+        fakeTicketRow({ mecanicoId: 'mec-nuevo' }),
+      );
+      prisma.$queryRaw.mockResolvedValue([]);
+    }
+
+    it('reasigna ticket ASIGNADO sin requerir motivo', async () => {
+      mockReasignChain({
+        estado: TicketEstado.ASIGNADO,
+        currentMec: 'mec-anterior',
+      });
+
+      await service.reasignar(TENANT, USER, TICKET_ID, {
+        mecanicoId: 'mec-nuevo',
+      });
+
+      const updArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updArgs.data.mecanicoId).toBe('mec-nuevo');
+      // ASIGNADO → ASIGNADO: no toca el estado
+      expect(updArgs.data.estado).toBeUndefined();
+      expect(updArgs.data.fechaAsignacion).toBeInstanceOf(Date);
+
+      const evtArgs = prisma.eventoEstadoTicket.create.mock.calls[0][0];
+      expect(evtArgs.data.estadoAnterior).toBe(TicketEstado.ASIGNADO);
+      expect(evtArgs.data.estadoNuevo).toBe(TicketEstado.ASIGNADO);
+      expect(evtArgs.data.metadata).toMatchObject({
+        tipo: 'REASIGNACION',
+        mecanicoAnteriorId: 'mec-anterior',
+        mecanicoNuevoId: 'mec-nuevo',
+        motivo: null,
+      });
+    });
+
+    it('reasigna desde EN_EJECUCION exige motivo y vuelve el ticket a ASIGNADO limpiando fechaInicio', async () => {
+      mockReasignChain({
+        estado: TicketEstado.EN_EJECUCION,
+        currentMec: 'mec-anterior',
+      });
+
+      await service.reasignar(TENANT, USER, TICKET_ID, {
+        mecanicoId: 'mec-nuevo',
+        motivo: 'Sobrecarga del mecánico',
+      });
+
+      const updArgs = prisma.ticket.update.mock.calls[0][0];
+      expect(updArgs.data.estado).toBe(TicketEstado.ASIGNADO);
+      expect(updArgs.data.fechaInicioEjecucion).toBeNull();
+      expect(updArgs.data.mecanicoId).toBe('mec-nuevo');
+
+      const evtArgs = prisma.eventoEstadoTicket.create.mock.calls[0][0];
+      expect(evtArgs.data.metadata.motivo).toBe('Sobrecarga del mecánico');
+      expect(evtArgs.data.observacion).toContain('Motivo:');
+    });
+
+    it('falla con BadRequest si el ticket EN_EJECUCION viene sin motivo', async () => {
+      mockReasignChain({
+        estado: TicketEstado.EN_EJECUCION,
+        currentMec: 'mec-anterior',
+      });
+
+      await expect(
+        service.reasignar(TENANT, USER, TICKET_ID, { mecanicoId: 'mec-nuevo' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      TicketEstado.PENDIENTE,
+      TicketEstado.EJECUTADO,
+      TicketEstado.CERRADO,
+      TicketEstado.CANCELADO,
+    ])(
+      'falla con Conflict si el ticket está %s (no reasignable)',
+      async (estado) => {
+        mockReasignChain({ estado, currentMec: 'mec-anterior' });
+
+        await expect(
+          service.reasignar(TENANT, USER, TICKET_ID, {
+            mecanicoId: 'mec-nuevo',
+            motivo: 'x',
+          }),
+        ).rejects.toBeInstanceOf(ConflictException);
+      },
+    );
+
+    it('falla con Conflict si reasigna al mismo mecánico actual', async () => {
+      mockReasignChain({
+        estado: TicketEstado.ASIGNADO,
+        currentMec: 'mec-mismo',
+      });
+
+      await expect(
+        service.reasignar(TENANT, USER, TICKET_ID, {
+          mecanicoId: 'mec-mismo',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('falla con NotFound si el nuevo mecánico no existe en el tenant', async () => {
+      mockReasignChain({
+        estado: TicketEstado.ASIGNADO,
+        currentMec: 'mec-anterior',
+        profileFound: false,
+      });
+
+      await expect(
+        service.reasignar(TENANT, USER, TICKET_ID, {
+          mecanicoId: 'mec-fantasma',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // ---------- carga-mecanicos ----------
+
+  describe('getCargaMecanicos', () => {
+    it('agrupa tickets abiertos por mecánico/estado y completa con ceros', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { id: 'mec-1', full_name: 'Juan Pérez', email: 'juan@x.cl' },
+        { id: 'mec-2', full_name: 'Ana López', email: 'ana@x.cl' },
+      ]);
+      prisma.ticket.groupBy.mockResolvedValue([
+        {
+          mecanicoId: 'mec-1',
+          estado: TicketEstado.ASIGNADO,
+          _count: { _all: 4 },
+        },
+        {
+          mecanicoId: 'mec-1',
+          estado: TicketEstado.EN_EJECUCION,
+          _count: { _all: 1 },
+        },
+        {
+          mecanicoId: 'mec-2',
+          estado: TicketEstado.PENDIENTE,
+          _count: { _all: 2 },
+        },
+      ]);
+
+      const result = await service.getCargaMecanicos(TENANT);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        mecanicoId: 'mec-1',
+        nombre: 'Juan Pérez',
+        email: 'juan@x.cl',
+        pendientes: 0,
+        asignados: 4,
+        enEjecucion: 1,
+        ejecutados: 0,
+        totalAbiertos: 5,
+      });
+      expect(result[1]).toMatchObject({
+        mecanicoId: 'mec-2',
+        pendientes: 2,
+        totalAbiertos: 2,
+      });
+
+      const groupArgs = prisma.ticket.groupBy.mock.calls[0][0];
+      expect(groupArgs.where).toMatchObject({ tenantId: TENANT });
+      // estados abiertos: PENDIENTE, ASIGNADO, EN_EJECUCION, EJECUTADO
+      expect(groupArgs.where.estado.in).toEqual(
+        expect.arrayContaining([
+          TicketEstado.PENDIENTE,
+          TicketEstado.ASIGNADO,
+          TicketEstado.EN_EJECUCION,
+          TicketEstado.EJECUTADO,
+        ]),
+      );
+      expect(groupArgs.where.estado.in).not.toContain(TicketEstado.CERRADO);
+      expect(groupArgs.where.estado.in).not.toContain(TicketEstado.CANCELADO);
+    });
+
+    it('devuelve array vacío si el tenant no tiene mecánicos', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+
+      const result = await service.getCargaMecanicos(TENANT);
+
+      expect(result).toEqual([]);
+      expect(prisma.ticket.groupBy).not.toHaveBeenCalled();
     });
   });
 });

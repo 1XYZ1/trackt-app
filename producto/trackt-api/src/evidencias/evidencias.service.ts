@@ -167,7 +167,9 @@ export class EvidenciasService {
       throw new NotFoundException(`Ticket "${ticketId}" no encontrado`);
     }
 
-    if (user.role === 'admin') return;
+    // admin y jefe_taller tienen acceso total a evidencias del tenant.
+    // mechanic solo si es el asignado al ticket.
+    if (user.role === 'admin' || user.role === 'jefe_taller') return;
     if (user.role === 'mechanic' && ticket.mecanicoId === user.id) return;
 
     throw new ForbiddenException('Sin acceso a evidencias de este ticket');
