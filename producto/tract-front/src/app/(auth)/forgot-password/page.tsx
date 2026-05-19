@@ -14,27 +14,27 @@ export default async function ForgotPasswordPage({
 
   return (
     <AuthShell
-      description="Ingresa tu correo y enviaremos las instrucciones."
+      description="Te enviaremos las instrucciones al correo registrado."
       eyebrow="Recuperacion"
       footer={
         <Link
-          className="text-orange-300/90 transition hover:text-orange-200"
+          className="text-zinc-100 transition hover:text-white"
           href="/login"
         >
           Volver al inicio de sesion
         </Link>
       }
-      title="Recuperar contrasena"
+      title="Recuperar contraseña"
     >
       {message && !error && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-3">
+        <div className="mx-auto mb-5 flex max-w-[348px] items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-3 text-left">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
           <p className="text-emerald-100 text-sm">{message}</p>
         </div>
       )}
 
       {error && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-destructive/35 bg-destructive/10 px-3.5 py-3">
+        <div className="mx-auto mb-5 flex max-w-[348px] items-start gap-3 rounded-lg border border-destructive/35 bg-destructive/10 px-3.5 py-3 text-left">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div>
             <p className="font-medium text-sm text-destructive">

@@ -17,7 +17,7 @@ const schema = z
     passwordConfirm: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirm, {
-    message: 'Las contrasenas no coinciden',
+    message: 'Las contraseñas no coinciden',
     path: ['passwordConfirm'],
   });
 
@@ -47,7 +47,7 @@ export function ResetForm() {
           htmlFor="password"
           className="font-medium text-xs text-zinc-300 uppercase tracking-wide"
         >
-          Nueva contrasena
+          Nueva contraseña
         </Label>
         <div className="relative">
           <Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -70,7 +70,7 @@ export function ResetForm() {
           htmlFor="passwordConfirm"
           className="font-medium text-xs text-zinc-300 uppercase tracking-wide"
         >
-          Confirmar contrasena
+          Confirmar contraseña
         </Label>
         <div className="relative">
           <Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -98,7 +98,7 @@ export function ResetForm() {
         {pending ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
-          'Actualizar contrasena'
+          'Actualizar contraseña'
         )}
       </Button>
     </form>

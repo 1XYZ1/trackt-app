@@ -13,7 +13,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <AuthShell
       description="Ingresa con tus credenciales asignadas."
-      eyebrow="Acceso TRACKT"
+      eyebrow="Acceso Trackt"
       footer={
         <span className="inline-flex items-center justify-center gap-2">
           <ShieldCheck className="size-3.5" />
@@ -23,14 +23,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       title="Iniciar sesion"
     >
       {message && !error && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-3">
+        <div className="mx-auto mb-5 flex max-w-[348px] items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-3 text-left">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
           <p className="text-emerald-100 text-sm">{message}</p>
         </div>
       )}
 
       {errorMessage && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-destructive/35 bg-destructive/10 px-3.5 py-3">
+        <div className="mx-auto mb-5 flex max-w-[348px] items-start gap-3 rounded-lg border border-destructive/35 bg-destructive/10 px-3.5 py-3 text-left">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div>
             <p className="font-medium text-sm text-destructive">
@@ -55,7 +55,7 @@ function normalizeAuthError(error: string) {
     normalized.includes('invalid login') ||
     normalized.includes('invalid credentials')
   ) {
-    return 'Correo o contrasena incorrectos. Revisa los datos e intenta nuevamente.';
+    return 'Correo o contraseña incorrectos. Revisa los datos e intenta nuevamente.';
   }
 
   if (normalized.includes('email not confirmed')) {
