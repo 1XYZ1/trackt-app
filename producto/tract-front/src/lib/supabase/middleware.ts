@@ -5,6 +5,24 @@ const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/auth'];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const hasSupabaseEnv =
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!hasSupabaseEnv) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'Supabase env vars missing in production (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).',
+      );
+    }
+    if (isPublic) return response;
+
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,9 +48,6 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const pathname = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

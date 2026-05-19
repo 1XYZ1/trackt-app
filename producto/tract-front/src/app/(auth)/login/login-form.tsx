@@ -5,16 +5,23 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Link from 'next/link';
-import { Loader2, Lock, Mail } from 'lucide-react';
+import { AlertCircle, Lock, Mail } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { login } from '@/app/actions/auth';
+import { cn } from '@/lib/utils';
 
 const schema = z.object({
-  email: z.string().email('Correo invalido'),
-  password: z.string().min(6, 'Minimo 6 caracteres'),
+  email: z
+    .string()
+    .min(1, 'Ingresa tu correo electronico')
+    .email('Ingresa un correo valido'),
+  password: z
+    .string()
+    .min(1, 'Ingresa tu contrasena')
+    .min(6, 'La contrasena debe tener al menos 6 caracteres'),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -25,7 +32,10 @@ export function LoginForm() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  } = useForm<FormValues>({
+    mode: 'onTouched',
+    resolver: zodResolver(schema),
+  });
 
   const onSubmit = (values: FormValues) => {
     startTransition(async () => {
@@ -37,67 +47,93 @@ export function LoginForm() {
   };
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
-      <div className="space-y-1.5">
+    <form className="space-y-4" noValidate onSubmit={handleSubmit(onSubmit)}>
+      <div className="space-y-2">
         <Label
           htmlFor="email"
-          className="font-medium text-xs text-zinc-300 uppercase tracking-wide"
+          className="font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
         >
           Correo electronico
         </Label>
         <div className="relative">
-          <Mail className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <Mail
+            className={cn(
+              'pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors',
+              errors.email && 'text-destructive',
+            )}
+          />
           <Input
-            id="email"
-            type="email"
+            aria-invalid={Boolean(errors.email)}
             autoComplete="email"
+            className={cn(
+              'h-11 rounded-lg border-border/70 bg-background/70 pl-10 text-sm transition-colors placeholder:text-muted-foreground/60 focus-visible:border-cyan-400/60 focus-visible:ring-cyan-400/20',
+              errors.email &&
+                'border-destructive/60 focus-visible:border-destructive focus-visible:ring-destructive/20',
+            )}
+            id="email"
             placeholder="tu@empresa.cl"
-            className="h-11 rounded-lg border-white/10 bg-zinc-950/60 pl-10 text-sm text-white placeholder:text-zinc-600 focus-visible:border-cyan-400/50 focus-visible:ring-cyan-400/20"
+            type="email"
             {...register('email')}
           />
         </div>
         {errors.email && (
-          <p className="text-red-400 text-xs">{errors.email.message}</p>
+          <p className="flex items-center gap-1.5 text-destructive text-xs">
+            <AlertCircle className="size-3.5" />
+            {errors.email.message}
+          </p>
         )}
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label
             htmlFor="password"
-            className="font-medium text-xs text-zinc-300 uppercase tracking-wide"
+            className="font-medium text-xs text-muted-foreground uppercase tracking-[0.14em]"
           >
             Contrasena
           </Label>
           <Link
             href="/forgot-password"
-            className="text-cyan-400 text-xs transition hover:text-cyan-300"
+            className="text-cyan-300 text-xs transition hover:text-cyan-200"
           >
             Olvidaste tu contrasena?
           </Link>
         </div>
         <div className="relative">
-          <Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <Lock
+            className={cn(
+              'pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors',
+              errors.password && 'text-destructive',
+            )}
+          />
           <Input
-            id="password"
-            type="password"
+            aria-invalid={Boolean(errors.password)}
             autoComplete="current-password"
+            className={cn(
+              'h-11 rounded-lg border-border/70 bg-background/70 pl-10 text-sm transition-colors placeholder:text-muted-foreground/60 focus-visible:border-cyan-400/60 focus-visible:ring-cyan-400/20',
+              errors.password &&
+                'border-destructive/60 focus-visible:border-destructive focus-visible:ring-destructive/20',
+            )}
+            id="password"
             placeholder="********"
-            className="h-11 rounded-lg border-white/10 bg-zinc-950/60 pl-10 text-sm text-white placeholder:text-zinc-600 focus-visible:border-cyan-400/50 focus-visible:ring-cyan-400/20"
+            type="password"
             {...register('password')}
           />
         </div>
         {errors.password && (
-          <p className="text-red-400 text-xs">{errors.password.message}</p>
+          <p className="flex items-center gap-1.5 text-destructive text-xs">
+            <AlertCircle className="size-3.5" />
+            {errors.password.message}
+          </p>
         )}
       </div>
 
       <Button
+        className="mt-2 h-11 w-full rounded-lg border-cyan-400/40 bg-cyan-400/90 font-semibold text-sm text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.18)] transition hover:bg-cyan-300 disabled:shadow-none"
+        loading={pending}
         type="submit"
-        disabled={pending}
-        className="h-11 w-full rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 font-semibold text-sm text-white shadow-cyan-500/20 shadow-lg transition hover:from-cyan-400 hover:to-blue-500"
       >
-        {pending ? <Loader2 className="size-4 animate-spin" /> : 'Iniciar sesion'}
+        Iniciar sesion
       </Button>
     </form>
   );
