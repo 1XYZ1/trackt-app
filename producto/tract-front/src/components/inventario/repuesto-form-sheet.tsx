@@ -1,8 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useRef } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateRepuesto, useUpdateRepuesto } from "@/hooks/use-inventario";
 import type { Repuesto } from "@/lib/api/inventario";
+import { slugCodigo } from "@/lib/strings";
 
 const schema = z.object({
-  codigo: z.string().min(1, "Codigo es obligatorio").max(60),
+  codigo: z
+    .string()
+    .min(1, "Codigo es obligatorio")
+    .max(60)
+    .regex(/^[a-zA-Z0-9-]+$/, "Solo letras, numeros y guiones (sin espacios)"),
   nombre: z.string().min(1, "Nombre es obligatorio").max(120),
   descripcion: z.string().max(500).optional(),
   categoria: z.string().max(60).optional(),
@@ -60,14 +65,23 @@ export function RepuestoFormSheet({
   const isEdit = Boolean(repuesto);
 
   const {
+    control,
     formState: { errors },
+    getValues,
     handleSubmit,
     register,
     reset,
+    setValue,
   } = useForm<FormValues>({
     defaultValues: EMPTY,
     resolver: zodResolver(schema),
   });
+
+  // En create, el codigo se autogenera del nombre. Guardamos el ultimo valor
+  // autogenerado: si el usuario edita el codigo a mano (diverge de este), se
+  // deja de sobreescribir.
+  const lastAuto = useRef("");
+  const nombre = useWatch({ control, name: "nombre" });
 
   // Recargar form al abrir; limpiar al cerrar/crear.
   useEffect(() => {
@@ -83,9 +97,21 @@ export function RepuestoFormSheet({
         stockInicial: 0,
       });
     } else {
+      lastAuto.current = ""; // create: volver a autogenerar
       reset(EMPTY);
     }
   }, [repuesto, open, reset]);
+
+  // Autogenerar codigo desde el nombre (solo create, mientras no se haya
+  // editado a mano: el codigo actual sigue siendo el ultimo autogenerado).
+  useEffect(() => {
+    if (isEdit) return;
+    const actual = getValues("codigo");
+    if (actual !== "" && actual !== lastAuto.current) return; // editado a mano
+    const next = slugCodigo(nombre ?? "");
+    lastAuto.current = next;
+    setValue("codigo", next, { shouldValidate: false });
+  }, [nombre, isEdit, getValues, setValue]);
 
   const onSubmit = handleSubmit(async (values) => {
     // En edit, string vacio = limpiar campo → null. En create, omitir.
@@ -98,7 +124,7 @@ export function RepuestoFormSheet({
     try {
       if (isEdit && repuesto) {
         const payload = {
-          codigo: values.codigo.trim(),
+          codigo: values.codigo.trim().toUpperCase(),
           nombre: values.nombre.trim(),
           descripcion: optionalField(values.descripcion),
           categoria: optionalField(values.categoria),
@@ -109,7 +135,7 @@ export function RepuestoFormSheet({
         toast.success("Repuesto actualizado");
       } else {
         const payload = {
-          codigo: values.codigo.trim(),
+          codigo: values.codigo.trim().toUpperCase(),
           nombre: values.nombre.trim(),
           descripcion: optionalField(values.descripcion) ?? undefined,
           categoria: optionalField(values.categoria) ?? undefined,
@@ -159,14 +185,21 @@ export function RepuestoFormSheet({
                   Codigo
                 </label>
                 <Input
+                  className="uppercase"
                   id="codigo"
                   placeholder="FILTRO-001"
                   {...register("codigo")}
                 />
-                {errors.codigo && (
+                {errors.codigo ? (
                   <p className="text-destructive text-xs">
                     {errors.codigo.message}
                   </p>
+                ) : (
+                  !isEdit && (
+                    <p className="text-muted-foreground text-xs">
+                      Se genera del nombre; puedes editarlo.
+                    </p>
+                  )
                 )}
               </div>
               <div className="space-y-2">
