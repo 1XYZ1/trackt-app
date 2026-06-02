@@ -26,17 +26,18 @@
   Navegador
      │  HTTPS
      ▼
-  Frontend (SPA)            Backend (API REST)            Datos / Servicios
-  React 19 + Vite     →     NestJS 11 + Prisma      →     Supabase
-  TanStack Router/Query     TypeScript                    · PostgreSQL
-  shadcn/ui + Tailwind 4    JWT Bearer auth               · Auth (JWT)
-  Deploy: Netlify           Deploy: Railway               · Storage (evidencias)
+  Frontend (Next.js SSR)    Backend (API REST)            Datos / Servicios
+  Next.js 16 (App Router)→  NestJS 11 + Prisma      →     Supabase
+  React 19                  TypeScript                    · PostgreSQL
+  TanStack Query            JWT Bearer auth               · Auth (JWT)
+  shadcn/ui + Tailwind 4    Deploy: Railway               · Storage (evidencias)
+  Deploy: Vercel
 ```
 - 3 capas desacopladas, cada una desplegada por separado
 - Comunicación: HTTPS + tokens JWT en cada request
 
 **Guión (1:15)**
-> "La arquitectura son tres capas independientes. Un frontend que es una single-page application en React con Vite, que sólo dibuja la interfaz y vive en Netlify. Una API REST hecha en NestJS con TypeScript, que tiene toda la lógica de negocio y corre en Railway. Y abajo, Supabase, que nos da tres servicios en uno: la base de datos PostgreSQL, el sistema de autenticación, y el almacenamiento de archivos para las evidencias.
+> "La arquitectura son tres capas independientes. Un frontend en Next.js 16, que dibuja la interfaz y protege las rutas, desplegado en Vercel. Una API REST hecha en NestJS con TypeScript, que tiene toda la lógica de negocio y corre en Railway. Y abajo, Supabase, que nos da tres servicios en uno: la base de datos PostgreSQL, el sistema de autenticación, y el almacenamiento de archivos para las evidencias.
 >
 > La gracia de tenerlo desacoplado es que cada capa se despliega, escala y falla por separado. El frontend nunca habla directo con la base de datos: todo pasa por la API, y todo viaja por HTTPS con un token de por medio. Eso ya es la primera decisión de seguridad: un solo punto de entrada controlado."
 
@@ -45,16 +46,17 @@
 ## Slide 3 — Frontend (1:00)
 
 **Slide**
-- **React 19 + Vite** — build rápido, SPA estática
-- **TanStack Router** (rutas con type-safety) + **TanStack Query** (estado de servidor / caché)
-- **shadcn/ui + Radix + Tailwind 4** — UI accesible
-- **Deploy en Netlify** — sitio estático + redirect SPA (`/* → /index.html`)
-- No guarda lógica de negocio ni secretos sensibles: sólo consume la API
+- **Next.js 16 (App Router) + React 19** — rendering en servidor, desplegado en **Vercel**
+- **Protección de rutas en el servidor**: middleware valida la sesión (`supabase.auth.getUser()`) en cada request y redirige a `/login` si no hay sesión
+- **Sesión en cookies** vía `@supabase/ssr` (no en localStorage → menos exposición a XSS)
+- **TanStack Query** para estado de servidor/caché · **shadcn + Tailwind 4** · validación con **zod**
+- `authFetch` adjunta el token de Supabase como `Bearer` a la API (auto-refresh + retry en 401)
+- Falla el build en producción si faltan las env vars de Supabase
 
 **Guión (1:00)**
-> "El frontend es React 19 compilado con Vite. Para las rutas usamos TanStack Router, que nos da type-safety —si una ruta no existe, no compila— y para hablar con la API usamos TanStack Query, que maneja la caché y los reintentos por nosotros. La interfaz está sobre shadcn y Radix, que vienen accesibles de fábrica.
+> "El frontend es Next.js 16 con App Router, desplegado en Vercel. A diferencia de una SPA tradicional, acá hay protección de rutas del lado del servidor: un middleware valida la sesión contra Supabase en cada request, y si no estás autenticado te manda a login antes de que se renderice nada. La sesión vive en cookies manejadas por la librería SSR de Supabase, no en localStorage, lo que reduce la exposición a ataques de XSS.
 >
-> Se despliega en Netlify como sitio estático. Lo único de configuración es un redirect para que cualquier URL caiga en el index y el router del lado del cliente la resuelva. Lo importante de seguridad acá: el frontend no tiene lógica de negocio ni llaves secretas. Es una cáscara que pide datos a la API. Si alguien abre el código en el navegador, no encuentra nada útil para atacar."
+> Para los datos usamos TanStack Query, la UI está sobre shadcn y Tailwind, y los formularios se validan con zod. Cuando el front llama a la API, un wrapper le adjunta el token de Supabase como Bearer y, si recibe un 401, refresca el token y reintenta una vez. Detalle de robustez: si faltan las variables de entorno de Supabase, el build de producción falla a propósito, para no desplegar algo a medias."
 
 ---
 
@@ -203,7 +205,7 @@
 ## Slide 12 — Cierre (0:30)
 
 **Slide**
-- **Infra**: 3 capas desacopladas (React/Vite · NestJS · Supabase), cada una desplegada aparte
+- **Infra**: 3 capas desacopladas (Next.js · NestJS · Supabase), cada una desplegada aparte
 - **Seguridad en capas**: validación → JWT → roles → multi-tenant → signed URLs → RLS
 - Sin secretos en el repo · HTTPS · mínimo privilegio
 - ¿Preguntas?
@@ -215,9 +217,10 @@
 
 ### Apéndice — Datos para responder preguntas
 
-- **Stack exacto**: React 19, Vite, TanStack Router/Query, Tailwind 4, shadcn/ui · NestJS 11, Prisma 6, class-validator · Supabase (Postgres + Auth + Storage).
+- **Stack exacto**: Next.js 16 (App Router), React 19, `@supabase/ssr`, TanStack Query, Tailwind 4, shadcn, zod (front) · NestJS 11, Prisma 6, class-validator (API) · Supabase (Postgres + Auth + Storage).
+- **Frontend real**: `producto/tract-front` (paquete `trackt-front`). Nota: la carpeta `shadcn-admin/` del workspace es una plantilla externa (`satnaing/shadcn-admin`), **no** es el frontend de Trackt.
 - **Roles**: `admin`, `jefe_taller`, `mechanic` (definidos en `src/auth/types.ts`).
 - **TTLs**: caché de perfil 5 min · signed upload 60 s · signed download 5 min.
 - **Límites de evidencia**: MIME `image/jpeg|png|webp`, máx 5 MB (`request-upload.dto.ts`).
 - **Conexión DB**: pooler 6543 (runtime) / directo 5432 (migraciones), `sslmode=require`.
-- **Nota de honestidad**: `setup-summary.md` describe una versión previa (Next.js/Vercel + Railway, sólo tabla `messages`). El sistema actual evolucionó al stack descrito arriba; conviene actualizar esa doc.
+- **Nota de honestidad**: `setup-summary.md` acierta en el stack de infra (Next.js/Vercel + NestJS/Railway + Supabase), pero su sección de tablas y endpoints (sólo tabla `messages`, dos rutas) quedó desfasada respecto al sistema actual; conviene actualizar esa parte.
