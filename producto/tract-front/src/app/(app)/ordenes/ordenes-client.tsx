@@ -18,12 +18,13 @@ import { useOrdenes } from "@/hooks/use-ordenes";
 import type { OrdenEstado, OrdenTrabajo } from "@/lib/api/ordenes";
 import { cn } from "@/lib/utils";
 
+// Estados reales de una OT (el backend solo emite estos cuatro). Se omiten
+// ASIGNADO/EJECUTADO porque pertenecen a tickets, no a OT: como filtro darian
+// siempre 0 resultados.
 const estados: ("TODOS" | OrdenEstado)[] = [
   "TODOS",
   "PENDIENTE",
-  "ASIGNADO",
   "EN_EJECUCION",
-  "EJECUTADO",
   "CERRADO",
   "CANCELADO",
 ];
@@ -60,10 +61,7 @@ export function OrdenesClient() {
   const [estado, setEstado] = useState<"TODOS" | OrdenEstado>("TODOS");
   const [equipoId, setEquipoId] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const { data: ordenes = [], error, isLoading } = useOrdenes({
-    equipoId,
-    estado,
-  });
+  const { data: ordenes = [], error, isLoading } = useOrdenes();
 
   const filteredOrdenes = useMemo(() => {
     // TODO(api): mover filtros a backend cuando GET /ordenes soporte query params.

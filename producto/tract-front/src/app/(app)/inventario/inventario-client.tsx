@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   History,
-  Loader2,
   Package,
   Pencil,
   Plus,
@@ -14,7 +13,7 @@ import {
   Search,
   Sliders,
 } from "lucide-react";
-import { EmptyState } from "@/components/core";
+import { EmptyState, ListSkeleton } from "@/components/core";
 import {
   AjusteStockDialog,
   DesactivarRepuestoDialog,
@@ -147,7 +146,7 @@ export function InventarioClient() {
             <p className="font-medium text-[11px] text-muted-foreground uppercase">
               Bajo stock
             </p>
-            <p className="mt-2 flex items-center gap-2 font-mono font-semibold text-2xl text-warning">
+            <p className="mt-2 flex items-center gap-2 font-mono font-semibold text-2xl text-warning-foreground">
               <AlertTriangle className="size-5" />
               {totalBajoStock}
             </p>
@@ -176,7 +175,7 @@ export function InventarioClient() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <select
-              className="h-8 rounded-md border border-input bg-transparent px-2 py-0 text-xs shadow-xs"
+              className="h-9 rounded-md border border-input bg-transparent px-3 py-0 text-sm shadow-xs"
               onChange={(e) => setCategoria(e.target.value)}
               value={categoria}
             >
@@ -220,9 +219,8 @@ export function InventarioClient() {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading && (
-            <div className="flex items-center gap-2 px-5 py-16 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando repuestos...
+            <div className="p-5">
+              <ListSkeleton columns={1} count={5} />
             </div>
           )}
 
