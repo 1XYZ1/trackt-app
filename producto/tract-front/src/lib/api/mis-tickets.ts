@@ -106,7 +106,10 @@ async function parseJsonResponse<T>(
   return response.json();
 }
 
-const USE_MOCK_FALLBACK = process.env.NODE_ENV !== "production";
+// Mocks solo si se opta explicitamente (NEXT_PUBLIC_USE_MOCKS="true"). Nunca
+// por defecto: evita que un error real (401 de sesion expirada, 500) muestre
+// datos ficticios en dev/staging. Las mutaciones NUNCA se mockean.
+const USE_MOCK_FALLBACK = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
 function cloneMockTickets() {
   return structuredClone(mockTickets);
@@ -219,33 +222,27 @@ export async function getMiTicketById(id: string): Promise<MisTicket> {
 }
 
 export async function iniciarEjecucion(ticketId: string): Promise<MisTicket> {
-  try {
-    assertApiBaseUrl();
+  // Mutacion: nunca se mockea — un fallo debe propagarse al usuario.
+  assertApiBaseUrl();
 
-    const response = await authFetch(
-      `${API_BASE_URL}/tickets/${ticketId}/iniciar`,
-      { method: "POST" },
-    );
+  const response = await authFetch(
+    `${API_BASE_URL}/tickets/${ticketId}/iniciar`,
+    { method: "POST" },
+  );
 
-    const ticket = await parseJsonResponse<TicketTrabajo>(
-      response,
-      "No se pudo iniciar el trabajo",
-    );
-    return adaptToMisTicket(ticket);
-  } catch (err) {
-    if (!USE_MOCK_FALLBACK) throw err;
-    logFallback("iniciarEjecucion", err);
-    const ticket = await getMiTicketById(ticketId);
-    return { ...ticket, estado: "EN_EJECUCION" };
-  }
+  const ticket = await parseJsonResponse<TicketTrabajo>(
+    response,
+    "No se pudo iniciar el trabajo",
+  );
+  return adaptToMisTicket(ticket);
 }
 
 export async function subirEvidencia(
   ticketId: string,
   file: File,
 ): Promise<TicketEvidence> {
-  try {
-    assertApiBaseUrl();
+  // Mutacion: nunca se mockea — un fallo debe propagarse al usuario.
+  assertApiBaseUrl();
 
     // 1. Pedir signed URL al backend. El DTO espera { mime, size }.
     const signedUrlResponse = await authFetch(
@@ -303,45 +300,29 @@ export async function subirEvidencia(
     );
 
     return adaptEvidencia(evidencia);
-  } catch (err) {
-    if (!USE_MOCK_FALLBACK) throw err;
-    logFallback("subirEvidencia", err);
-    return {
-      createdAt: new Date().toISOString(),
-      fileName: file.name,
-      id: crypto.randomUUID(),
-      url: URL.createObjectURL(file),
-    };
-  }
 }
 
 export async function finalizarEjecucion(
   ticketId: string,
   payload: FinalizarTicketPayload,
 ): Promise<MisTicket> {
-  try {
-    assertApiBaseUrl();
+  // Mutacion: nunca se mockea — un fallo debe propagarse al usuario.
+  assertApiBaseUrl();
 
-    const response = await authFetch(
-      `${API_BASE_URL}/tickets/${ticketId}/finalizar`,
-      {
-        body: JSON.stringify(payload),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
+  const response = await authFetch(
+    `${API_BASE_URL}/tickets/${ticketId}/finalizar`,
+    {
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      method: "POST",
+    },
+  );
 
-    const ticket = await parseJsonResponse<TicketTrabajo>(
-      response,
-      "No se pudo finalizar el trabajo",
-    );
-    return adaptToMisTicket(ticket);
-  } catch (err) {
-    if (!USE_MOCK_FALLBACK) throw err;
-    logFallback("finalizarEjecucion", err);
-    const ticket = await getMiTicketById(ticketId);
-    return { ...ticket, estado: "EJECUTADO" };
-  }
+  const ticket = await parseJsonResponse<TicketTrabajo>(
+    response,
+    "No se pudo finalizar el trabajo",
+  );
+  return adaptToMisTicket(ticket);
 }

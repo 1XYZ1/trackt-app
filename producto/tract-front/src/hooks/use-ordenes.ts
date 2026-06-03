@@ -6,13 +6,15 @@ import {
   getOrdenById,
   getOrdenes,
   type CreateOrdenPayload,
-  type OrdenesFilters,
 } from "@/lib/api/ordenes";
 
-export function useOrdenes(filters?: OrdenesFilters) {
+export function useOrdenes() {
+  // El filtrado es client-side (getOrdenes no recibe params). La queryKey NO
+  // incluye filtros: evita entradas de cache redundantes y mantiene una sola
+  // key invalidable ["ordenes"].
   return useQuery({
     queryFn: getOrdenes,
-    queryKey: ["ordenes", filters ?? {}],
+    queryKey: ["ordenes"],
   });
 }
 

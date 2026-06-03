@@ -5,11 +5,25 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createClient } from '../../lib/supabase/server';
 
+const loginSchema = z.object({
+  email: z.string().email('Correo invalido'),
+  password: z.string().min(1, 'Contrasena requerida'),
+});
+
 export async function login(formData: FormData) {
+  const parsed = loginSchema.safeParse({
+    email: formData.get('email'),
+    password: formData.get('password'),
+  });
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? 'Datos invalidos';
+    redirect(`/login?error=${encodeURIComponent(msg)}`);
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({
-    email: formData.get('email') as string,
-    password: formData.get('password') as string,
+    email: parsed.data.email,
+    password: parsed.data.password,
   });
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
@@ -31,9 +45,15 @@ async function resolveOrigin(): Promise<string> {
   if (process.env.NEXT_PUBLIC_SITE_URL) {
     return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
   }
+  // Sin SITE_URL configurada: en produccion NO confiar en x-forwarded-host
+  // (host header poisoning podria desviar el enlace de reset a un host
+  // arbitrario). Usar solo el host directo + https. En dev, headers normales.
   const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host');
-  const proto = h.get('x-forwarded-proto') ?? 'http';
+  const isProd = process.env.NODE_ENV === 'production';
+  const host = isProd
+    ? h.get('host')
+    : (h.get('x-forwarded-host') ?? h.get('host'));
+  const proto = isProd ? 'https' : (h.get('x-forwarded-proto') ?? 'http');
   return `${proto}://${host}`;
 }
 
