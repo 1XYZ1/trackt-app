@@ -79,7 +79,7 @@ export class OrdenesController {
   @Post(':id/cancelar')
   async cancelar(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.ordenesService.cancelar(tenantId, id);
+    return this.ordenesService.cancelar(tenantId, req.user.id, id);
   }
 
   @Roles('admin', 'jefe_taller', 'mechanic')

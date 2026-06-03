@@ -13,6 +13,7 @@ import { TicketsService } from './tickets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { InventarioService } from '../inventario/inventario.service';
 
 /**
  * Mock del PrismaService.
@@ -129,15 +130,20 @@ describe('TicketsService', () => {
 
   let ordenesService: { onTicketEstadoCambiado: jest.Mock };
   let notificaciones: { emit: jest.Mock };
+  let inventario: { liberarReservasDeTicket: jest.Mock };
 
   beforeEach(() => {
     prisma = buildPrismaMock();
     ordenesService = { onTicketEstadoCambiado: jest.fn() };
     notificaciones = { emit: jest.fn().mockResolvedValue(undefined) };
+    inventario = {
+      liberarReservasDeTicket: jest.fn().mockResolvedValue(undefined),
+    };
     service = new TicketsService(
       prisma as unknown as PrismaService,
       ordenesService as unknown as OrdenesService,
       notificaciones as unknown as NotificacionesService,
+      inventario as unknown as InventarioService,
     );
   });
 
@@ -767,7 +773,9 @@ describe('TicketsService', () => {
       expect(ordenesService.onTicketEstadoCambiado).toHaveBeenCalledWith(
         TENANT,
         OT_ID,
+        expect.anything(), // ahora se invoca con la tx para atomicidad
       );
+      expect(inventario.liberarReservasDeTicket).toHaveBeenCalled();
     });
 
     it('rechazado → vuelve a EN_EJECUCION sin invocar cascada', async () => {
@@ -847,7 +855,9 @@ describe('TicketsService', () => {
       expect(ordenesService.onTicketEstadoCambiado).toHaveBeenCalledWith(
         TENANT,
         OT_ID,
+        expect.anything(), // ahora se invoca con la tx para atomicidad
       );
+      expect(inventario.liberarReservasDeTicket).toHaveBeenCalled();
     });
 
     it('falla con Conflict si no está EJECUTADO', async () => {

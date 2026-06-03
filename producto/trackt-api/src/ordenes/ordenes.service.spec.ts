@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrdenTrabajoEstado, Prioridad, TicketEstado } from '@prisma/client';
 import { OrdenesService } from './ordenes.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { InventarioService } from '../inventario/inventario.service';
 
 /**
  * Mock del PrismaService.
@@ -24,7 +25,8 @@ function buildPrismaMock() {
       updateMany: jest.fn(),
     },
     ticket: {
-      count: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn(),
     },
     $queryRaw: jest.fn().mockResolvedValue([{}]),
@@ -46,6 +48,12 @@ function buildPrismaMock() {
   return mock;
 }
 
+function buildInventarioMock() {
+  return {
+    liberarReservasDeTicket: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 const TENANT = 'tenant-1';
 const USER = 'user-admin';
 const EQUIPO_ID = 'eq-1';
@@ -53,11 +61,16 @@ const OT_ID = 'ot-1';
 
 describe('OrdenesService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let inventario: ReturnType<typeof buildInventarioMock>;
   let service: OrdenesService;
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    service = new OrdenesService(prisma as unknown as PrismaService);
+    inventario = buildInventarioMock();
+    service = new OrdenesService(
+      prisma as unknown as PrismaService,
+      inventario as unknown as InventarioService,
+    );
   });
 
   // ---------- create ----------
@@ -197,13 +210,14 @@ describe('OrdenesService', () => {
         id: OT_ID,
         estado: OrdenTrabajoEstado.PENDIENTE,
       });
+      prisma.ticket.count.mockResolvedValue(0); // sin tickets activos
+      prisma.ticket.findMany.mockResolvedValue([]); // sin pendientes
       prisma.ordenTrabajo.update.mockResolvedValue({
         id: OT_ID,
         estado: OrdenTrabajoEstado.CANCELADA,
       });
-      prisma.ticket.updateMany.mockResolvedValue({ count: 0 });
 
-      const result = await service.cancelar(TENANT, OT_ID);
+      const result = await service.cancelar(TENANT, USER, OT_ID);
 
       const updateArgs = prisma.ordenTrabajo.update.mock.calls[0][0];
       expect(updateArgs.data.estado).toBe(OrdenTrabajoEstado.CANCELADA);
@@ -216,24 +230,42 @@ describe('OrdenesService', () => {
         id: OT_ID,
         estado: OrdenTrabajoEstado.EN_PROCESO,
       });
+      prisma.ticket.count.mockResolvedValue(0);
+      prisma.ticket.findMany.mockResolvedValue([]);
       prisma.ordenTrabajo.update.mockResolvedValue({
         id: OT_ID,
         estado: OrdenTrabajoEstado.CANCELADA,
       });
-      prisma.ticket.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.cancelar(TENANT, OT_ID)).resolves.toBeDefined();
+      await expect(
+        service.cancelar(TENANT, USER, OT_ID),
+      ).resolves.toBeDefined();
     });
 
-    it('cancela solo tickets en estado PENDIENTE', async () => {
+    it('bloquea la cancelación si hay tickets activos', async () => {
+      prisma.ordenTrabajo.findFirst.mockResolvedValue({
+        id: OT_ID,
+        estado: OrdenTrabajoEstado.EN_PROCESO,
+      });
+      prisma.ticket.count.mockResolvedValue(2); // hay tickets en progreso
+
+      await expect(
+        service.cancelar(TENANT, USER, OT_ID),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.ordenTrabajo.update).not.toHaveBeenCalled();
+    });
+
+    it('cancela los tickets PENDIENTE y libera sus reservas', async () => {
       prisma.ordenTrabajo.findFirst.mockResolvedValue({
         id: OT_ID,
         estado: OrdenTrabajoEstado.PENDIENTE,
       });
+      prisma.ticket.count.mockResolvedValue(0); // sin activos
+      prisma.ticket.findMany.mockResolvedValue([{ id: 't1' }, { id: 't2' }]);
       prisma.ordenTrabajo.update.mockResolvedValue({ id: OT_ID });
       prisma.ticket.updateMany.mockResolvedValue({ count: 2 });
 
-      await service.cancelar(TENANT, OT_ID);
+      await service.cancelar(TENANT, USER, OT_ID);
 
       const ticketArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(ticketArgs.where.otId).toBe(OT_ID);
@@ -242,6 +274,8 @@ describe('OrdenesService', () => {
         in: [TicketEstado.PENDIENTE],
       });
       expect(ticketArgs.data.estado).toBe(TicketEstado.CANCELADO);
+      // Libera reservas de cada ticket cancelado.
+      expect(inventario.liberarReservasDeTicket).toHaveBeenCalledTimes(2);
     });
 
     it.each([OrdenTrabajoEstado.CERRADA, OrdenTrabajoEstado.CANCELADA])(
@@ -249,9 +283,9 @@ describe('OrdenesService', () => {
       async (estado) => {
         prisma.ordenTrabajo.findFirst.mockResolvedValue({ id: OT_ID, estado });
 
-        await expect(service.cancelar(TENANT, OT_ID)).rejects.toBeInstanceOf(
-          ConflictException,
-        );
+        await expect(
+          service.cancelar(TENANT, USER, OT_ID),
+        ).rejects.toBeInstanceOf(ConflictException);
         expect(prisma.ordenTrabajo.update).not.toHaveBeenCalled();
       },
     );
@@ -264,12 +298,21 @@ describe('OrdenesService', () => {
       const detalle = {
         id: OT_ID,
         codigo: 'OT-2026-0001',
+        creadoPorId: USER,
         equipo: { id: EQUIPO_ID, codigo: 'EQ-001', nombre: 'X' },
         tickets: [
-          { id: 't1', codigo: 'TK-1', estado: TicketEstado.PENDIENTE },
+          {
+            id: 't1',
+            codigo: 'TK-1',
+            titulo: 'Falla',
+            estado: TicketEstado.PENDIENTE,
+            prioridad: Prioridad.MEDIA,
+            mecanicoId: null,
+          },
         ],
       };
       prisma.ordenTrabajo.findFirst.mockResolvedValue(detalle);
+      prisma.$queryRaw.mockResolvedValue([]); // sin perfiles hidratados
 
       const result = await service.findOne(TENANT, OT_ID);
 
@@ -280,6 +323,8 @@ describe('OrdenesService', () => {
         tickets: expect.any(Object),
       });
       expect(result.tickets).toHaveLength(1);
+      // El ticket anidado expone equipo (string) derivado de la OT.
+      expect(result.tickets[0].equipo).toBe('EQ-001 - X');
     });
 
     it('falla con NotFoundException si no existe', async () => {
@@ -316,7 +361,7 @@ describe('OrdenesService', () => {
   });
 
   describe('onTicketEstadoCambiado', () => {
-    it('cierra la OT cuando todos los tickets están CERRADOS', async () => {
+    it('cierra la OT (updateMany guardado) cuando todos los tickets están CERRADOS', async () => {
       prisma.ordenTrabajo.findFirst.mockResolvedValue({
         id: OT_ID,
         estado: OrdenTrabajoEstado.EN_PROCESO,
@@ -324,11 +369,16 @@ describe('OrdenesService', () => {
       prisma.ticket.count
         .mockResolvedValueOnce(3) // total
         .mockResolvedValueOnce(3); // cerrados
-      prisma.ordenTrabajo.update.mockResolvedValue({ id: OT_ID });
+      prisma.ordenTrabajo.updateMany.mockResolvedValue({ count: 1 });
 
       await service.onTicketEstadoCambiado(TENANT, OT_ID);
 
-      const args = prisma.ordenTrabajo.update.mock.calls[0][0];
+      const args = prisma.ordenTrabajo.updateMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        id: OT_ID,
+        tenantId: TENANT,
+        estado: OrdenTrabajoEstado.EN_PROCESO,
+      });
       expect(args.data.estado).toBe(OrdenTrabajoEstado.CERRADA);
       expect(args.data.fechaCierre).toBeInstanceOf(Date);
     });
@@ -344,7 +394,7 @@ describe('OrdenesService', () => {
 
       await service.onTicketEstadoCambiado(TENANT, OT_ID);
 
-      expect(prisma.ordenTrabajo.update).not.toHaveBeenCalled();
+      expect(prisma.ordenTrabajo.updateMany).not.toHaveBeenCalled();
     });
 
     it('no toca OTs que no estén EN_PROCESO (transición inválida bloqueada)', async () => {
@@ -356,7 +406,7 @@ describe('OrdenesService', () => {
       await service.onTicketEstadoCambiado(TENANT, OT_ID);
 
       expect(prisma.ticket.count).not.toHaveBeenCalled();
-      expect(prisma.ordenTrabajo.update).not.toHaveBeenCalled();
+      expect(prisma.ordenTrabajo.updateMany).not.toHaveBeenCalled();
     });
 
     it('no cierra si la OT no tiene tickets (count total = 0)', async () => {
@@ -368,7 +418,7 @@ describe('OrdenesService', () => {
 
       await service.onTicketEstadoCambiado(TENANT, OT_ID);
 
-      expect(prisma.ordenTrabajo.update).not.toHaveBeenCalled();
+      expect(prisma.ordenTrabajo.updateMany).not.toHaveBeenCalled();
     });
   });
 

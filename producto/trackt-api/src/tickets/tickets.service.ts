@@ -22,6 +22,7 @@ import {
 } from '../common/utils/pagination';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
+import { InventarioService } from '../inventario/inventario.service';
 import { AuthUser } from '../auth/types';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto';
@@ -47,6 +48,7 @@ export class TicketsService {
     @Inject(forwardRef(() => OrdenesService))
     private readonly ordenesService: OrdenesService,
     private readonly notificaciones: NotificacionesService,
+    private readonly inventario: InventarioService,
   ) {}
 
   /**
@@ -477,11 +479,23 @@ export class TicketsService {
         dto.observacion ??
           (dto.aprobado ? 'Validado y cerrado' : 'Rechazado, vuelve a ejecución'),
       );
-    });
 
-    if (dto.aprobado) {
-      await this.ordenesService.onTicketEstadoCambiado(tenantId, ticket.otId);
-    }
+      if (dto.aprobado) {
+        // Dentro de la TX: liberar reservas no consumidas del ticket y propagar
+        // el posible cierre de la OT, atómico con el cierre del ticket.
+        await this.inventario.liberarReservasDeTicket(
+          tx,
+          tenantId,
+          ticketId,
+          userId,
+        );
+        await this.ordenesService.onTicketEstadoCambiado(
+          tenantId,
+          ticket.otId,
+          tx,
+        );
+      }
+    });
 
     if (ticket.mecanicoId) {
       await this.notificaciones.emit(
@@ -543,9 +557,21 @@ export class TicketsService {
         userId,
         dto.observacion ?? 'Cierre formal',
       );
-    });
 
-    await this.ordenesService.onTicketEstadoCambiado(tenantId, ticket.otId);
+      // Atómico con el cierre del ticket: liberar reservas no consumidas y
+      // propagar el posible cierre de la OT.
+      await this.inventario.liberarReservasDeTicket(
+        tx,
+        tenantId,
+        ticketId,
+        userId,
+      );
+      await this.ordenesService.onTicketEstadoCambiado(
+        tenantId,
+        ticket.otId,
+        tx,
+      );
+    });
 
     if (ticket.mecanicoId) {
       await this.notificaciones.emit(

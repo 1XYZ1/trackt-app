@@ -16,6 +16,7 @@ import {
   getPrismaSkip,
   PaginatedResult,
 } from '../common/utils/pagination';
+import { InventarioService } from '../inventario/inventario.service';
 import { CreateOrdenDto } from './dto/create-orden.dto';
 import { UpdateOrdenDto } from './dto/update-orden.dto';
 import { ListOrdenesQueryDto } from './dto/list-ordenes-query.dto';
@@ -24,6 +25,14 @@ const LIST_SELECT = {
   id: true,
   codigo: true,
   equipoId: true,
+  // equipo + tickets para que el listado muestre el nombre del equipo y el
+  // conteo de tickets (la UI consume orden.equipo y orden.tickets.length).
+  equipo: {
+    select: { id: true, codigo: true, nombre: true },
+  },
+  tickets: {
+    select: { id: true },
+  },
   descripcion: true,
   prioridad: true,
   estado: true,
@@ -55,12 +64,23 @@ const DETAIL_INCLUDE = {
 // Solo se cancelan los que están en PENDIENTE.
 const TICKET_ESTADOS_CANCELABLES: TicketEstado[] = [TicketEstado.PENDIENTE];
 
+// Tickets "vivos" (trabajo en curso) que bloquean la cancelación de la OT:
+// hay que cerrarlos o reasignarlos antes para no dejar trabajo contra una OT muerta.
+const TICKET_ESTADOS_ACTIVOS: TicketEstado[] = [
+  TicketEstado.ASIGNADO,
+  TicketEstado.EN_EJECUCION,
+  TicketEstado.EJECUTADO,
+];
+
 // Tickets que cuentan como "cerrado" para detectar cierre automático de OT.
 const TICKET_ESTADOS_CERRADO: TicketEstado[] = [TicketEstado.CERRADO];
 
 @Injectable()
 export class OrdenesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inventario: InventarioService,
+  ) {}
 
   // ---------- CRUD ----------
 
@@ -146,7 +166,36 @@ export class OrdenesService {
     if (!ot) {
       throw new NotFoundException(`Orden con id "${id}" no encontrada`);
     }
-    return ot;
+
+    // Hidratar nombres de usuario (responsable + mecánicos de los tickets) desde
+    // public.profiles, y dar a cada ticket la forma que la UI consume
+    // (equipo como string + objeto mecanico), derivando el equipo de la OT.
+    const equipoLabel = ot.equipo
+      ? `${ot.equipo.codigo} - ${ot.equipo.nombre}`
+      : '';
+    const userIds = [
+      ot.creadoPorId,
+      ...ot.tickets.map((t) => t.mecanicoId),
+    ].filter((v): v is string => Boolean(v));
+    const users = await this.fetchUserSummaries(userIds);
+
+    return {
+      ...ot,
+      responsable: users.get(ot.creadoPorId) ?? { id: ot.creadoPorId },
+      tickets: ot.tickets.map((t) => ({
+        id: t.id,
+        codigo: t.codigo,
+        titulo: t.titulo,
+        estado: t.estado,
+        prioridad: t.prioridad,
+        equipo: equipoLabel,
+        mecanico: t.mecanicoId
+          ? (users.get(t.mecanicoId) ?? { id: t.mecanicoId })
+          : null,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+      })),
+    };
   }
 
   /**
@@ -185,10 +234,13 @@ export class OrdenesService {
   /**
    * Cancelar OT.
    * - Permitido desde PENDIENTE o EN_PROCESO.
-   * - Cancela tickets asociados que estén en PENDIENTE (no toca los demás).
+   * - Bloquea la cancelación si hay tickets activos (ASIGNADO/EN_EJECUCION/
+   *   EJECUTADO): deben cerrarse o reasignarse antes, para no dejar trabajo vivo
+   *   contra una OT cancelada.
+   * - Cancela en cascada los tickets PENDIENTE y libera sus reservas activas.
    * - Setea fechaCierre.
    */
-  async cancelar(tenantId: string, id: string) {
+  async cancelar(tenantId: string, userId: string, id: string) {
     const ot = await this.prisma.ordenTrabajo.findFirst({
       where: { id, tenantId },
       select: { id: true, estado: true },
@@ -205,30 +257,44 @@ export class OrdenesService {
       );
     }
 
+    const activos = await this.prisma.ticket.count({
+      where: { otId: id, tenantId, estado: { in: TICKET_ESTADOS_ACTIVOS } },
+    });
+    if (activos > 0) {
+      throw new ConflictException(
+        `No se puede cancelar la OT: tiene ${activos} ticket(s) en progreso. Ciérralos o reasígnalos antes de cancelar.`,
+      );
+    }
+
     const now = new Date();
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.ordenTrabajo.update({
+    return this.prisma.$transaction(async (tx) => {
+      const pendientes = await tx.ticket.findMany({
+        where: { otId: id, tenantId, estado: { in: TICKET_ESTADOS_CANCELABLES } },
+        select: { id: true },
+      });
+
+      const updated = await tx.ordenTrabajo.update({
         where: { id },
         data: {
           estado: OrdenTrabajoEstado.CANCELADA,
           fechaCierre: now,
         },
         select: LIST_SELECT,
-      }),
-      this.prisma.ticket.updateMany({
-        where: {
-          otId: id,
-          tenantId,
-          estado: { in: TICKET_ESTADOS_CANCELABLES },
-        },
-        data: {
-          estado: TicketEstado.CANCELADO,
-          fechaCierre: now,
-        },
-      }),
-    ]);
+      });
 
-    return updated;
+      if (pendientes.length > 0) {
+        await tx.ticket.updateMany({
+          where: { otId: id, tenantId, estado: { in: TICKET_ESTADOS_CANCELABLES } },
+          data: { estado: TicketEstado.CANCELADO, fechaCierre: now },
+        });
+        // Devolver el stock reservado de cada ticket cancelado.
+        for (const t of pendientes) {
+          await this.inventario.liberarReservasDeTicket(tx, tenantId, t.id, userId);
+        }
+      }
+
+      return updated;
+    });
   }
 
   // ---------- Hooks de integración con tickets ----------
@@ -253,9 +319,27 @@ export class OrdenesService {
    * Llamar desde TicketsService cuando un ticket cambia de estado.
    * Si la OT está EN_PROCESO y *todos* sus tickets están CERRADOS,
    * transiciona la OT a CERRADA.
+   *
+   * Acepta un TransactionClient opcional: cuando se invoca desde el cierre de un
+   * ticket se pasa la misma `tx` para que el cierre del ticket y el de la OT sean
+   * atómicos (o ambos, o ninguno). Dentro de la tx toma un advisory lock por OT
+   * y usa updateMany guardado por estado=EN_PROCESO (idempotente y a prueba de
+   * carreras de doble cierre).
    */
-  async onTicketEstadoCambiado(tenantId: string, otId: string): Promise<void> {
-    const ot = await this.prisma.ordenTrabajo.findFirst({
+  async onTicketEstadoCambiado(
+    tenantId: string,
+    otId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma;
+
+    if (tx) {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${`ot:${tenantId}:${otId}`}, 0))
+      `;
+    }
+
+    const ot = await db.ordenTrabajo.findFirst({
       where: { id: otId, tenantId },
       select: { id: true, estado: true },
     });
@@ -263,14 +347,14 @@ export class OrdenesService {
       return;
     }
 
-    const totalTickets = await this.prisma.ticket.count({
+    const totalTickets = await db.ticket.count({
       where: { otId, tenantId },
     });
     if (totalTickets === 0) {
       return;
     }
 
-    const cerrados = await this.prisma.ticket.count({
+    const cerrados = await db.ticket.count({
       where: {
         otId,
         tenantId,
@@ -278,14 +362,34 @@ export class OrdenesService {
       },
     });
     if (cerrados === totalTickets) {
-      await this.prisma.ordenTrabajo.update({
-        where: { id: otId },
+      await db.ordenTrabajo.updateMany({
+        where: { id: otId, tenantId, estado: OrdenTrabajoEstado.EN_PROCESO },
         data: {
           estado: OrdenTrabajoEstado.CERRADA,
           fechaCierre: new Date(),
         },
       });
     }
+  }
+
+  /**
+   * Batch fetch de resúmenes de usuario desde `public.profiles`.
+   * Mismo patrón que TicketsService.fetchUserSummaries (la tabla profiles no
+   * está modelada en prisma/schema.prisma; se consulta vía $queryRaw).
+   */
+  private async fetchUserSummaries(
+    userIds: string[],
+  ): Promise<Map<string, { id: string; nombre: string | null }>> {
+    const uniq = Array.from(new Set(userIds));
+    if (uniq.length === 0) return new Map();
+    const rows = await this.prisma.$queryRaw<
+      Array<{ id: string; full_name: string | null }>
+    >`
+      SELECT id::text AS id, full_name
+      FROM public.profiles
+      WHERE id = ANY(${uniq}::uuid[])
+    `;
+    return new Map(rows.map((r) => [r.id, { id: r.id, nombre: r.full_name }]));
   }
 
   // ---------- Helpers ----------
