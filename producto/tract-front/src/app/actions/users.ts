@@ -40,15 +40,27 @@ export async function inviteUser(formData: FormData): Promise<InviteUserResult> 
     return { ok: false, error: error?.message ?? 'No se pudo invitar' };
   }
 
-  // El trigger handle_new_user creo el profile con role mechanic.
-  // Si admin selecciono otro role o tenant distinto, actualizo.
-  const { error: updateError } = await admin
+  // Crear/asegurar el profile con upsert (idempotente): no dependemos de un
+  // trigger handle_new_user (no existe en esta DB), que dejaria al invitado sin
+  // profile y sin poder loguear. Si falla, compensamos borrando el auth user.
+  const { error: upsertError } = await admin
     .from('profiles')
-    .update({ role, tenant_id: session.tenantId, full_name: fullName })
-    .eq('id', data.user.id);
+    .upsert(
+      {
+        id: data.user.id,
+        role,
+        tenant_id: session.tenantId,
+        full_name: fullName,
+      },
+      { onConflict: 'id' },
+    );
 
-  if (updateError) {
-    return { ok: false, error: `User invitado pero profile fallo: ${updateError.message}` };
+  if (upsertError) {
+    await admin.auth.admin.deleteUser(data.user.id);
+    return {
+      ok: false,
+      error: `No se pudo crear el perfil del invitado: ${upsertError.message}`,
+    };
   }
 
   revalidatePath('/usuarios');

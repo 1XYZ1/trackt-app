@@ -1,3 +1,4 @@
+import { Users } from 'lucide-react';
 import { requireRole } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +24,7 @@ export default async function UsuariosPage() {
   const session = await requireRole('admin');
   const supabase = await createClient();
 
-  const { data: profiles } = await supabase
+  const { data: profiles, error } = await supabase
     .from('profiles')
     .select('id, role, full_name, created_at')
     .eq('tenant_id', session.tenantId)
@@ -34,6 +35,10 @@ export default async function UsuariosPage() {
   return (
     <div className="space-y-6">
       <div>
+        <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
+          <Users className="size-3.5" />
+          Administracion del tenant
+        </div>
         <h1 className="font-semibold text-2xl tracking-tight">Usuarios</h1>
         <p className="text-muted-foreground text-sm">
           Gestion de usuarios del tenant {session.tenantId}.
@@ -56,6 +61,11 @@ export default async function UsuariosPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {error ? (
+            <div className="py-8 text-center text-destructive text-sm">
+              No se pudieron cargar los usuarios: {error.message}
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -88,6 +98,7 @@ export default async function UsuariosPage() {
               )}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
     </div>

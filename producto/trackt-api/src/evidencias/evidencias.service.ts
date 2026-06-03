@@ -91,12 +91,15 @@ export class EvidenciasService {
     }
 
     const admin = this.supabase.getAdminClient();
+    const fileName = dto.storagePath.split('/').pop() ?? '';
     const { data: head, error: headError } = await admin.storage
       .from(BUCKET)
       .list(`${tenantId}/${ticketId}`, {
-        search: dto.storagePath.split('/').pop() ?? '',
+        search: fileName,
       });
-    if (headError || !head || head.length === 0) {
+    // `search` es substring → exigir match EXACTO del nombre para no confirmar
+    // un archivo equivocado (ej. "foto.png" matcheando "foto.png.bak").
+    if (headError || !head || !head.some((item) => item.name === fileName)) {
       throw new NotFoundException(
         'Archivo no encontrado en storage; subida no completada',
       );

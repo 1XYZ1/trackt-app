@@ -263,23 +263,29 @@ export class InventarioService {
   }
 
   async desactivarRepuesto(tenantId: string, id: string) {
-    const repuesto = await this.prisma.repuesto.findFirst({
-      where: { id, tenantId },
-      include: { stock: true },
-    });
-    if (!repuesto) {
-      throw new NotFoundException(`Repuesto con id "${id}" no encontrado`);
-    }
-    if ((repuesto.stock?.stockReservado ?? 0) > 0) {
-      throw new ConflictException(
-        'No se puede desactivar un repuesto con stock reservado. Libera las reservas primero.',
-      );
-    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Lock por repuesto: serializa contra create/aprobar reserva concurrente,
+      // que tambien toman este lock y mutan stockReservado.
+      await this.lockRepuesto(tx, tenantId, id);
 
-    const updated = await this.prisma.repuesto.update({
-      where: { id },
-      data: { activo: false },
-      include: REPUESTO_DETAIL_INCLUDE,
+      const repuesto = await tx.repuesto.findFirst({
+        where: { id, tenantId },
+        include: { stock: true },
+      });
+      if (!repuesto) {
+        throw new NotFoundException(`Repuesto con id "${id}" no encontrado`);
+      }
+      if ((repuesto.stock?.stockReservado ?? 0) > 0) {
+        throw new ConflictException(
+          'No se puede desactivar un repuesto con stock reservado. Libera las reservas primero.',
+        );
+      }
+
+      return tx.repuesto.update({
+        where: { id },
+        data: { activo: false },
+        include: REPUESTO_DETAIL_INCLUDE,
+      });
     });
     return this.mapRepuesto(updated);
   }
@@ -404,6 +410,12 @@ export class InventarioService {
   async findAllMovimientos(tenantId: string, query: ListMovimientosQueryDto) {
     const { page = 1, limit = 20, repuestoId, ticketId, reservaId, tipo, desde, hasta } =
       query;
+
+    if (desde && hasta && desde > hasta) {
+      throw new BadRequestException(
+        'El rango de fechas es invalido: "desde" no puede ser posterior a "hasta"',
+      );
+    }
 
     const where: Prisma.MovimientoInventarioWhereInput = {
       tenantId,
@@ -573,6 +585,7 @@ export class InventarioService {
         ticket: { select: { id: true, codigo: true, titulo: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: 200, // tope defensivo; el volumen esperado de SOLICITADA es bajo.
     });
   }
 
@@ -595,7 +608,7 @@ export class InventarioService {
         where: { id: reservaId, tenantId },
         include: {
           items: true,
-          ticket: { select: { id: true, mecanicoId: true } },
+          ticket: { select: { id: true, mecanicoId: true, estado: true } },
         },
       });
       if (!reserva) {
@@ -606,6 +619,13 @@ export class InventarioService {
       if (reserva.estado !== ReservaRepuestoEstado.SOLICITADA) {
         throw new ConflictException(
           `Solo se pueden aprobar reservas en estado SOLICITADA (actual: ${reserva.estado})`,
+        );
+      }
+      // No aprobar reservas de tickets ya terminales: consumiria stockReservado
+      // contra un ticket que nunca usara los repuestos (quedaria colgado).
+      if (TICKET_ESTADOS_TERMINALES.includes(reserva.ticket.estado)) {
+        throw new ConflictException(
+          `No se puede aprobar una reserva de un ticket en estado ${reserva.ticket.estado}`,
         );
       }
 
@@ -700,6 +720,7 @@ export class InventarioService {
       where: { tenantId, ticketId },
       include: RESERVA_DETAIL_INCLUDE,
       orderBy: { createdAt: 'desc' },
+      take: 200, // tope defensivo; un ticket no deberia tener tantas reservas.
     });
   }
 
@@ -852,6 +873,86 @@ export class InventarioService {
         include: RESERVA_DETAIL_INCLUDE,
       });
     });
+  }
+
+  /**
+   * Libera las reservas activas (RESERVADA / SOLICITADA) de un ticket dentro de
+   * una transaccion existente. Pensado para invocarse desde el cierre o la
+   * cancelacion de un ticket/OT: cualquier stock reservado que no se haya
+   * consumido explicitamente (via consumirReserva) se devuelve a disponible,
+   * evitando que stockReservado quede colgado para siempre.
+   *
+   * - RESERVADA: devuelve stockReservado y emite movimiento LIBERACION.
+   * - SOLICITADA: no tenia stockReservado aplicado; solo se marca LIBERADA.
+   *
+   * Idempotente: si el ticket no tiene reservas activas, no hace nada.
+   * Toma lockRepuesto por item (orden lexicografico) para serializar contra
+   * operaciones concurrentes de stock del mismo SKU.
+   */
+  async liberarReservasDeTicket(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    ticketId: string,
+    usuarioId: string,
+  ): Promise<void> {
+    const reservas = await tx.reservaRepuesto.findMany({
+      where: {
+        tenantId,
+        ticketId,
+        estado: {
+          in: [
+            ReservaRepuestoEstado.RESERVADA,
+            ReservaRepuestoEstado.SOLICITADA,
+          ],
+        },
+      },
+      include: { items: true },
+    });
+    if (reservas.length === 0) return;
+
+    for (const reserva of reservas) {
+      const sortedItems = [...reserva.items].sort((a, b) =>
+        a.repuestoId.localeCompare(b.repuestoId),
+      );
+      for (const it of sortedItems) {
+        await this.lockRepuesto(tx, tenantId, it.repuestoId);
+      }
+
+      if (reserva.estado === ReservaRepuestoEstado.RESERVADA) {
+        for (const it of sortedItems) {
+          const stock = await tx.inventarioStock.findUnique({
+            where: { repuestoId: it.repuestoId },
+          });
+          if (!stock) continue;
+          const nuevoReservado = Math.max(
+            0,
+            stock.stockReservado - it.cantidad,
+          );
+          await tx.inventarioStock.update({
+            where: { id: stock.id },
+            data: { stockReservado: nuevoReservado },
+          });
+          await tx.movimientoInventario.create({
+            data: {
+              tenantId,
+              repuestoId: it.repuestoId,
+              tipo: MovimientoInventarioTipo.LIBERACION,
+              cantidad: -it.cantidad,
+              stockResultante: stock.stockActual,
+              usuarioId,
+              ticketId,
+              reservaId: reserva.id,
+              observacion: 'Liberacion automatica por cierre/cancelacion del ticket',
+            },
+          });
+        }
+      }
+
+      await tx.reservaRepuesto.update({
+        where: { id: reserva.id },
+        data: { estado: ReservaRepuestoEstado.LIBERADA },
+      });
+    }
   }
 
   // ============================================================

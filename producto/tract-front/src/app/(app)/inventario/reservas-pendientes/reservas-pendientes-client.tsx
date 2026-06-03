@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ClipboardCheck, Loader2, RotateCcw } from "lucide-react";
-import { EmptyState } from "@/components/core";
+import { ClipboardCheck, RotateCcw } from "lucide-react";
+import { EmptyState, ListSkeleton } from "@/components/core";
 import { AprobarReservaDialog } from "@/components/inventario";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,11 @@ export function ReservasPendientesClient() {
   const [aprobarTarget, setAprobarTarget] = useState<ReservaRepuesto | null>(
     null,
   );
+  // Id de la reserva que se está rechazando, para que solo gire su botón.
+  const [rechazandoId, setRechazandoId] = useState<string | null>(null);
 
   const handleRechazar = (reserva: ReservaRepuesto) => {
+    setRechazandoId(reserva.id);
     liberar.mutate(
       { id: reserva.id },
       {
@@ -38,6 +41,7 @@ export function ReservasPendientesClient() {
               ? err.message
               : "No se pudo rechazar la solicitud",
           ),
+        onSettled: () => setRechazandoId(null),
       },
     );
   };
@@ -66,9 +70,8 @@ export function ReservasPendientesClient() {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading && (
-            <div className="flex items-center gap-2 px-5 py-12 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando solicitudes...
+            <div className="p-4">
+              <ListSkeleton columns={1} count={3} />
             </div>
           )}
 
@@ -114,6 +117,7 @@ export function ReservasPendientesClient() {
                     </div>
                     <div className="flex gap-2">
                       <Button
+                        disabled={rechazandoId === reserva.id}
                         onClick={() => setAprobarTarget(reserva)}
                         size="sm"
                       >
@@ -121,7 +125,9 @@ export function ReservasPendientesClient() {
                         Aprobar
                       </Button>
                       <Button
-                        loading={liberar.isPending}
+                        loading={
+                          liberar.isPending && rechazandoId === reserva.id
+                        }
                         onClick={() => handleRechazar(reserva)}
                         size="sm"
                         variant="destructive-outline"

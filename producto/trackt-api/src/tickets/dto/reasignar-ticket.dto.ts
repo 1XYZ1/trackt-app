@@ -1,9 +1,8 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class ReasignarTicketDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(60)
+  // UUID de profiles (auth.users); el service lo castea a ::uuid.
+  @IsUUID()
   mecanicoId!: string;
 
   // Opcional a nivel DTO. El service lo valida como obligatorio cuando el
