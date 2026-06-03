@@ -31,5 +31,7 @@ export function normalizeRol(rol?: string): string | undefined {
   if (lower === 'jefe' || lower === 'jefe_taller' || lower === 'jefe-taller') {
     return 'jefe_taller';
   }
-  return lower; // pasar cualquier otro rol sin transformar (extensible)
+  // Rol desconocido: ignorar el filtro en vez de pasar un string crudo al
+  // cast ::user_role (que reventaria con 500). Devuelve todos los usuarios.
+  return undefined;
 }

@@ -14,7 +14,9 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-const TTL_MS = 5 * 60 * 1000;
+// TTL corto: un cambio de rol/tenant se propaga en a lo sumo 30s. Si se
+// necesita propagacion inmediata, llamar invalidate(userId) tras el cambio.
+const TTL_MS = 30 * 1000;
 
 @Injectable()
 export class ProfileService {
