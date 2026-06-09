@@ -1,22 +1,27 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { ListFilter, Search, Ticket } from "lucide-react";
 import {
   EmptyState,
   ListSkeleton,
-  TicketCard,
+  TICKET_ESTADOS,
+  ticketEstadoLabel,
   type TicketEstado,
-  type TicketResumen,
 } from "@/components/core";
+import { TicketsKanban } from "@/components/tickets/kanban/tickets-kanban";
+import { TicketsLista } from "@/components/tickets/lista/tickets-lista";
+import {
+  TicketsViewToggle,
+  type TicketsView,
+} from "@/components/tickets/tickets-view-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { useTickets } from "@/hooks/use-tickets";
-import { getTicketEquipoLabel, type TicketTrabajo } from "@/lib/api/tickets";
+import { type TicketTrabajo } from "@/lib/api/tickets";
 import { cn } from "@/lib/utils";
 
 export type TicketsSearchParams = {
@@ -24,19 +29,13 @@ export type TicketsSearchParams = {
   mecanico?: string | string[];
   ot?: string | string[];
   q?: string | string[];
+  vista?: string | string[];
 };
 
 type TicketFilterKey = keyof TicketsSearchParams;
 
-const estados: ("TODOS" | TicketEstado)[] = [
-  "TODOS",
-  "PENDIENTE",
-  "ASIGNADO",
-  "EN_EJECUCION",
-  "EJECUTADO",
-  "CERRADO",
-  "CANCELADO",
-];
+const VISTA_STORAGE_KEY = "tickets:vista";
+const estadosFiltro: ("TODOS" | TicketEstado)[] = ["TODOS", ...TICKET_ESTADOS];
 
 function getParamValue(value?: string | string[]) {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -47,52 +46,25 @@ function normalize(value: string) {
   return value.trim().toLowerCase();
 }
 
-function estadoLabel(estado: "TODOS" | TicketEstado) {
-  if (estado === "TODOS") return "Todos";
-  if (estado === "EN_EJECUCION") return "En ejecucion";
-  return estado.charAt(0) + estado.slice(1).toLowerCase();
-}
-
-function toTicketResumen(ticket: TicketTrabajo): TicketResumen {
-  return {
-    codigo: ticket.codigo,
-    equipo: getTicketEquipoLabel(ticket),
-    estado: ticket.estado,
-    mecanico: ticket.mecanico,
-    titulo: ticket.titulo,
-  };
-}
-
-function matchesFilters(
+/** Filtros de texto (mecánico/OT/búsqueda) aplicados en ambas vistas. */
+function matchesText(
   ticket: TicketTrabajo,
-  filters: {
-    estado: string;
-    mecanico: string;
-    ot: string;
-    q: string;
-  },
+  filters: { mecanico: string; ot: string; q: string },
 ) {
-  if (filters.estado && filters.estado !== "TODOS" && ticket.estado !== filters.estado) {
-    return false;
-  }
-
   const mecanico = normalize(
     `${ticket.mecanico?.nombre ?? ""} ${ticket.mecanico?.email ?? ""}`,
   );
   if (filters.mecanico && !mecanico.includes(normalize(filters.mecanico))) {
     return false;
   }
-
   const orden = normalize(`${ticket.ordenCodigo ?? ""} ${ticket.ordenId}`);
   if (filters.ot && !orden.includes(normalize(filters.ot))) {
     return false;
   }
-
   const searchable = normalize(`${ticket.codigo} ${ticket.titulo}`);
   if (filters.q && !searchable.includes(normalize(filters.q))) {
     return false;
   }
-
   return true;
 }
 
@@ -116,26 +88,58 @@ export function TicketsClient({
   };
   const { estado, mecanico, ot, q } = filters;
 
-  const filteredTickets = useMemo(
-    () =>
-      tickets.filter((ticket) => matchesFilters(ticket, { estado, mecanico, ot, q })),
-    [estado, mecanico, ot, q, tickets],
+  const vistaParam = getParamValue(
+    searchParams.get("vista") ?? initialFilters.vista,
   );
+  const vista: TicketsView = vistaParam === "lista" ? "lista" : "kanban";
 
   function updateFilter(key: TicketFilterKey, value: string) {
     const params = new URLSearchParams(searchParams.toString());
-
     if (!value || value === "TODOS") {
       params.delete(key);
     } else {
       params.set(key, value);
     }
-
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }
 
   const debouncedUpdateFilter = useDebouncedCallback(updateFilter, 300);
+
+  // Persistencia de la vista: si la URL no trae ?vista, restaurar la última
+  // elegida desde localStorage (post-mount para evitar hydration mismatch). La
+  // URL siempre gana para mantener links compartibles.
+  useEffect(() => {
+    if (vistaParam) return;
+    const stored = window.localStorage.getItem(VISTA_STORAGE_KEY);
+    if (stored === "lista" || stored === "kanban") {
+      updateFilter("vista", stored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vistaParam]);
+
+  function handleViewChange(next: TicketsView) {
+    window.localStorage.setItem(VISTA_STORAGE_KEY, next);
+    updateFilter("vista", next);
+  }
+
+  const textFiltered = useMemo(
+    () => tickets.filter((t) => matchesText(t, { mecanico, ot, q })),
+    [mecanico, ot, q, tickets],
+  );
+
+  // En lista aplicamos también el filtro de estado; en kanban las columnas YA
+  // representan el estado, así que se ignora.
+  const listaTickets = useMemo(
+    () =>
+      estado && estado !== "TODOS"
+        ? textFiltered.filter((t) => t.estado === estado)
+        : textFiltered,
+    [estado, textFiltered],
+  );
+
+  const hasResults =
+    vista === "lista" ? listaTickets.length > 0 : textFiltered.length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -147,14 +151,17 @@ export function TicketsClient({
           </div>
           <h1 className="font-semibold text-2xl tracking-tight">Tickets</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Lista global de tickets derivados de ordenes de trabajo, con
-            trazabilidad por estado, mecanico y OT.
+            Arrastra tarjetas entre columnas para cambiar de estado, o cambia a
+            vista lista para una mirada densa por estado.
           </p>
         </div>
-        <Badge className="w-fit" variant="outline">
-          <ListFilter />
-          Filtros en URL
-        </Badge>
+        <div className="flex items-center gap-2">
+          <TicketsViewToggle onChange={handleViewChange} value={vista} />
+          <Badge className="hidden w-fit sm:flex" variant="outline">
+            <ListFilter />
+            Filtros en URL
+          </Badge>
+        </div>
       </div>
 
       <Card className="rounded-lg border-border/70">
@@ -163,8 +170,8 @@ export function TicketsClient({
             <div>
               <CardTitle className="text-base">Listado de tickets</CardTitle>
               <p className="text-muted-foreground text-xs">
-                {filteredTickets.length} resultado
-                {filteredTickets.length === 1 ? "" : "s"} segun filtros.
+                {textFiltered.length} resultado
+                {textFiltered.length === 1 ? "" : "s"} segun filtros.
               </p>
             </div>
             <div className="relative w-full xl:w-80">
@@ -182,27 +189,30 @@ export function TicketsClient({
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[1.2fr_0.7fr_0.7fr]">
-            <div className="flex flex-wrap gap-1.5">
-              {estados.map((estadoOption) => {
-                const active = (filters.estado || "TODOS") === estadoOption;
-
-                return (
-                  <button
-                    className={cn(
-                      "rounded-md px-2.5 py-1 font-medium text-xs transition-colors",
-                      active
-                        ? "bg-brand-primary text-brand-primary-foreground"
-                        : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground",
-                    )}
-                    key={estadoOption}
-                    onClick={() => updateFilter("estado", estadoOption)}
-                    type="button"
-                  >
-                    {estadoLabel(estadoOption)}
-                  </button>
-                );
-              })}
-            </div>
+            {vista === "lista" ? (
+              <div className="flex flex-wrap gap-1.5">
+                {estadosFiltro.map((estadoOption) => {
+                  const active = (filters.estado || "TODOS") === estadoOption;
+                  return (
+                    <button
+                      className={cn(
+                        "rounded-md px-2.5 py-1 font-medium text-xs transition-colors",
+                        active
+                          ? "bg-brand-primary text-brand-primary-foreground"
+                          : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground",
+                      )}
+                      key={estadoOption}
+                      onClick={() => updateFilter("estado", estadoOption)}
+                      type="button"
+                    >
+                      {ticketEstadoLabel(estadoOption)}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="hidden xl:block" />
+            )}
             <Input
               defaultValue={filters.mecanico}
               onChange={(event) =>
@@ -212,16 +222,14 @@ export function TicketsClient({
             />
             <Input
               defaultValue={filters.ot}
-              onChange={(event) =>
-                debouncedUpdateFilter("ot", event.target.value)
-              }
+              onChange={(event) => debouncedUpdateFilter("ot", event.target.value)}
               placeholder="Filtrar por OT"
             />
           </div>
         </CardHeader>
 
         <CardContent>
-          {isLoading && <ListSkeleton count={4} columns={2} />}
+          {isLoading && <ListSkeleton columns={2} count={4} />}
 
           {!isLoading && error && (
             <EmptyState
@@ -239,7 +247,7 @@ export function TicketsClient({
             />
           )}
 
-          {!isLoading && !error && tickets.length > 0 && filteredTickets.length === 0 && (
+          {!isLoading && !error && tickets.length > 0 && !hasResults && (
             <EmptyState
               icon="search"
               message="Ajusta busqueda, estado, mecanico u OT para ver otros tickets."
@@ -247,17 +255,11 @@ export function TicketsClient({
             />
           )}
 
-          {!isLoading && !error && filteredTickets.length > 0 && (
-            <div className="grid gap-4 xl:grid-cols-2">
-              {filteredTickets.map((ticket) => (
-                <Link href={`/tickets/${ticket.id}`} key={ticket.id}>
-                  <TicketCard
-                    className="h-full transition-colors hover:border-brand-primary/40"
-                    ticket={toTicketResumen(ticket)}
-                  />
-                </Link>
-              ))}
-            </div>
+          {!isLoading && !error && hasResults && vista === "kanban" && (
+            <TicketsKanban tickets={textFiltered} />
+          )}
+          {!isLoading && !error && hasResults && vista === "lista" && (
+            <TicketsLista tickets={listaTickets} />
           )}
         </CardContent>
       </Card>
