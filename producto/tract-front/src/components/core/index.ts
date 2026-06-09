@@ -11,6 +11,11 @@ export { TimelineItem } from "./timeline-item";
 export type { TimelineItemProps } from "./timeline-item";
 export { UserAvatar } from "./user-avatar";
 export type { UserAvatarProps } from "./user-avatar";
+export {
+  TICKET_ESTADOS,
+  TICKET_ESTADOS_ABIERTOS,
+  ticketEstadoLabel,
+} from "./types";
 export type {
   EmptyStateIconName,
   OtEstado,

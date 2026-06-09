@@ -4,11 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  OrdenTrabajoEstado,
-  Prioridad,
-  TicketEstado,
-} from '@prisma/client';
+import { OrdenTrabajoEstado, Prioridad, TicketEstado } from '@prisma/client';
 import { TicketsService } from './tickets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
@@ -38,6 +34,7 @@ function buildPrismaMock() {
       findUniqueOrThrow: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       groupBy: jest.fn(),
     },
     eventoEstadoTicket: {
@@ -519,7 +516,10 @@ describe('TicketsService', () => {
         { id: 'mec-1', full_name: 'Mecanico 1' },
       ]);
 
-      const result = await service.findAll(TENANT, userAdmin(), { page: 2, limit: 5 });
+      const result = await service.findAll(TENANT, userAdmin(), {
+        page: 2,
+        limit: 5,
+      });
 
       expect(result.meta).toEqual({
         page: 2,
@@ -606,10 +606,7 @@ describe('TicketsService', () => {
 
   // ---------- Transiciones de estado (TRA-27) ----------
 
-  function mockTicket(
-    estado: TicketEstado,
-    mecanicoId: string | null = null,
-  ) {
+  function mockTicket(estado: TicketEstado, mecanicoId: string | null = null) {
     // 1ra llamada: requireTicket() en cada transición.
     prisma.ticket.findFirst.mockResolvedValueOnce({
       id: TICKET_ID,
@@ -655,12 +652,12 @@ describe('TicketsService', () => {
     it('happy path: PENDIENTE → ASIGNADO con mecanico válido del tenant', async () => {
       mockTicket(TicketEstado.PENDIENTE);
       prisma.$queryRaw.mockResolvedValueOnce([{ id: MEC }]); // mecanico lookup
-      prisma.ticket.update.mockResolvedValue({});
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
       prisma.eventoEstadoTicket.create.mockResolvedValue({});
 
       await service.asignar(TENANT, USER, TICKET_ID, dto);
 
-      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      const updateArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updateArgs.data.estado).toBe(TicketEstado.ASIGNADO);
       expect(updateArgs.data.mecanicoId).toBe(MEC);
       expect(prisma.eventoEstadoTicket.create).toHaveBeenCalled();
@@ -682,6 +679,23 @@ describe('TicketsService', () => {
         service.asignar(TENANT, USER, TICKET_ID, dto),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('guard anti-TOCTOU: updateMany count=0 (estado cambió entre lectura y update) → Conflict', async () => {
+      mockTicket(TicketEstado.PENDIENTE);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: MEC }]);
+      prisma.ticket.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.asignar(TENANT, USER, TICKET_ID, dto),
+      ).rejects.toBeInstanceOf(ConflictException);
+      // updateMany filtra por id/tenant/estado esperado
+      const where = prisma.ticket.updateMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({
+        id: TICKET_ID,
+        tenantId: TENANT,
+        estado: TicketEstado.PENDIENTE,
+      });
+    });
   });
 
   describe('iniciar', () => {
@@ -689,12 +703,12 @@ describe('TicketsService', () => {
 
     it('happy path: mecanico asignado inicia ejecucion', async () => {
       mockTicket(TicketEstado.ASIGNADO, MEC);
-      prisma.ticket.update.mockResolvedValue({});
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
       prisma.eventoEstadoTicket.create.mockResolvedValue({});
 
       await service.iniciar(TENANT, MEC, TICKET_ID);
 
-      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      const updateArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updateArgs.data.estado).toBe(TicketEstado.EN_EJECUCION);
     });
 
@@ -713,6 +727,22 @@ describe('TicketsService', () => {
         service.iniciar(TENANT, MEC, TICKET_ID),
       ).rejects.toBeInstanceOf(ConflictException);
     });
+
+    it('guard anti-TOCTOU: updateMany count=0 → Conflict, where exige estado y mecanicoId', async () => {
+      mockTicket(TicketEstado.ASIGNADO, MEC);
+      prisma.ticket.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.iniciar(TENANT, MEC, TICKET_ID),
+      ).rejects.toBeInstanceOf(ConflictException);
+      const where = prisma.ticket.updateMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({
+        id: TICKET_ID,
+        tenantId: TENANT,
+        estado: TicketEstado.ASIGNADO,
+        mecanicoId: MEC,
+      });
+    });
   });
 
   describe('finalizar', () => {
@@ -720,12 +750,12 @@ describe('TicketsService', () => {
 
     it('happy path: EN_EJECUCION → EJECUTADO', async () => {
       mockTicket(TicketEstado.EN_EJECUCION, MEC);
-      prisma.ticket.update.mockResolvedValue({});
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
       prisma.eventoEstadoTicket.create.mockResolvedValue({});
 
       await service.finalizar(TENANT, MEC, TICKET_ID, { observacion: 'ok' });
 
-      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      const updateArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updateArgs.data.estado).toBe(TicketEstado.EJECUTADO);
     });
 
@@ -736,12 +766,21 @@ describe('TicketsService', () => {
         service.finalizar(TENANT, 'otro', TICKET_ID, {}),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
+
+    it('guard anti-TOCTOU: updateMany count=0 → Conflict', async () => {
+      mockTicket(TicketEstado.EN_EJECUCION, MEC);
+      prisma.ticket.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.finalizar(TENANT, MEC, TICKET_ID, { observacion: 'ok' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
   });
 
   describe('validar', () => {
     it('aprobado → CERRADO + invoca cascada OT', async () => {
       mockTicket(TicketEstado.EJECUTADO, 'mec-1');
-      prisma.ticket.update.mockResolvedValue({});
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
       prisma.eventoEstadoTicket.create.mockResolvedValue({});
       // findOne post-transaction
       prisma.ticket.findFirst.mockResolvedValueOnce({
@@ -768,7 +807,7 @@ describe('TicketsService', () => {
 
       await service.validar(TENANT, USER, TICKET_ID, { aprobado: true });
 
-      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      const updateArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updateArgs.data.estado).toBe(TicketEstado.CERRADO);
       expect(ordenesService.onTicketEstadoCambiado).toHaveBeenCalledWith(
         TENANT,
@@ -780,7 +819,7 @@ describe('TicketsService', () => {
 
     it('rechazado → vuelve a EN_EJECUCION sin invocar cascada', async () => {
       mockTicket(TicketEstado.EJECUTADO, 'mec-1');
-      prisma.ticket.update.mockResolvedValue({});
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
       prisma.eventoEstadoTicket.create.mockResolvedValue({});
       prisma.ticket.findFirst.mockResolvedValueOnce({
         id: TICKET_ID,
@@ -806,7 +845,7 @@ describe('TicketsService', () => {
 
       await service.validar(TENANT, USER, TICKET_ID, { aprobado: false });
 
-      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      const updateArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updateArgs.data.estado).toBe(TicketEstado.EN_EJECUCION);
       expect(updateArgs.data.fechaFinEjecucion).toBeNull();
       expect(ordenesService.onTicketEstadoCambiado).not.toHaveBeenCalled();
@@ -819,12 +858,23 @@ describe('TicketsService', () => {
         service.validar(TENANT, USER, TICKET_ID, { aprobado: true }),
       ).rejects.toBeInstanceOf(ConflictException);
     });
+
+    it('guard anti-TOCTOU: updateMany count=0 → Conflict y no dispara cascada OT', async () => {
+      mockTicket(TicketEstado.EJECUTADO, 'mec-1');
+      prisma.ticket.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.validar(TENANT, USER, TICKET_ID, { aprobado: true }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(ordenesService.onTicketEstadoCambiado).not.toHaveBeenCalled();
+      expect(inventario.liberarReservasDeTicket).not.toHaveBeenCalled();
+    });
   });
 
   describe('cerrar', () => {
     it('EJECUTADO → CERRADO + invoca cascada OT', async () => {
       mockTicket(TicketEstado.EJECUTADO, 'mec-1');
-      prisma.ticket.update.mockResolvedValue({});
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
       prisma.eventoEstadoTicket.create.mockResolvedValue({});
       prisma.ticket.findFirst.mockResolvedValueOnce({
         id: TICKET_ID,
@@ -850,7 +900,7 @@ describe('TicketsService', () => {
 
       await service.cerrar(TENANT, USER, TICKET_ID, {});
 
-      const updateArgs = prisma.ticket.update.mock.calls[0][0];
+      const updateArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updateArgs.data.estado).toBe(TicketEstado.CERRADO);
       expect(ordenesService.onTicketEstadoCambiado).toHaveBeenCalledWith(
         TENANT,
@@ -866,6 +916,16 @@ describe('TicketsService', () => {
       await expect(
         service.cerrar(TENANT, USER, TICKET_ID, {}),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('guard anti-TOCTOU: updateMany count=0 → Conflict y no dispara cascada OT', async () => {
+      mockTicket(TicketEstado.EJECUTADO, 'mec-1');
+      prisma.ticket.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.cerrar(TENANT, USER, TICKET_ID, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(ordenesService.onTicketEstadoCambiado).not.toHaveBeenCalled();
     });
   });
 
@@ -890,7 +950,7 @@ describe('TicketsService', () => {
       prisma.$queryRaw.mockResolvedValueOnce(
         opts.profileFound === false ? [] : [{ id: 'mec-nuevo' }],
       );
-      prisma.ticket.update.mockResolvedValue({});
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
       prisma.eventoEstadoTicket.create.mockResolvedValue({});
       // Para la respuesta final del loadTicketResponse
       prisma.ticket.findFirst.mockResolvedValue(
@@ -909,7 +969,7 @@ describe('TicketsService', () => {
         mecanicoId: 'mec-nuevo',
       });
 
-      const updArgs = prisma.ticket.update.mock.calls[0][0];
+      const updArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updArgs.data.mecanicoId).toBe('mec-nuevo');
       // ASIGNADO → ASIGNADO: no toca el estado
       expect(updArgs.data.estado).toBeUndefined();
@@ -937,7 +997,7 @@ describe('TicketsService', () => {
         motivo: 'Sobrecarga del mecánico',
       });
 
-      const updArgs = prisma.ticket.update.mock.calls[0][0];
+      const updArgs = prisma.ticket.updateMany.mock.calls[0][0];
       expect(updArgs.data.estado).toBe(TicketEstado.ASIGNADO);
       expect(updArgs.data.fechaInicioEjecucion).toBeNull();
       expect(updArgs.data.mecanicoId).toBe('mec-nuevo');
@@ -956,7 +1016,7 @@ describe('TicketsService', () => {
       await expect(
         service.reasignar(TENANT, USER, TICKET_ID, { mecanicoId: 'mec-nuevo' }),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(prisma.ticket.update).not.toHaveBeenCalled();
+      expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -1003,6 +1063,24 @@ describe('TicketsService', () => {
           mecanicoId: 'mec-fantasma',
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('guard anti-TOCTOU: updateMany count=0 → Conflict, where exige el estado leído', async () => {
+      mockReasignChain({
+        estado: TicketEstado.ASIGNADO,
+        currentMec: 'mec-anterior',
+      });
+      prisma.ticket.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.reasignar(TENANT, USER, TICKET_ID, { mecanicoId: 'mec-nuevo' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      const where = prisma.ticket.updateMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({
+        id: TICKET_ID,
+        tenantId: TENANT,
+        estado: TicketEstado.ASIGNADO,
+      });
     });
   });
 

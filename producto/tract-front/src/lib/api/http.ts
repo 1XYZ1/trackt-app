@@ -1,6 +1,13 @@
 import { createClient } from "@/lib/supabase/client";
 
-const supabase = createClient();
+// Cliente browser perezoso: NO crear a nivel de módulo. Si un módulo de servidor
+// importa esta cadena (ej. tickets.server.ts → tickets.ts → http.ts) durante el
+// build, un createClient() a nivel de módulo se evaluaría en el servidor y
+// lanzaría sin env de Supabase. Creándolo bajo demanda, solo corre en el browser.
+let supabaseClient: ReturnType<typeof createClient> | null = null;
+function getSupabase() {
+  return (supabaseClient ??= createClient());
+}
 
 /**
  * Fetch wrapper que adjunta el access_token de Supabase como Bearer.
@@ -22,7 +29,7 @@ export async function authFetch(
 
   // Retry una vez tras forzar refresh — el access_token pudo expirar entre
   // getSession() y la llegada del request al backend.
-  const { data, error } = await supabase.auth.refreshSession();
+  const { data, error } = await getSupabase().auth.refreshSession();
   if (error || !data.session) return response;
 
   return fetchWithToken(input, init);
@@ -34,7 +41,7 @@ async function fetchWithToken(
 ): Promise<Response> {
   const {
     data: { session },
-  } = await supabase.auth.getSession();
+  } = await getSupabase().auth.getSession();
 
   const headers = new Headers(init.headers);
   if (session?.access_token) {
