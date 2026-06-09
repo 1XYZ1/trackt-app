@@ -13,14 +13,10 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useMemo, useState } from "react";
-import {
-  TicketCard,
-  ticketEstadoLabel,
-  type TicketEstado,
-} from "@/components/core";
+import { ticketEstadoLabel, type TicketEstado } from "@/components/core";
 import { useAuth } from "@/contexts/auth-context";
 import { useIniciarTicketKanban } from "@/hooks/use-tickets";
-import { getTicketEquipoLabel, type TicketTrabajo } from "@/lib/api/tickets";
+import type { TicketTrabajo } from "@/lib/api/tickets";
 import {
   getTransition,
   getValidTargets,
@@ -30,7 +26,7 @@ import {
 import { AsignarMecanicoDialog } from "../asignar-mecanico-dialog";
 import { FinalizarTicketDialog } from "../finalizar-ticket-dialog";
 import { ValidarTicketDialog } from "../validar-ticket-dialog";
-import { KanbanCard } from "./kanban-card";
+import { KanbanCard, KanbanCardContent } from "./kanban-card";
 import { KanbanColumn } from "./kanban-column";
 
 // Columnas visibles del kanban: el workflow abierto + CERRADO. CANCELADO no es
@@ -122,7 +118,9 @@ export function TicketsKanban({ tickets }: { tickets: TicketTrabajo[] }) {
         onDragStart={handleDragStart}
         sensors={sensors}
       >
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        {/* xl+: 5 columnas reparten el ancho, sin scroll horizontal. <xl: scroll
+            horizontal con ancho mínimo (no caben 5 en pantallas chicas). */}
+        <div className="grid h-full min-h-0 grid-flow-col auto-cols-[minmax(13.5rem,1fr)] gap-2 overflow-x-auto xl:grid-cols-5 xl:overflow-x-hidden">
           {COLUMNAS.map((estado) => {
             const items = buckets.get(estado) ?? [];
             const visibles =
@@ -163,15 +161,9 @@ export function TicketsKanban({ tickets }: { tickets: TicketTrabajo[] }) {
         <DragOverlay>
           {activeTicket && (
             <div className="rotate-2 cursor-grabbing">
-              <TicketCard
-                className="shadow-lg"
-                ticket={{
-                  codigo: activeTicket.codigo,
-                  equipo: getTicketEquipoLabel(activeTicket),
-                  estado: activeTicket.estado,
-                  mecanico: activeTicket.mecanico,
-                  titulo: activeTicket.titulo,
-                }}
+              <KanbanCardContent
+                className="border-brand-primary/40 shadow-lg"
+                ticket={activeTicket}
               />
             </div>
           )}

@@ -1,4 +1,15 @@
+import type { TicketEstado } from "@/components/core";
 import type { TicketPrioridad } from "@/lib/api/tickets";
+
+/** Punto de color por estado, reutilizando los tokens de StatusBadge. */
+export const ESTADO_DOT: Record<TicketEstado, string> = {
+  PENDIENTE: "bg-estado-pendiente-dot",
+  ASIGNADO: "bg-estado-asignado-dot",
+  EN_EJECUCION: "bg-estado-en-ejecucion-dot",
+  EJECUTADO: "bg-estado-ejecutado-dot",
+  CERRADO: "bg-estado-cerrado-dot",
+  CANCELADO: "bg-estado-cancelado-dot",
+};
 
 /** Color del punto de prioridad, consistente con el badge del detalle (ALTA = error). */
 export const PRIORIDAD_DOT: Record<TicketPrioridad, string> = {
