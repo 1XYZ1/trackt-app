@@ -108,7 +108,7 @@ export class OrdenesService {
       // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
       // y $queryRaw intenta deserializar la columna → P2010.
       await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(hashtext(${lockKey}))
+        SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
       `;
 
       const codigo = await this.nextCodigo(tx, tenantId, year);
@@ -269,7 +269,11 @@ export class OrdenesService {
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
       const pendientes = await tx.ticket.findMany({
-        where: { otId: id, tenantId, estado: { in: TICKET_ESTADOS_CANCELABLES } },
+        where: {
+          otId: id,
+          tenantId,
+          estado: { in: TICKET_ESTADOS_CANCELABLES },
+        },
         select: { id: true },
       });
 
@@ -284,12 +288,21 @@ export class OrdenesService {
 
       if (pendientes.length > 0) {
         await tx.ticket.updateMany({
-          where: { otId: id, tenantId, estado: { in: TICKET_ESTADOS_CANCELABLES } },
+          where: {
+            otId: id,
+            tenantId,
+            estado: { in: TICKET_ESTADOS_CANCELABLES },
+          },
           data: { estado: TicketEstado.CANCELADO, fechaCierre: now },
         });
         // Devolver el stock reservado de cada ticket cancelado.
         for (const t of pendientes) {
-          await this.inventario.liberarReservasDeTicket(tx, tenantId, t.id, userId);
+          await this.inventario.liberarReservasDeTicket(
+            tx,
+            tenantId,
+            t.id,
+            userId,
+          );
         }
       }
 

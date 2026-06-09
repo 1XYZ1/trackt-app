@@ -32,7 +32,10 @@ import { FinalizarTicketDto } from './dto/finalizar-ticket.dto';
 import { ValidarTicketDto } from './dto/validar-ticket.dto';
 import { CerrarTicketDto } from './dto/cerrar-ticket.dto';
 import { CargaMecanicoDto } from './dto/carga-mecanicos-response.dto';
-import { TicketResponseDto, UsuarioResumenDto } from './dto/ticket-response.dto';
+import {
+  TicketResponseDto,
+  UsuarioResumenDto,
+} from './dto/ticket-response.dto';
 import {
   TICKET_DETAIL_INCLUDE,
   TICKET_LIST_INCLUDE,
@@ -40,6 +43,14 @@ import {
   mapTicketDetail,
   mapTicketListItem,
 } from './mappers/ticket.mapper';
+
+/**
+ * Mensaje 409 para carreras de transición (TOCTOU): el ticket cambió de estado
+ * entre la lectura y el update condicional. El frontend lo muestra vía toast y
+ * revierte el optimistic update.
+ */
+const ESTADO_CAMBIO_CONCURRENTE =
+  'El ticket cambió de estado concurrentemente, recarga e intenta de nuevo';
 
 @Injectable()
 export class TicketsService {
@@ -88,7 +99,7 @@ export class TicketsService {
       // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
       // y $queryRaw intenta deserializar la columna → P2010.
       await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(hashtext(${lockKey}))
+        SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
       `;
 
       // Re-leer la OT dentro de la TX para cerrar la ventana de carrera
@@ -285,8 +296,11 @@ export class TicketsService {
 
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
+      // Guard anti-TOCTOU: condicionar el update al estado leído. Si otro
+      // request mutó el ticket entre el requireTicket y este update, count=0
+      // → 409 y la TX revierte el evento.
+      const result = await tx.ticket.updateMany({
+        where: { id: ticketId, tenantId, estado: TicketEstado.PENDIENTE },
         data: {
           estado: TicketEstado.ASIGNADO,
           mecanicoId: dto.mecanicoId,
@@ -294,6 +308,9 @@ export class TicketsService {
           fechaAsignacion: now,
         },
       });
+      if (result.count !== 1) {
+        throw new ConflictException(ESTADO_CAMBIO_CONCURRENTE);
+      }
       await this.recordEvento(
         tx,
         ticketId,
@@ -341,13 +358,23 @@ export class TicketsService {
 
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
+      // Guard anti-TOCTOU: además del estado, exige que siga siendo el mecánico
+      // asignado (pudo reasignarse concurrentemente).
+      const result = await tx.ticket.updateMany({
+        where: {
+          id: ticketId,
+          tenantId,
+          estado: TicketEstado.ASIGNADO,
+          mecanicoId: userId,
+        },
         data: {
           estado: TicketEstado.EN_EJECUCION,
           fechaInicioEjecucion: now,
         },
       });
+      if (result.count !== 1) {
+        throw new ConflictException(ESTADO_CAMBIO_CONCURRENTE);
+      }
       await this.recordEvento(
         tx,
         ticketId,
@@ -398,13 +425,21 @@ export class TicketsService {
 
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
+      const result = await tx.ticket.updateMany({
+        where: {
+          id: ticketId,
+          tenantId,
+          estado: TicketEstado.EN_EJECUCION,
+          mecanicoId: userId,
+        },
         data: {
           estado: TicketEstado.EJECUTADO,
           fechaFinEjecucion: now,
         },
       });
+      if (result.count !== 1) {
+        throw new ConflictException(ESTADO_CAMBIO_CONCURRENTE);
+      }
       await this.recordEvento(
         tx,
         ticketId,
@@ -456,8 +491,8 @@ export class TicketsService {
       : TicketEstado.EN_EJECUCION;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
+      const result = await tx.ticket.updateMany({
+        where: { id: ticketId, tenantId, estado: TicketEstado.EJECUTADO },
         data: dto.aprobado
           ? {
               estado: TicketEstado.CERRADO,
@@ -470,6 +505,9 @@ export class TicketsService {
               fechaValidacion: now,
             },
       });
+      if (result.count !== 1) {
+        throw new ConflictException(ESTADO_CAMBIO_CONCURRENTE);
+      }
       await this.recordEvento(
         tx,
         ticketId,
@@ -477,7 +515,9 @@ export class TicketsService {
         nuevoEstado,
         userId,
         dto.observacion ??
-          (dto.aprobado ? 'Validado y cerrado' : 'Rechazado, vuelve a ejecución'),
+          (dto.aprobado
+            ? 'Validado y cerrado'
+            : 'Rechazado, vuelve a ejecución'),
       );
 
       if (dto.aprobado) {
@@ -541,14 +581,17 @@ export class TicketsService {
 
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
+      const result = await tx.ticket.updateMany({
+        where: { id: ticketId, tenantId, estado: TicketEstado.EJECUTADO },
         data: {
           estado: TicketEstado.CERRADO,
           fechaValidacion: ticket.fechaValidacion ?? now,
           fechaCierre: now,
         },
       });
+      if (result.count !== 1) {
+        throw new ConflictException(ESTADO_CAMBIO_CONCURRENTE);
+      }
       await this.recordEvento(
         tx,
         ticketId,
@@ -631,9 +674,7 @@ export class TicketsService {
     }
 
     if (ticket.mecanicoId === dto.mecanicoId) {
-      throw new ConflictException(
-        'El ticket ya está asignado a ese mecánico',
-      );
+      throw new ConflictException('El ticket ya está asignado a ese mecánico');
     }
 
     // Validar que el nuevo mecánico exista en el tenant y tenga rol mechanic.
@@ -655,8 +696,11 @@ export class TicketsService {
     const now = new Date();
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
+      // Guard anti-TOCTOU con estado exacto leído: el branch de data depende de
+      // si estaba ASIGNADO o EN_EJECUCION, así que el where debe exigir ese
+      // mismo estado para que la mutación sea coherente.
+      const result = await tx.ticket.updateMany({
+        where: { id: ticketId, tenantId, estado: ticket.estado },
         data: {
           mecanicoId: dto.mecanicoId,
           // Si vuelve a ASIGNADO desde EN_EJECUCION, limpiar fechaInicio.
@@ -667,6 +711,9 @@ export class TicketsService {
           fechaAsignacion: now,
         },
       });
+      if (result.count !== 1) {
+        throw new ConflictException(ESTADO_CAMBIO_CONCURRENTE);
+      }
       // Evento de reasignación: usamos estadoAnterior=ASIGNADO/EN_EJECUCION y
       // estadoNuevo=ASIGNADO; el detalle (mecánico previo/nuevo/motivo) va en
       // observacion + metadata para trazabilidad sin nuevas columnas.
@@ -916,8 +963,6 @@ export class TicketsService {
       FROM public.profiles
       WHERE id = ANY(${userIds}::uuid[])
     `;
-    return new Map(
-      rows.map((r) => [r.id, { id: r.id, nombre: r.full_name }]),
-    );
+    return new Map(rows.map((r) => [r.id, { id: r.id, nombre: r.full_name }]));
   }
 }
