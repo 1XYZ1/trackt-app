@@ -13,18 +13,9 @@ import {
 } from "@/components/ui/collapsible";
 import { usePrefetchTicket } from "@/hooks/use-tickets";
 import type { TicketTrabajo } from "@/lib/api/tickets";
+import { ESTADO_DOT } from "@/lib/tickets/format";
 import { cn } from "@/lib/utils";
 import { TicketsListaRow } from "./tickets-lista-row";
-
-// Punto de color por estado, reutilizando los tokens de StatusBadge.
-const ESTADO_DOT: Record<TicketEstado, string> = {
-  PENDIENTE: "bg-estado-pendiente-dot",
-  ASIGNADO: "bg-estado-asignado-dot",
-  EN_EJECUCION: "bg-estado-en-ejecucion-dot",
-  EJECUTADO: "bg-estado-ejecutado-dot",
-  CERRADO: "bg-estado-cerrado-dot",
-  CANCELADO: "bg-estado-cancelado-dot",
-};
 
 // Grupos terminales colapsados por defecto para reducir ruido visual.
 const COLAPSADOS_POR_DEFECTO: TicketEstado[] = ["CERRADO", "CANCELADO"];

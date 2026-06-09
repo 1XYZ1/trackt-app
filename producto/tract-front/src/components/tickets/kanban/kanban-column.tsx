@@ -2,12 +2,15 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import type { ReactNode } from "react";
-import { StatusBadge, type TicketEstado } from "@/components/core";
+import { ticketEstadoLabel, type TicketEstado } from "@/components/core";
+import { ESTADO_DOT } from "@/lib/tickets/format";
 import { cn } from "@/lib/utils";
 
 /**
- * Columna del kanban (un estado). `dimmed` la atenúa cuando, durante un drag, no
- * es un destino válido para el ticket/rol actual; `disabled` desactiva el drop.
+ * Columna del kanban (un estado), estilo Linear: header con dot+label+count y
+ * cuerpo con scroll vertical propio (clave del layout de viewport fijo — la
+ * página no scrollea, cada columna sí). `dimmed`/`disabled` la atenúan y
+ * desactivan el drop cuando no es destino válido durante un drag.
  */
 export function KanbanColumn({
   estado,
@@ -27,18 +30,19 @@ export function KanbanColumn({
   return (
     <div
       className={cn(
-        "flex min-w-64 flex-1 flex-col rounded-lg border border-border/60 bg-muted/20 transition-opacity",
+        "flex min-h-0 flex-col rounded-lg bg-muted/20 transition-opacity",
         dimmed && "pointer-events-none opacity-40",
       )}
       ref={setNodeRef}
     >
-      <div className="flex items-center justify-between gap-2 border-border/60 border-b px-3 py-2">
-        <StatusBadge estado={estado} />
+      <div className="flex items-center gap-2 px-2.5 py-2">
+        <span className={cn("size-2 shrink-0 rounded-full", ESTADO_DOT[estado])} />
+        <span className="font-semibold text-sm">{ticketEstadoLabel(estado)}</span>
         <span className="text-muted-foreground text-xs">{count}</span>
       </div>
       <div
         className={cn(
-          "flex flex-1 flex-col gap-2 rounded-b-lg p-2 transition-colors",
+          "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-b-lg p-1.5 [scrollbar-width:thin]",
           isOver && !disabled && "bg-brand-primary/10 ring-1 ring-brand-primary/40 ring-inset",
         )}
       >
