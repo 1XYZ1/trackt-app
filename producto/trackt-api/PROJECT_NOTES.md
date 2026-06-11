@@ -1,5 +1,51 @@
 # Trackt API — Notas de proyecto
 
+## Módulo `equipos` — Fase 1: ficha central (2026-06)
+
+El equipo es el eje de la app: la OT y los tickets son parte de su historial.
+
+### Campos nuevos en `Equipo`
+
+`tipo`, `numeroSerie`, `fechaInstalacion`, `fechaCompra`, `estadoOperativo`
+(enum `EquipoEstadoOperativo`: `OPERATIVO | EN_MANTENIMIENTO | FUERA_DE_SERVICIO`,
+default `OPERATIVO`) y `qrToken` (único, opaco). Migración:
+`supabase/migrations/20260610000000_equipos_ficha.sql`. Se decidió columna real
+(no metadata) para todos porque se filtran/buscan (tipo, numeroSerie,
+estadoOperativo) o son fechas tipadas; `metadata` sigue disponible para extras.
+
+### Normalización (create/update)
+
+- `codigo`: `trim().toUpperCase()` — el check de duplicado usa el valor normalizado,
+  así `" eq-100 "` y `"EQ-100"` son el mismo código.
+- `nombre/tipo/marca/modelo/numeroSerie/ubicacion`: `trim()`; string vacío → `null`.
+- `codigo`/`nombre` de solo espacios → 400.
+- En update, `null` explícito limpia el campo (patrón existente).
+
+### Endpoints nuevos
+
+| Método | Path                    | Roles                        | Descripción                                  |
+| ------ | ----------------------- | ---------------------------- | -------------------------------------------- |
+| POST   | `/equipos/:id/qr`       | admin                        | Genera/regenera `qrToken` (invalida el previo). |
+| GET    | `/equipos/qr/:qrToken`  | admin, jefe_taller, mechanic | Resuelve equipo por QR. Scoped al tenant del usuario (QR ajeno → 404). |
+| GET    | `/equipos/:id/resumen`  | admin, jefe_taller, mechanic | Ficha: equipo + estadísticas + últimas 5 OTs/tickets + alertas. |
+
+### Resumen — decisiones
+
+- `ordenesCerradas` cuenta solo `CERRADA` (CANCELADA no es cierre operativo).
+- `ticketsActivos` = `PENDIENTE/ASIGNADO/EN_EJECUCION/EJECUTADO`; tickets se
+  navegan vía `ot.equipoId` (no tienen equipoId directo).
+- `repuestosConsumidos` = unidades consumidas (suma de movimientos `CONSUMO`
+  en valor absoluto).
+- `proximasProgramaciones: []` — se completa en Fase 4 (calendario).
+- `alertas`: `EQUIPO_INACTIVO`, `FUERA_DE_SERVICIO` / `EN_MANTENIMIENTO`,
+  `OT_PRIORIDAD_ALTA` (OTs abiertas con prioridad ALTA).
+
+### Seguridad QR
+
+La resolución por QR requiere auth y filtra por tenant del solicitante. Si a
+futuro se necesita resolución pública (escaneo sin login), exponer un endpoint
+separado con proyección mínima + rate-limit; no reutilizar este.
+
 ## Módulo `ordenes` (API-02)
 
 Implementa el CRUD de Órdenes de Trabajo (OT). Una OT es la **entrada externa** del flujo (un cliente o supervisor solicita una mantención sobre un equipo); puede dar origen a 1..N tickets internos.

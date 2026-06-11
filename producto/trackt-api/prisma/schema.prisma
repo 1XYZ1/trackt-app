@@ -74,6 +74,12 @@ enum ReservaRepuestoEstado {
   CANCELADA
 }
 
+enum EquipoEstadoOperativo {
+  OPERATIVO
+  EN_MANTENIMIENTO
+  FUERA_DE_SERVICIO
+}
+
 // =========================
 // Modelos
 // =========================
@@ -97,17 +103,25 @@ model Tenant {
 }
 
 model Equipo {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  codigo    String
-  nombre    String
-  marca     String?
-  modelo    String?
-  ubicacion String?
-  activo    Boolean  @default(true)
-  metadata  Json?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id               String                @id @default(cuid())
+  tenantId         String                @map("tenant_id")
+  codigo           String
+  nombre           String
+  tipo             String?
+  marca            String?
+  modelo           String?
+  numeroSerie      String?               @map("numero_serie")
+  ubicacion        String?
+  estadoOperativo  EquipoEstadoOperativo @default(OPERATIVO) @map("estado_operativo")
+  fechaInstalacion DateTime?             @map("fecha_instalacion")
+  fechaCompra      DateTime?             @map("fecha_compra")
+  // Token estable para identificar el equipo vía QR. Se regenera bajo demanda
+  // (invalidando el anterior). No se persiste imagen: el front renderiza el QR.
+  qrToken          String?               @unique @map("qr_token")
+  activo           Boolean               @default(true)
+  metadata         Json?
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
 
   tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   ordenes OrdenTrabajo[]
@@ -115,6 +129,7 @@ model Equipo {
   @@unique([tenantId, codigo])
   @@index([tenantId])
   @@index([tenantId, activo])
+  @@index([tenantId, estadoOperativo])
   @@map("equipos")
 }
 
