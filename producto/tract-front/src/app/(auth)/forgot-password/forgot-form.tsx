@@ -10,13 +10,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { forgotPassword } from '@/app/actions/auth';
-import { cn } from '@/lib/utils';
 
 const schema = z.object({
   email: z
     .string()
-    .min(1, 'Ingresa tu correo electronico')
-    .email('Ingresa un correo valido'),
+    .min(1, 'Ingresa tu correo electrónico')
+    .email('Ingresa un correo válido'),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -27,10 +26,7 @@ export function ForgotForm() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<FormValues>({
-    mode: 'onChange',
-    resolver: zodResolver(schema),
-  });
+  } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = (values: FormValues) => {
     startTransition(async () => {
@@ -41,33 +37,19 @@ export function ForgotForm() {
   };
 
   return (
-    <form
-      className="mx-auto w-full max-w-[270px] space-y-3.5 text-left"
-      noValidate
-      onSubmit={handleSubmit(onSubmit)}
-    >
-      <div className="space-y-1.5">
+    <form className="space-y-4" noValidate onSubmit={handleSubmit(onSubmit)}>
+      <div className="space-y-2">
         <Label
           htmlFor="email"
-          className="block font-medium text-[10px] text-zinc-500"
+          className="font-semibold text-[11px] text-neutral-400 uppercase tracking-[0.16em]"
         >
-          Correo electronico
+          Correo electrónico
         </Label>
         <div className="relative">
-          <Mail
-            className={cn(
-              'pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-500 transition-colors',
-              errors.email && 'text-destructive',
-            )}
-          />
+          <Mail className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-500" />
           <Input
-            aria-invalid={Boolean(errors.email)}
             autoComplete="email"
-            className={cn(
-              'h-9 rounded-md border border-white/10 bg-[#232527] px-3 pl-9 text-xs leading-normal text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)] transition-colors placeholder:text-zinc-600 focus-visible:border-cyan-500/70 focus-visible:ring-cyan-500/20',
-              errors.email &&
-                'border-destructive/60 focus-visible:border-destructive focus-visible:ring-destructive/20',
-            )}
+            className="h-11 rounded-lg border-white/10 bg-neutral-950/70 pl-10 text-sm text-neutral-100 transition-colors placeholder:text-neutral-600 focus-visible:border-brand-primary/70 focus-visible:ring-brand-primary/25"
             id="email"
             placeholder="tu@empresa.cl"
             type="email"
@@ -83,11 +65,12 @@ export function ForgotForm() {
       </div>
 
       <Button
-        className="mt-4 h-9 w-full rounded-md border border-white bg-white font-semibold text-xs text-black shadow-[0_10px_24px_rgba(255,255,255,0.12)] transition hover:bg-zinc-200 focus-visible:ring-white/30 disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
+        className="h-11 w-full rounded-lg border-brand-primary/40 bg-brand-primary font-semibold text-sm text-white shadow-[0_16px_34px_rgba(97,82,232,0.26)] transition hover:bg-brand-400 disabled:shadow-none"
+        disabled={pending}
         loading={pending}
         type="submit"
       >
-        {pending ? 'Enviando enlace...' : 'Enviar enlace'}
+        Enviar enlace
       </Button>
     </form>
   );
