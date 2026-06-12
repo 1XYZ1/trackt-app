@@ -13,6 +13,7 @@ import { TicketsModule } from './tickets/tickets.module';
 import { EvidenciasModule } from './evidencias/evidencias.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { InventarioModule } from './inventario/inventario.module';
+import { MarcasModule } from './marcas/marcas.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { InventarioModule } from './inventario/inventario.module';
     EvidenciasModule,
     NotificacionesModule,
     InventarioModule,
+    MarcasModule,
   ],
   controllers: [AppController],
   providers: [

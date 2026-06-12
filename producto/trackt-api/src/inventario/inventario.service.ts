@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  MarcaTipo,
   MovimientoInventarioTipo,
   Prisma,
   ReservaRepuestoEstado,
@@ -35,6 +36,7 @@ const TICKET_ESTADOS_TERMINALES: TicketEstado[] = [
 
 const REPUESTO_DETAIL_INCLUDE = {
   stock: true,
+  marca: { select: { id: true, nombre: true, tipo: true, activo: true } },
 } satisfies Prisma.RepuestoInclude;
 
 const RESERVA_DETAIL_INCLUDE = {
@@ -64,6 +66,10 @@ export class InventarioService {
     const codigo = dto.codigo.trim();
     const stockInicial = dto.stockInicial ?? 0;
 
+    if (dto.marcaId) {
+      await this.assertMarcaUsable(tenantId, dto.marcaId);
+    }
+
     try {
       const created = await this.prisma.$transaction(async (tx) => {
         // Check de duplicado dentro de la tx: dos requests concurrentes
@@ -87,6 +93,10 @@ export class InventarioService {
             categoria: dto.categoria,
             unidad: dto.unidad ?? 'unidad',
             stockMinimo: dto.stockMinimo ?? 0,
+            marcaId: dto.marcaId,
+            codigoFabricante: dto.codigoFabricante,
+            ubicacionBodega: dto.ubicacionBodega,
+            proveedor: dto.proveedor,
             metadata: dto.metadata as Prisma.InputJsonValue | undefined,
           },
         });
@@ -140,14 +150,22 @@ export class InventarioService {
     user: AuthUser,
     query: ListRepuestosQueryDto,
   ) {
-    const { page = 1, limit = 10, search, categoria, includeInactive, bajoStock } =
-      query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      categoria,
+      marcaId,
+      includeInactive,
+      bajoStock,
+    } = query;
 
     const where: Prisma.RepuestoWhereInput = {
       tenantId,
       // mechanic solo ve repuestos activos; admin/jefe pueden ver todos si lo piden.
       ...(user.role === 'mechanic' || !includeInactive ? { activo: true } : {}),
       ...(categoria && { categoria }),
+      ...(marcaId && { marcaId }),
       ...(search && {
         OR: [
           { codigo: { contains: search, mode: 'insensitive' } },
@@ -242,6 +260,11 @@ export class InventarioService {
       }
     }
 
+    // marcaId: null limpia la marca; string requiere marca usable del tenant.
+    if (dto.marcaId) {
+      await this.assertMarcaUsable(tenantId, dto.marcaId);
+    }
+
     const updated = await this.prisma.repuesto.update({
       where: { id },
       data: {
@@ -252,6 +275,14 @@ export class InventarioService {
         ...(dto.unidad !== undefined && { unidad: dto.unidad }),
         ...(dto.stockMinimo !== undefined && { stockMinimo: dto.stockMinimo }),
         ...(dto.activo !== undefined && { activo: dto.activo }),
+        ...(dto.marcaId !== undefined && { marcaId: dto.marcaId }),
+        ...(dto.codigoFabricante !== undefined && {
+          codigoFabricante: dto.codigoFabricante,
+        }),
+        ...(dto.ubicacionBodega !== undefined && {
+          ubicacionBodega: dto.ubicacionBodega,
+        }),
+        ...(dto.proveedor !== undefined && { proveedor: dto.proveedor }),
         ...(dto.metadata !== undefined && {
           metadata: dto.metadata as Prisma.InputJsonValue,
         }),
@@ -990,6 +1021,36 @@ export class InventarioService {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
   }
 
+  /**
+   * Valida que la marca exista en el tenant, esté activa y tenga ámbito
+   * REPUESTO o AMBOS. 404 si no existe o es de otro tenant (mismo mensaje,
+   * no filtra existencia); 409 si existe pero no es usable.
+   */
+  private async assertMarcaUsable(
+    tenantId: string,
+    marcaId: string,
+  ): Promise<void> {
+    const marca = await this.prisma.marca.findFirst({
+      where: { id: marcaId, tenantId },
+      select: { id: true, nombre: true, tipo: true, activo: true },
+    });
+    if (!marca) {
+      throw new NotFoundException(
+        `Marca con id "${marcaId}" no encontrada en el tenant`,
+      );
+    }
+    if (!marca.activo) {
+      throw new ConflictException(
+        `La marca "${marca.nombre}" está inactiva y no puede asignarse`,
+      );
+    }
+    if (marca.tipo === MarcaTipo.EQUIPO) {
+      throw new ConflictException(
+        `La marca "${marca.nombre}" es de ámbito EQUIPO y no aplica a repuestos`,
+      );
+    }
+  }
+
   private mapRepuesto(
     repuesto: Prisma.RepuestoGetPayload<{ include: typeof REPUESTO_DETAIL_INCLUDE }>,
   ) {
@@ -1004,6 +1065,13 @@ export class InventarioService {
       categoria: repuesto.categoria,
       unidad: repuesto.unidad,
       stockMinimo: repuesto.stockMinimo,
+      marca: repuesto.marca
+        ? { id: repuesto.marca.id, nombre: repuesto.marca.nombre }
+        : null,
+      marcaId: repuesto.marcaId,
+      codigoFabricante: repuesto.codigoFabricante,
+      ubicacionBodega: repuesto.ubicacionBodega,
+      proveedor: repuesto.proveedor,
       activo: repuesto.activo,
       metadata: repuesto.metadata,
       stockActual,
