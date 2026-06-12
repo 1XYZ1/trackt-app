@@ -5,9 +5,13 @@ import {
 } from '@nestjs/common';
 import { ProgramacionesMantenimientoService } from './programaciones-mantenimiento.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrdenesService } from '../ordenes/ordenes.service';
+import { TicketsService } from '../tickets/tickets.service';
+import { InventarioService } from '../inventario/inventario.service';
+import { AuthUser } from '../auth/types';
 
 function buildPrismaMock() {
-  return {
+  const mock = {
     programacionMantenimiento: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
@@ -22,9 +26,32 @@ function buildPrismaMock() {
     plantillaMantenimiento: {
       findFirst: jest.fn(),
     },
+    ordenTrabajo: {
+      updateMany: jest.fn(),
+    },
     $queryRaw: jest.fn(),
-    $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    $transaction: jest.fn(),
   };
+  // Array → Promise.all (listados); callback → ejecutar con el propio mock
+  // como tx (generarOt usa transacción interactiva).
+  mock.$transaction.mockImplementation((arg: unknown) =>
+    typeof arg === 'function'
+      ? (arg as (tx: unknown) => unknown)(mock)
+      : Promise.all(arg as Promise<unknown>[]),
+  );
+  return mock;
+}
+
+function buildOrdenesMock() {
+  return { crearEnTx: jest.fn() };
+}
+
+function buildTicketsMock() {
+  return { crearEnTx: jest.fn() };
+}
+
+function buildInventarioMock() {
+  return { crearReservaEnTx: jest.fn() };
 }
 
 const TENANT = 'tenant-1';
@@ -65,14 +92,35 @@ const PROG_ROW = {
   plantilla: { id: PLANTILLA_ID, nombre: 'Mantención mensual' },
 };
 
+const ADMIN: AuthUser = { id: 'user-admin', role: 'admin', tenantId: TENANT };
+const JEFE: AuthUser = {
+  id: 'user-jefe',
+  role: 'jefe_taller',
+  tenantId: TENANT,
+};
+const MECHANIC: AuthUser = {
+  id: 'user-mec',
+  role: 'mechanic',
+  tenantId: TENANT,
+};
+
 describe('ProgramacionesMantenimientoService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let ordenes: ReturnType<typeof buildOrdenesMock>;
+  let tickets: ReturnType<typeof buildTicketsMock>;
+  let inventario: ReturnType<typeof buildInventarioMock>;
   let service: ProgramacionesMantenimientoService;
 
   beforeEach(() => {
     prisma = buildPrismaMock();
+    ordenes = buildOrdenesMock();
+    tickets = buildTicketsMock();
+    inventario = buildInventarioMock();
     service = new ProgramacionesMantenimientoService(
       prisma as unknown as PrismaService,
+      ordenes as unknown as OrdenesService,
+      tickets as unknown as TicketsService,
+      inventario as unknown as InventarioService,
     );
   });
 
@@ -477,6 +525,319 @@ describe('ProgramacionesMantenimientoService', () => {
       await expect(service.cancelar(TENANT, PROG_ID)).rejects.toBeInstanceOf(
         ConflictException,
       );
+    });
+  });
+
+  // ---------- generarOt (flujo principal Fase 5) ----------
+
+  describe('generarOt', () => {
+    const OT = { id: 'ot-1', codigo: 'OT-2026-0001' };
+    const TICKET = { id: 'tkt-1', codigo: 'TKT-2026-0001' };
+    const RESERVA = { id: 'res-1', estado: 'RESERVADA' };
+
+    const PROG_BASE = {
+      id: PROG_ID,
+      tenantId: TENANT,
+      equipoId: EQUIPO_ID,
+      titulo: 'Mantención mensual',
+      descripcion: null,
+      prioridad: 'MEDIA',
+      estado: 'PROGRAMADA',
+      metadata: null,
+    };
+
+    const PLANTILLA_CON_ITEMS = {
+      id: PLANTILLA_ID,
+      nombre: 'Mantención mensual',
+      items: [
+        {
+          repuestoId: 'rep-1',
+          cantidad: 2,
+          obligatorio: true,
+          repuesto: {
+            codigo: 'FILTRO-001',
+            nombre: 'Filtro de aire',
+            unidad: 'unidad',
+            stock: { stockActual: 10, stockReservado: 3 },
+          },
+        },
+        {
+          repuestoId: 'rep-2',
+          cantidad: 1,
+          obligatorio: false,
+          repuesto: {
+            codigo: 'GRASA-001',
+            nombre: 'Grasa industrial',
+            unidad: 'kg',
+            stock: { stockActual: 5, stockReservado: 0 },
+          },
+        },
+      ],
+    };
+
+    function mockGeneracionOk(opts?: { plantilla?: unknown }) {
+      prisma.programacionMantenimiento.findFirst.mockResolvedValue({
+        ...PROG_BASE,
+        plantilla: opts?.plantilla ?? null,
+      });
+      prisma.equipo.findFirst.mockResolvedValue({
+        id: EQUIPO_ID,
+        codigo: 'EQ-100',
+        activo: true,
+      });
+      prisma.programacionMantenimiento.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      prisma.ordenTrabajo.updateMany.mockResolvedValue({ count: 1 });
+      ordenes.crearEnTx.mockResolvedValue(OT);
+      tickets.crearEnTx.mockResolvedValue(TICKET);
+      inventario.crearReservaEnTx.mockResolvedValue(RESERVA);
+      prisma.programacionMantenimiento.update.mockResolvedValue({
+        ...PROG_BASE,
+        estado: 'GENERADA',
+      });
+    }
+
+    it('genera OT + ticket sin plantilla (sin reserva) y marca GENERADA', async () => {
+      mockGeneracionOk();
+
+      const result = await service.generarOt(TENANT, ADMIN, PROG_ID, {});
+
+      // Guard anti doble generación condicionado al estado.
+      const marcada =
+        prisma.programacionMantenimiento.updateMany.mock.calls[0][0];
+      expect(marcada.where).toEqual({
+        id: PROG_ID,
+        tenantId: TENANT,
+        estado: 'PROGRAMADA',
+      });
+      expect(marcada.data).toEqual({ estado: 'GENERADA' });
+
+      // OT y ticket creados dentro de la misma tx (mismo objeto tx = prisma mock).
+      expect(ordenes.crearEnTx).toHaveBeenCalledWith(
+        prisma,
+        TENANT,
+        ADMIN.id,
+        expect.objectContaining({
+          equipoId: EQUIPO_ID,
+          descripcion: 'Mantención mensual',
+          metadata: { programacionId: PROG_ID },
+        }),
+      );
+      expect(tickets.crearEnTx).toHaveBeenCalledWith(
+        prisma,
+        TENANT,
+        ADMIN.id,
+        OT.id,
+        expect.objectContaining({
+          titulo: 'Mantención mensual',
+          metadata: { programacionId: PROG_ID },
+        }),
+      );
+      // OT PENDIENTE → EN_PROCESO con guard.
+      const transicion = prisma.ordenTrabajo.updateMany.mock.calls[0][0];
+      expect(transicion.where).toEqual({
+        id: OT.id,
+        tenantId: TENANT,
+        estado: 'PENDIENTE',
+      });
+
+      // Sin plantilla: no hay reserva.
+      expect(inventario.crearReservaEnTx).not.toHaveBeenCalled();
+      expect(result.reserva).toBeNull();
+
+      // Trazabilidad en metadata.
+      const metaUpdate =
+        prisma.programacionMantenimiento.update.mock.calls[0][0];
+      expect(metaUpdate.data.metadata.generacion).toMatchObject({
+        otId: OT.id,
+        otCodigo: OT.codigo,
+        ticketId: TICKET.id,
+        ticketCodigo: TICKET.codigo,
+        reservaId: null,
+        generadoPorId: ADMIN.id,
+      });
+    });
+
+    it('genera con plantilla: crea reserva con los insumos de la receta', async () => {
+      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
+
+      const result = await service.generarOt(TENANT, ADMIN, PROG_ID, {});
+
+      expect(inventario.crearReservaEnTx).toHaveBeenCalledWith(
+        prisma,
+        TENANT,
+        ADMIN,
+        TICKET.id,
+        expect.objectContaining({
+          items: [
+            { repuestoId: 'rep-1', cantidad: 2 },
+            { repuestoId: 'rep-2', cantidad: 1 },
+          ],
+          solicitar: false,
+        }),
+      );
+      expect(result.reserva).toEqual(RESERVA);
+      const metaUpdate =
+        prisma.programacionMantenimiento.update.mock.calls[0][0];
+      expect(metaUpdate.data.metadata.generacion.reservaId).toBe(RESERVA.id);
+    });
+
+    it('reserva queda solicitada=false para jefe_taller (RESERVADA)', async () => {
+      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
+
+      await service.generarOt(TENANT, JEFE, PROG_ID, {});
+
+      const params = inventario.crearReservaEnTx.mock.calls[0][4];
+      expect(params.solicitar).toBe(false);
+    });
+
+    it('reserva queda solicitar=true para mechanic (SOLICITADA)', async () => {
+      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
+      inventario.crearReservaEnTx.mockResolvedValue({
+        id: 'res-1',
+        estado: 'SOLICITADA',
+      });
+
+      const result = await service.generarOt(TENANT, MECHANIC, PROG_ID, {});
+
+      const params = inventario.crearReservaEnTx.mock.calls[0][4];
+      expect(params.solicitar).toBe(true);
+      expect(result.reserva.estado).toBe('SOLICITADA');
+    });
+
+    it('aplica ajustarItems: reemplaza cantidades y 0 excluye el insumo', async () => {
+      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
+
+      await service.generarOt(TENANT, ADMIN, PROG_ID, {
+        ajustarItems: [
+          { repuestoId: 'rep-1', cantidad: 5 },
+          { repuestoId: 'rep-2', cantidad: 0 },
+        ],
+      });
+
+      const params = inventario.crearReservaEnTx.mock.calls[0][4];
+      expect(params.items).toEqual([{ repuestoId: 'rep-1', cantidad: 5 }]);
+    });
+
+    it('400 si ajustarItems referencia un repuesto fuera de la plantilla', async () => {
+      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
+
+      await expect(
+        service.generarOt(TENANT, ADMIN, PROG_ID, {
+          ajustarItems: [{ repuestoId: 'rep-ajeno', cantidad: 1 }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(ordenes.crearEnTx).not.toHaveBeenCalled();
+    });
+
+    it('400 si se envía ajustarItems sin plantilla', async () => {
+      mockGeneracionOk();
+
+      await expect(
+        service.generarOt(TENANT, ADMIN, PROG_ID, {
+          ajustarItems: [{ repuestoId: 'rep-1', cantidad: 1 }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('modo SUGERIDA: genera OT/ticket sin reserva y devuelve itemsSugeridos', async () => {
+      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
+
+      const result = await service.generarOt(TENANT, ADMIN, PROG_ID, {
+        modoReserva: 'SUGERIDA',
+      });
+
+      expect(inventario.crearReservaEnTx).not.toHaveBeenCalled();
+      expect(result.reserva).toBeNull();
+      // GENERADA igual se marca: el ticket ya existe para reservar después.
+      expect(prisma.programacionMantenimiento.updateMany).toHaveBeenCalled();
+      expect(result.itemsSugeridos).toEqual([
+        expect.objectContaining({
+          repuestoId: 'rep-1',
+          cantidad: 2,
+          repuesto: expect.objectContaining({
+            codigo: 'FILTRO-001',
+            stockDisponible: 7,
+          }),
+        }),
+        expect.objectContaining({ repuestoId: 'rep-2', cantidad: 1 }),
+      ]);
+    });
+
+    it('stock insuficiente: la excepción de la reserva aborta la tx (sin OT/ticket huérfanos)', async () => {
+      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
+      const stockError = new ConflictException({
+        message: 'Stock insuficiente para generar reserva',
+        faltantes: [
+          {
+            repuestoId: 'rep-1',
+            codigo: 'FILTRO-001',
+            nombre: 'Filtro de aire',
+            requerido: 2,
+            disponible: 1,
+          },
+        ],
+      });
+      inventario.crearReservaEnTx.mockRejectedValue(stockError);
+
+      await expect(service.generarOt(TENANT, ADMIN, PROG_ID, {})).rejects.toBe(
+        stockError,
+      );
+
+      // El error nace DENTRO del callback de $transaction → en BD real todo
+      // (OT, ticket, GENERADA) se revierte junto. La metadata nunca se grabó.
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.programacionMantenimiento.update).not.toHaveBeenCalled();
+    });
+
+    it('409 si la programación no está PROGRAMADA (no generar dos veces)', async () => {
+      prisma.programacionMantenimiento.findFirst.mockResolvedValue({
+        ...PROG_BASE,
+        estado: 'GENERADA',
+        plantilla: null,
+      });
+
+      await expect(
+        service.generarOt(TENANT, ADMIN, PROG_ID, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(ordenes.crearEnTx).not.toHaveBeenCalled();
+    });
+
+    it('409 si otra request la generó en paralelo (guard updateMany count=0)', async () => {
+      mockGeneracionOk();
+      prisma.programacionMantenimiento.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(
+        service.generarOt(TENANT, ADMIN, PROG_ID, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(ordenes.crearEnTx).not.toHaveBeenCalled();
+    });
+
+    it('404 si la programación es de otro tenant', async () => {
+      prisma.programacionMantenimiento.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.generarOt(TENANT, ADMIN, PROG_ID, {}),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      const args = prisma.programacionMantenimiento.findFirst.mock.calls[0][0];
+      expect(args.where).toEqual({ id: PROG_ID, tenantId: TENANT });
+    });
+
+    it('409 si el equipo está inactivo', async () => {
+      mockGeneracionOk();
+      prisma.equipo.findFirst.mockResolvedValue({
+        id: EQUIPO_ID,
+        codigo: 'EQ-100',
+        activo: false,
+      });
+
+      await expect(
+        service.generarOt(TENANT, ADMIN, PROG_ID, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(ordenes.crearEnTx).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,5 +1,74 @@
 # Trackt API — Notas de proyecto
 
+## Fase 5: generar OT/ticket con reserva desde plantilla (2026-06)
+
+El flujo principal del sistema: programación → OT → ticket → reserva de
+insumos desde la plantilla → stock reservado. Sin cambios de schema (no hay
+migración nueva).
+
+### Endpoint nuevo
+
+| Método | Path                                            | Roles                        |
+| ------ | ------------------------------------------------ | ---------------------------- |
+| POST   | `/programaciones-mantenimiento/:id/generar-ot`   | admin, jefe_taller, mechanic |
+
+Body (`GenerarOtDto`): `{ modoReserva?: "AUTOMATICA"|"SUGERIDA",
+ajustarItems?: [{ repuestoId, cantidad }], observacion? }`.
+
+Comportamiento (todo en UNA transacción):
+
+1. Programación del tenant (404) y en `PROGRAMADA` (409 — cubre la doble
+   generación; además hay guard anti-TOCTOU: `updateMany` condicionado al
+   estado dentro de la tx, count=0 → 409).
+2. Equipo del tenant (404) y activo (409).
+3. Crea OT (`OrdenesService.crearEnTx`: advisory lock + código OT-YYYY-NNNN)
+   con `metadata.programacionId`, prioridad heredada de la programación.
+4. Crea 1 ticket (`TicketsService.crearEnTx`: lock + TKT-YYYY-NNNN + evento
+   inicial) y transiciona la OT `PENDIENTE → EN_PROCESO` (guard updateMany,
+   misma semántica que el hook onTicketCreated pero atómica).
+5. Si hay plantilla y `modoReserva=AUTOMATICA` (default): crea la reserva
+   **sobre el ticket** con `InventarioService.crearReservaEnTx` — la misma
+   lógica de `POST /tickets/:id/reservas-repuestos`, extraída para correr
+   en una tx externa. `RESERVADA` para admin/jefe (aplica stockReservado +
+   movimientos RESERVA); `SOLICITADA` para mechanic (sin tocar stock, va a
+   aprobación como siempre).
+6. `ajustarItems` ajusta cantidades de la plantilla (cantidad 0 excluye el
+   insumo; repuesto fuera de la plantilla → 400).
+7. Marca `GENERADA` y guarda trazabilidad en
+   `metadata.generacion = { otId, otCodigo, ticketId, ticketCodigo,
+   reservaId, generadoPorId, fecha }`.
+
+`modoReserva=SUGERIDA`: genera OT/ticket y marca GENERADA, pero **no crea
+la reserva**; la respuesta incluye `itemsSugeridos` (insumos de la plantilla
+con ajustes y stock disponible) para que el usuario cree la reserva ajustada
+con los endpoints existentes de tickets. No se implementó estado "borrador".
+
+### Stock insuficiente
+
+`crearReservaEnTx` valida TODOS los items y lanza 409 con payload
+estructurado: `{ message: "Stock insuficiente para generar reserva",
+faltantes: [{ repuestoId, codigo, nombre, requerido, disponible }] }`.
+Como el error nace dentro de la transacción, la OT, el ticket y el cambio a
+GENERADA se revierten juntos — no quedan datos a medias. Este payload ahora
+también aplica a `POST /tickets/:id/reservas-repuestos` (antes reportaba
+solo el primer faltante como string; sigue siendo 409).
+
+### Refactor de reutilización (sin romper endpoints)
+
+- `InventarioService.crearReservaEnTx(tx, ...)`: núcleo de createReserva
+  (dedup+locks ordenados, validación, creación, stockReservado+movimientos,
+  SOLICITADA vs RESERVADA). `createReserva` mantiene su contrato (valida
+  ticket/permisos y abre su propia tx).
+- `OrdenesService.crearEnTx(tx, ...)` y `TicketsService.crearEnTx(tx, ...)`:
+  lock de secuencia + código + create (+ evento inicial en tickets),
+  reutilizados por `create`/`createFromOrden`.
+
+### Pendiente (decisión consciente, fuera del scope del prompt de Fase 5)
+
+- Recurrencia: al generar NO se crea la siguiente ocurrencia.
+- `VENCIDA`/`COMPLETADA` siguen sin setearse automáticamente (job de
+  vencimiento y cierre por OT cerrada).
+
 ## Fase 4: calendario y programación de mantenimiento (2026-06)
 
 Una programación es un trabajo futuro planificado sobre un equipo,

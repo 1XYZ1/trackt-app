@@ -62,7 +62,11 @@ export class InventarioService {
   // Repuestos
   // ============================================================
 
-  async createRepuesto(tenantId: string, userId: string, dto: CreateRepuestoDto) {
+  async createRepuesto(
+    tenantId: string,
+    userId: string,
+    dto: CreateRepuestoDto,
+  ) {
     const codigo = dto.codigo.trim();
     const stockInicial = dto.stockInicial ?? 0;
 
@@ -219,8 +223,7 @@ export class InventarioService {
 
     // Movimientos solo para admin/jefe_taller (consistente con
     // findAllMovimientos). mechanic obtiene array vacio.
-    const verMovimientos =
-      user.role === 'admin' || user.role === 'jefe_taller';
+    const verMovimientos = user.role === 'admin' || user.role === 'jefe_taller';
     const movimientos = verMovimientos
       ? await this.prisma.movimientoInventario.findMany({
           where: { repuestoId: id, tenantId },
@@ -235,11 +238,7 @@ export class InventarioService {
     };
   }
 
-  async updateRepuesto(
-    tenantId: string,
-    id: string,
-    dto: UpdateRepuestoDto,
-  ) {
+  async updateRepuesto(tenantId: string, id: string, dto: UpdateRepuestoDto) {
     const current = await this.prisma.repuesto.findFirst({
       where: { id, tenantId },
       select: { id: true, codigo: true },
@@ -439,8 +438,16 @@ export class InventarioService {
   // ============================================================
 
   async findAllMovimientos(tenantId: string, query: ListMovimientosQueryDto) {
-    const { page = 1, limit = 20, repuestoId, ticketId, reservaId, tipo, desde, hasta } =
-      query;
+    const {
+      page = 1,
+      limit = 20,
+      repuestoId,
+      ticketId,
+      reservaId,
+      tipo,
+      desde,
+      hasta,
+    } = query;
 
     if (desde && hasta && desde > hasta) {
       throw new BadRequestException(
@@ -469,7 +476,9 @@ export class InventarioService {
         skip: getPrismaSkip(page, limit),
         take: limit,
         include: {
-          repuesto: { select: { id: true, codigo: true, nombre: true, unidad: true } },
+          repuesto: {
+            select: { id: true, codigo: true, nombre: true, unidad: true },
+          },
         },
       }),
       this.prisma.movimientoInventario.count({ where }),
@@ -502,10 +511,46 @@ export class InventarioService {
     }
     this.assertCanActOnTicket(user, ticket.mecanicoId);
 
+    return this.prisma.$transaction((tx) =>
+      this.crearReservaEnTx(tx, tenantId, user, ticketId, {
+        items: dto.items,
+        observacion: dto.observacion,
+        solicitar: dto.solicitar,
+      }),
+    );
+  }
+
+  /**
+   * Núcleo de creación de reserva, ejecutable dentro de una transacción
+   * existente. Lo usan createReserva (endpoint de tickets) y la generación
+   * de OT desde programaciones (Fase 5) — misma lógica, una sola fuente.
+   *
+   * NO valida el ticket (estado/permisos): eso es responsabilidad del
+   * caller, que sabe el contexto (ticket existente vs recién creado en
+   * la misma tx).
+   *
+   * - Deduplica items y toma locks por repuesto en orden lexicográfico.
+   * - Valida existencia/activo y stock disponible de TODOS los items;
+   *   si falta stock lanza 409 con payload estructurado { message,
+   *   faltantes: [{ repuestoId, codigo, nombre, requerido, disponible }] }.
+   * - solicitar=true + mechanic → SOLICITADA (no toca stockReservado);
+   *   en otro caso RESERVADA + stockReservado + movimientos RESERVA.
+   */
+  async crearReservaEnTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    user: AuthUser,
+    ticketId: string,
+    params: {
+      items: { repuestoId: string; cantidad: number }[];
+      observacion?: string;
+      solicitar?: boolean;
+    },
+  ) {
     // Deduplicar items por repuestoId (sumar cantidades) y ordenar para evitar
     // deadlocks cuando se toman múltiples locks dentro de la TX.
     const agg = new Map<string, number>();
-    for (const it of dto.items) {
+    for (const it of params.items) {
       if (it.cantidad <= 0) {
         throw new BadRequestException('La cantidad debe ser mayor a 0');
       }
@@ -515,93 +560,111 @@ export class InventarioService {
       .map(([repuestoId, cantidad]) => ({ repuestoId, cantidad }))
       .sort((a, b) => a.repuestoId.localeCompare(b.repuestoId));
 
-    return this.prisma.$transaction(async (tx) => {
-      // Locks por repuesto en orden lexicográfico → previene deadlock.
-      for (const it of items) {
-        await this.lockRepuesto(tx, tenantId, it.repuestoId);
-      }
+    // Locks por repuesto en orden lexicográfico → previene deadlock.
+    for (const it of items) {
+      await this.lockRepuesto(tx, tenantId, it.repuestoId);
+    }
 
-      // Cargar repuestos + stock y validar atomicidad.
-      const repuestos = await tx.repuesto.findMany({
-        where: { id: { in: items.map((i) => i.repuestoId) }, tenantId },
-        include: { stock: true },
-      });
-      if (repuestos.length !== items.length) {
-        throw new NotFoundException('Alguno de los repuestos no existe en el tenant');
+    // Cargar repuestos + stock y validar atomicidad.
+    const repuestos = await tx.repuesto.findMany({
+      where: { id: { in: items.map((i) => i.repuestoId) }, tenantId },
+      include: { stock: true },
+    });
+    if (repuestos.length !== items.length) {
+      throw new NotFoundException(
+        'Alguno de los repuestos no existe en el tenant',
+      );
+    }
+    const byId = new Map(repuestos.map((r) => [r.id, r]));
+    const faltantes: Array<{
+      repuestoId: string;
+      codigo: string;
+      nombre: string;
+      requerido: number;
+      disponible: number;
+    }> = [];
+    for (const it of items) {
+      const r = byId.get(it.repuestoId)!;
+      if (!r.activo) {
+        throw new ConflictException(
+          `El repuesto "${r.codigo}" está inactivo y no puede reservarse`,
+        );
       }
-      const byId = new Map(repuestos.map((r) => [r.id, r]));
+      const stock = r.stock!;
+      const disponible = stock.stockActual - stock.stockReservado;
+      if (it.cantidad > disponible) {
+        faltantes.push({
+          repuestoId: r.id,
+          codigo: r.codigo,
+          nombre: r.nombre,
+          requerido: it.cantidad,
+          disponible,
+        });
+      }
+    }
+    // Se reportan TODOS los faltantes de una vez (no solo el primero) para
+    // que el frontend muestre el detalle completo y la tx revierta entera.
+    if (faltantes.length > 0) {
+      throw new ConflictException({
+        message: 'Stock insuficiente para generar reserva',
+        faltantes,
+      });
+    }
+
+    // Si mechanic pide `solicitar: true`, la reserva queda en SOLICITADA y
+    // NO consume stockReservado hasta que admin/jefe la apruebe via
+    // POST /reservas-repuestos/:id/aprobar. Para admin/jefe el campo se
+    // ignora y la reserva se crea directamente RESERVADA.
+    const esSolicitud = params.solicitar === true && user.role === 'mechanic';
+    const estadoInicial = esSolicitud
+      ? ReservaRepuestoEstado.SOLICITADA
+      : ReservaRepuestoEstado.RESERVADA;
+
+    const reserva = await tx.reservaRepuesto.create({
+      data: {
+        tenantId,
+        ticketId,
+        estado: estadoInicial,
+        creadoPorId: user.id,
+        observacion: params.observacion,
+        items: {
+          create: items.map((it) => ({
+            repuestoId: it.repuestoId,
+            cantidad: it.cantidad,
+          })),
+        },
+      },
+      include: RESERVA_DETAIL_INCLUDE,
+    });
+
+    // SOLICITADA salta el update de stockReservado y la emision de
+    // movimientos. Eso ocurrira en aprobarReserva al pasar a RESERVADA.
+    if (!esSolicitud) {
       for (const it of items) {
         const r = byId.get(it.repuestoId)!;
-        if (!r.activo) {
-          throw new ConflictException(
-            `El repuesto "${r.codigo}" está inactivo y no puede reservarse`,
-          );
-        }
         const stock = r.stock!;
-        const disponible = stock.stockActual - stock.stockReservado;
-        if (it.cantidad > disponible) {
-          throw new ConflictException(
-            `Stock insuficiente para "${r.codigo}": disponible ${disponible}, solicitado ${it.cantidad}`,
-          );
-        }
-      }
-
-      // Si mechanic pide `solicitar: true`, la reserva queda en SOLICITADA y
-      // NO consume stockReservado hasta que admin/jefe la apruebe via
-      // POST /reservas-repuestos/:id/aprobar. Para admin/jefe el campo se
-      // ignora y la reserva se crea directamente RESERVADA.
-      const esSolicitud =
-        dto.solicitar === true && user.role === 'mechanic';
-      const estadoInicial = esSolicitud
-        ? ReservaRepuestoEstado.SOLICITADA
-        : ReservaRepuestoEstado.RESERVADA;
-
-      const reserva = await tx.reservaRepuesto.create({
-        data: {
-          tenantId,
-          ticketId,
-          estado: estadoInicial,
-          creadoPorId: user.id,
-          observacion: dto.observacion,
-          items: {
-            create: items.map((it) => ({
-              repuestoId: it.repuestoId,
-              cantidad: it.cantidad,
-            })),
+        const nuevoReservado = stock.stockReservado + it.cantidad;
+        await tx.inventarioStock.update({
+          where: { id: stock.id },
+          data: { stockReservado: nuevoReservado },
+        });
+        await tx.movimientoInventario.create({
+          data: {
+            tenantId,
+            repuestoId: it.repuestoId,
+            tipo: MovimientoInventarioTipo.RESERVA,
+            cantidad: it.cantidad,
+            stockResultante: stock.stockActual,
+            usuarioId: user.id,
+            ticketId,
+            reservaId: reserva.id,
+            observacion: params.observacion,
           },
-        },
-        include: RESERVA_DETAIL_INCLUDE,
-      });
-
-      // SOLICITADA salta el update de stockReservado y la emision de
-      // movimientos. Eso ocurrira en aprobarReserva al pasar a RESERVADA.
-      if (!esSolicitud) {
-        for (const it of items) {
-          const r = byId.get(it.repuestoId)!;
-          const stock = r.stock!;
-          const nuevoReservado = stock.stockReservado + it.cantidad;
-          await tx.inventarioStock.update({
-            where: { id: stock.id },
-            data: { stockReservado: nuevoReservado },
-          });
-          await tx.movimientoInventario.create({
-            data: {
-              tenantId,
-              repuestoId: it.repuestoId,
-              tipo: MovimientoInventarioTipo.RESERVA,
-              cantidad: it.cantidad,
-              stockResultante: stock.stockActual,
-              usuarioId: user.id,
-              ticketId,
-              reservaId: reserva.id,
-              observacion: dto.observacion,
-            },
-          });
-        }
+        });
       }
+    }
 
-      return reserva;
-    });
+    return reserva;
   }
 
   /**
@@ -800,7 +863,10 @@ export class InventarioService {
             where: { repuestoId: it.repuestoId },
           });
           if (!stock) continue;
-          const nuevoReservado = Math.max(0, stock.stockReservado - it.cantidad);
+          const nuevoReservado = Math.max(
+            0,
+            stock.stockReservado - it.cantidad,
+          );
           await tx.inventarioStock.update({
             where: { id: stock.id },
             data: { stockReservado: nuevoReservado },
@@ -973,7 +1039,8 @@ export class InventarioService {
               usuarioId,
               ticketId,
               reservaId: reserva.id,
-              observacion: 'Liberacion automatica por cierre/cancelacion del ticket',
+              observacion:
+                'Liberacion automatica por cierre/cancelacion del ticket',
             },
           });
         }
@@ -1052,7 +1119,9 @@ export class InventarioService {
   }
 
   private mapRepuesto(
-    repuesto: Prisma.RepuestoGetPayload<{ include: typeof REPUESTO_DETAIL_INCLUDE }>,
+    repuesto: Prisma.RepuestoGetPayload<{
+      include: typeof REPUESTO_DETAIL_INCLUDE;
+    }>,
   ) {
     const stockActual = repuesto.stock?.stockActual ?? 0;
     const stockReservado = repuesto.stock?.stockReservado ?? 0;
@@ -1083,4 +1152,3 @@ export class InventarioService {
     };
   }
 }
-

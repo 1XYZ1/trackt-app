@@ -21,6 +21,7 @@ import { CreateProgramacionDto } from './dto/create-programacion.dto';
 import { UpdateProgramacionDto } from './dto/update-programacion.dto';
 import { ListProgramacionesQueryDto } from './dto/list-programaciones-query.dto';
 import { CalendarioQueryDto } from './dto/calendario-query.dto';
+import { GenerarOtDto } from './dto/generar-ot.dto';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -91,5 +92,19 @@ export class ProgramacionesMantenimientoController {
   async cancelar(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.service.cancelar(tenantId, id);
+  }
+
+  // Flujo principal (Fase 5): programación → OT → ticket → reserva.
+  // mechanic también puede generar: su reserva queda SOLICITADA (requiere
+  // aprobación de admin/jefe), igual que en los endpoints de tickets.
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Post(':id/generar-ot')
+  async generarOt(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Body() dto: GenerarOtDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.service.generarOt(tenantId, req.user, id, dto);
   }
 }
