@@ -20,6 +20,11 @@ export class ListRepuestosQueryDto extends PaginationQueryDto {
   categoria?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  marcaId?: string;
+
+  @IsOptional()
   @Transform(({ value }) => toBool(value))
   @IsBoolean()
   bajoStock?: boolean;

@@ -42,6 +42,9 @@ function buildPrismaMock() {
     ticket: {
       findFirst: jest.fn(),
     },
+    marca: {
+      findFirst: jest.fn(),
+    },
     $executeRaw: jest.fn().mockResolvedValue(0),
     $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(),
@@ -835,6 +838,153 @@ describe('InventarioService', () => {
       expect(args.where).toEqual({
         tenantId: TENANT,
         estado: ReservaRepuestoEstado.SOLICITADA,
+      });
+    });
+  });
+
+  // ============================================================
+  // Marca en repuestos (Fase 2)
+  // ============================================================
+
+  describe('repuestos con marca', () => {
+    const MARCA_OK = {
+      id: 'marca-1',
+      nombre: 'Bosch',
+      tipo: 'REPUESTO',
+      activo: true,
+    };
+
+    function mockCreateRepuestoOk() {
+      prisma.repuesto.findUnique.mockResolvedValue(null);
+      prisma.repuesto.create.mockResolvedValue({ id: REPUESTO_ID });
+      prisma.inventarioStock.create.mockResolvedValue({});
+      prisma.repuesto.findUniqueOrThrow.mockResolvedValue({
+        id: REPUESTO_ID,
+        codigo: 'FILTRO-001',
+        nombre: 'Filtro',
+        unidad: 'unidad',
+        stockMinimo: 0,
+        activo: true,
+        descripcion: null,
+        categoria: null,
+        marcaId: MARCA_OK.id,
+        marca: MARCA_OK,
+        codigoFabricante: 'BX-99',
+        ubicacionBodega: null,
+        proveedor: null,
+        metadata: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        stock: { stockActual: 0, stockReservado: 0 },
+      });
+    }
+
+    it('createRepuesto valida la marca del tenant y persiste los campos nuevos', async () => {
+      prisma.marca.findFirst.mockResolvedValue(MARCA_OK);
+      mockCreateRepuestoOk();
+
+      const result = await service.createRepuesto(TENANT, ADMIN.id, {
+        codigo: 'FILTRO-001',
+        nombre: 'Filtro',
+        marcaId: MARCA_OK.id,
+        codigoFabricante: 'BX-99',
+      });
+
+      const marcaArgs = prisma.marca.findFirst.mock.calls[0][0];
+      expect(marcaArgs.where).toMatchObject({
+        id: MARCA_OK.id,
+        tenantId: TENANT,
+      });
+      const createArgs = prisma.repuesto.create.mock.calls[0][0];
+      expect(createArgs.data.marcaId).toBe(MARCA_OK.id);
+      expect(createArgs.data.codigoFabricante).toBe('BX-99');
+      expect(result.marca).toEqual({ id: MARCA_OK.id, nombre: 'Bosch' });
+      expect(result.codigoFabricante).toBe('BX-99');
+    });
+
+    it('createRepuesto rechaza marca inexistente o de otro tenant (404)', async () => {
+      prisma.marca.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.createRepuesto(TENANT, ADMIN.id, {
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          marcaId: 'marca-ajena',
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(prisma.repuesto.create).not.toHaveBeenCalled();
+    });
+
+    it('createRepuesto rechaza marca inactiva (409)', async () => {
+      prisma.marca.findFirst.mockResolvedValue({
+        ...MARCA_OK,
+        activo: false,
+      });
+
+      await expect(
+        service.createRepuesto(TENANT, ADMIN.id, {
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          marcaId: MARCA_OK.id,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('createRepuesto rechaza marca de ámbito EQUIPO (409)', async () => {
+      prisma.marca.findFirst.mockResolvedValue({
+        ...MARCA_OK,
+        tipo: 'EQUIPO',
+      });
+
+      await expect(
+        service.createRepuesto(TENANT, ADMIN.id, {
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          marcaId: MARCA_OK.id,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('updateRepuesto permite limpiar la marca con null sin validarla', async () => {
+      prisma.repuesto.findFirst.mockResolvedValue({
+        id: REPUESTO_ID,
+        codigo: 'FILTRO-001',
+      });
+      prisma.repuesto.update.mockResolvedValue({
+        id: REPUESTO_ID,
+        codigo: 'FILTRO-001',
+        nombre: 'Filtro',
+        unidad: 'unidad',
+        stockMinimo: 0,
+        activo: true,
+        marcaId: null,
+        marca: null,
+        stock: { stockActual: 0, stockReservado: 0 },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await service.updateRepuesto(TENANT, REPUESTO_ID, { marcaId: null });
+
+      expect(prisma.marca.findFirst).not.toHaveBeenCalled();
+      const args = prisma.repuesto.update.mock.calls[0][0];
+      expect(args.data.marcaId).toBeNull();
+    });
+
+    it('findAllRepuestos filtra por marcaId', async () => {
+      prisma.repuesto.findMany.mockResolvedValue([]);
+      prisma.repuesto.count.mockResolvedValue(0);
+
+      await service.findAllRepuestos(TENANT, ADMIN, {
+        page: 1,
+        limit: 10,
+        marcaId: MARCA_OK.id,
+      });
+
+      const args = prisma.repuesto.findMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        tenantId: TENANT,
+        marcaId: MARCA_OK.id,
       });
     });
   });
