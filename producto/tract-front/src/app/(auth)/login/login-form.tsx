@@ -133,12 +133,11 @@ export function LoginForm() {
       </div>
 
       <Button
-        className="mt-4 h-9 w-full rounded-md border border-white bg-white font-semibold text-xs text-black shadow-[0_10px_24px_rgba(255,255,255,0.12)] transition hover:bg-zinc-200 focus-visible:ring-white/30 disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
-        disabled={pending}
+        className="mt-4 h-9 w-full rounded-md border border-white bg-white font-semibold text-xs text-black shadow-[0_10px_24px_rgba(255,255,255,0.12)] transition hover:bg-zinc-200 focus-visible:ring-white/30 disabled:border-zinc-700 disabled:bg-zinc-800 disabled:shadow-none"
         loading={pending}
         type="submit"
       >
-        {pending ? 'Iniciando sesion...' : 'Iniciar sesion'}
+        Iniciar sesion
       </Button>
     </form>
   );
