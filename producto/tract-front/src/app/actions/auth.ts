@@ -78,7 +78,7 @@ export async function forgotPassword(formData: FormData) {
   }
   redirect(
     `/forgot-password?message=${encodeURIComponent(
-      'Te enviamos un enlace para restablecer tu contrasena. Revisa tu correo.',
+      'Te enviamos un enlace para restablecer tu contraseña. Revisa tu correo.',
     )}`,
   );
 }
@@ -89,7 +89,7 @@ const resetSchema = z
     passwordConfirm: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirm, {
-    message: 'Las contrasenas no coinciden',
+    message: 'Las contraseñas no coinciden',
     path: ['passwordConfirm'],
   });
 
@@ -125,7 +125,7 @@ export async function resetPassword(formData: FormData) {
   await supabase.auth.signOut();
   redirect(
     `/login?message=${encodeURIComponent(
-      'Contrasena actualizada. Inicia sesion con la nueva clave.',
+      'Contraseña actualizada. Inicia sesion con la nueva clave.',
     )}`,
   );
 }
