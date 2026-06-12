@@ -13,6 +13,9 @@ import { TicketsModule } from './tickets/tickets.module';
 import { EvidenciasModule } from './evidencias/evidencias.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { InventarioModule } from './inventario/inventario.module';
+import { MarcasModule } from './marcas/marcas.module';
+import { PlantillasMantenimientoModule } from './plantillas-mantenimiento/plantillas-mantenimiento.module';
+import { ProgramacionesMantenimientoModule } from './programaciones-mantenimiento/programaciones-mantenimiento.module';
 
 @Module({
   imports: [
@@ -26,6 +29,9 @@ import { InventarioModule } from './inventario/inventario.module';
     EvidenciasModule,
     NotificacionesModule,
     InventarioModule,
+    MarcasModule,
+    PlantillasMantenimientoModule,
+    ProgramacionesMantenimientoModule,
   ],
   controllers: [AppController],
   providers: [

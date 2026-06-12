@@ -47,6 +47,27 @@ export class CreateRepuestoDto {
   @Min(0)
   stockInicial?: number;
 
+  // Referencia al catálogo de marcas (ámbito REPUESTO o AMBOS).
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  marcaId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  codigoFabricante?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  ubicacionBodega?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  proveedor?: string;
+
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
