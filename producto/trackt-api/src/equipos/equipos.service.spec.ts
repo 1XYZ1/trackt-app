@@ -320,6 +320,24 @@ describe('EquiposService', () => {
       expect(args.where.activo).toBeUndefined();
     });
 
+    it('filtra por estadoOperativo cuando viene en el query', async () => {
+      prisma.equipo.findMany.mockResolvedValue([]);
+      prisma.equipo.count.mockResolvedValue(0);
+
+      await service.findAll(TENANT, {
+        page: 1,
+        limit: 10,
+        estadoOperativo: 'EN_MANTENIMIENTO',
+      });
+
+      const args = prisma.equipo.findMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        tenantId: TENANT,
+        activo: true,
+        estadoOperativo: 'EN_MANTENIMIENTO',
+      });
+    });
+
     it('aplica filtro de búsqueda OR sobre múltiples campos (incl. tipo y numeroSerie)', async () => {
       prisma.equipo.findMany.mockResolvedValue([]);
       prisma.equipo.count.mockResolvedValue(0);

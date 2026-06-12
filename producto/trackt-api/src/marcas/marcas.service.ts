@@ -113,6 +113,19 @@ export class MarcasService {
       await this.assertNombreDisponible(tenantId, nombreFinal, tipoFinal, id);
     }
 
+    // Restringir el ámbito a EQUIPO dejaría repuestos vinculados a una marca
+    // que assertMarcaUsable (inventario) rechaza para asignaciones nuevas.
+    if (tipoFinal === MarcaTipo.EQUIPO && marca.tipo !== MarcaTipo.EQUIPO) {
+      const vinculados = await this.prisma.repuesto.count({
+        where: { tenantId, marcaId: id },
+      });
+      if (vinculados > 0) {
+        throw new ConflictException(
+          `No se puede cambiar la marca a ámbito EQUIPO: tiene ${vinculados} repuesto(s) vinculado(s)`,
+        );
+      }
+    }
+
     return this.prisma.marca.update({
       where: { id },
       data: {
@@ -154,10 +167,14 @@ export class MarcasService {
     tipo: MarcaTipo,
     exceptId?: string,
   ): Promise<void> {
+    // El ámbito se solapa: EQUIPO/REPUESTO chocan con su propio tipo y con
+    // AMBOS (findAll los lista juntos); AMBOS choca con cualquier tipo.
     const dup = await this.prisma.marca.findFirst({
       where: {
         tenantId,
-        tipo,
+        ...(tipo !== MarcaTipo.AMBOS && {
+          tipo: { in: [tipo, MarcaTipo.AMBOS] },
+        }),
         nombre: { equals: nombre, mode: 'insensitive' },
         ...(exceptId && { id: { not: exceptId } }),
       },
@@ -165,7 +182,7 @@ export class MarcasService {
     });
     if (dup) {
       throw new ConflictException(
-        `Ya existe la marca "${nombre}" para el ámbito ${tipo} en este tenant`,
+        `Ya existe la marca "${nombre}" en un ámbito que se solapa con ${tipo} en este tenant`,
       );
     }
   }

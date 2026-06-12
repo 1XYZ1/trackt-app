@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdatePlantillaDto {
@@ -34,7 +35,9 @@ export class UpdatePlantillaDto {
   @IsBoolean()
   activo?: boolean;
 
+  // null limpia metadata completa (columna a NULL, incluye el checklist).
+  @ValidateIf((_, value) => value !== null)
   @IsOptional()
   @IsObject()
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | null;
 }

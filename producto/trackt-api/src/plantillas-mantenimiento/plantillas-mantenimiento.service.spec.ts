@@ -7,7 +7,7 @@ import { PlantillasMantenimientoService } from './plantillas-mantenimiento.servi
 import { PrismaService } from '../prisma/prisma.service';
 
 function buildPrismaMock() {
-  return {
+  const prisma = {
     plantillaMantenimiento: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
@@ -24,9 +24,17 @@ function buildPrismaMock() {
     },
     repuesto: {
       findFirst: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
     },
-    $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    // $transaction en ambas formas: array (findAll) y callback interactivo
+    // (addItem), donde el tx es el mismo mock.
+    $transaction: jest.fn(),
   };
+  prisma.$transaction.mockImplementation((arg: unknown) => {
+    if (Array.isArray(arg)) return Promise.all(arg);
+    return (arg as (tx: typeof prisma) => unknown)(prisma);
+  });
+  return prisma;
 }
 
 const TENANT = 'tenant-1';
@@ -256,6 +264,18 @@ describe('PlantillasMantenimientoService', () => {
       expect(args.data).toEqual({ nombre: 'Nueva receta', activo: true });
     });
 
+    it('metadata: null limpia la columna completa (DbNull)', async () => {
+      mockPlantillaOk();
+      prisma.plantillaMantenimiento.update.mockResolvedValue(PLANTILLA);
+
+      await service.update(TENANT, PLANTILLA_ID, { metadata: null });
+
+      const args = prisma.plantillaMantenimiento.update.mock.calls[0][0];
+      // Prisma.DbNull (objeto sentinel, no null literal).
+      expect(args.data.metadata).not.toBeNull();
+      expect(args.data.metadata.constructor.name).toBe('DbNull');
+    });
+
     it('limpia opcionales con string vacío', async () => {
       mockPlantillaOk();
       prisma.plantillaMantenimiento.update.mockResolvedValue(PLANTILLA);
@@ -327,6 +347,7 @@ describe('PlantillasMantenimientoService', () => {
     it('agrega el insumo validando tenant en plantilla y repuesto', async () => {
       mockPlantillaOk();
       prisma.repuesto.findFirst.mockResolvedValue(REPUESTO_ACTIVO);
+      prisma.repuesto.findUniqueOrThrow.mockResolvedValue(REPUESTO_ACTIVO);
       prisma.plantillaMantenimientoItem.findUnique.mockResolvedValue(null);
       prisma.plantillaMantenimientoItem.create.mockResolvedValue(ITEM_ROW);
 
@@ -407,6 +428,44 @@ describe('PlantillasMantenimientoService', () => {
         }),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.plantillaMantenimientoItem.create).not.toHaveBeenCalled();
+    });
+
+    it('409 si el repuesto se desactiva durante la transacción (re-check post-create)', async () => {
+      mockPlantillaOk();
+      prisma.repuesto.findFirst.mockResolvedValue(REPUESTO_ACTIVO);
+      prisma.plantillaMantenimientoItem.findUnique.mockResolvedValue(null);
+      prisma.plantillaMantenimientoItem.create.mockResolvedValue(ITEM_ROW);
+      // Desactivación concurrente commiteada entre el check inicial y el
+      // re-check: la tx debe revertir con 409.
+      prisma.repuesto.findUniqueOrThrow.mockResolvedValue({
+        ...REPUESTO_ACTIVO,
+        activo: false,
+      });
+
+      await expect(
+        service.addItem(TENANT, PLANTILLA_ID, {
+          repuestoId: REPUESTO_ID,
+          cantidad: 1,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it("normaliza observacion: '  ' se persiste como null", async () => {
+      mockPlantillaOk();
+      prisma.repuesto.findFirst.mockResolvedValue(REPUESTO_ACTIVO);
+      prisma.repuesto.findUniqueOrThrow.mockResolvedValue(REPUESTO_ACTIVO);
+      prisma.plantillaMantenimientoItem.findUnique.mockResolvedValue(null);
+      prisma.plantillaMantenimientoItem.create.mockResolvedValue(ITEM_ROW);
+
+      await service.addItem(TENANT, PLANTILLA_ID, {
+        repuestoId: REPUESTO_ID,
+        cantidad: 1,
+        observacion: '   ',
+      });
+
+      const createArgs =
+        prisma.plantillaMantenimientoItem.create.mock.calls[0][0];
+      expect(createArgs.data.observacion).toBeNull();
     });
   });
 

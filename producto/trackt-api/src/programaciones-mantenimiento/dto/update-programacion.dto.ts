@@ -5,6 +5,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
@@ -36,11 +37,12 @@ export class UpdateProgramacionDto {
   @IsDateString()
   fechaProgramada?: string;
 
-  // null quita el responsable.
+  // null quita el responsable. El id es UUID de auth.users y el service lo
+  // castea a ::uuid en $queryRaw — validar el formato evita un 500 por cast
+  // fallido (mismo criterio que asignar-ticket.dto.ts).
   @ValidateIf((_, value) => value !== null)
   @IsOptional()
-  @IsString()
-  @MaxLength(60)
+  @IsUUID()
   responsableId?: string | null;
 
   @IsOptional()

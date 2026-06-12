@@ -3,12 +3,13 @@ import { EquiposPlantillasService } from './equipos-plantillas.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 function buildPrismaMock() {
-  return {
+  const prisma = {
     equipo: {
       findFirst: jest.fn(),
     },
     plantillaMantenimiento: {
       findFirst: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
     },
     equipoPlantillaMantenimiento: {
       findUnique: jest.fn(),
@@ -16,7 +17,14 @@ function buildPrismaMock() {
       create: jest.fn(),
       deleteMany: jest.fn(),
     },
+    // add() corre dentro de una transacción interactiva: el callback recibe
+    // el mismo mock como tx (patrón de los otros specs del repo).
+    $transaction: jest.fn(),
   };
+  prisma.$transaction.mockImplementation(
+    (fn: (tx: typeof prisma) => unknown) => fn(prisma),
+  );
+  return prisma;
 }
 
 const TENANT = 'tenant-1';
@@ -58,11 +66,20 @@ describe('EquiposPlantillasService', () => {
     prisma.equipo.findFirst.mockResolvedValue({ id: EQUIPO_ID });
   }
 
+  function mockPlantillaSigueActiva() {
+    // Re-check post-create dentro de la tx: por defecto sigue activa.
+    prisma.plantillaMantenimiento.findUniqueOrThrow.mockResolvedValue({
+      activo: true,
+      nombre: PLANTILLA_ACTIVA.nombre,
+    });
+  }
+
   // ---------- add ----------
 
   describe('add', () => {
     it('asocia la plantilla validando tenant en equipo y plantilla', async () => {
       mockEquipoOk();
+      mockPlantillaSigueActiva();
       prisma.plantillaMantenimiento.findFirst.mockResolvedValue(
         PLANTILLA_ACTIVA,
       );
@@ -135,6 +152,27 @@ describe('EquiposPlantillasService', () => {
         service.add(TENANT, EQUIPO_ID, PLANTILLA_ID),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.equipoPlantillaMantenimiento.create).not.toHaveBeenCalled();
+    });
+
+    it('409 si la plantilla se desactiva durante la transacción (re-check post-create)', async () => {
+      mockEquipoOk();
+      prisma.plantillaMantenimiento.findFirst.mockResolvedValue(
+        PLANTILLA_ACTIVA,
+      );
+      prisma.equipoPlantillaMantenimiento.findUnique.mockResolvedValue(null);
+      prisma.equipoPlantillaMantenimiento.create.mockResolvedValue(
+        ASOCIACION_ROW,
+      );
+      // Desactivación concurrente commiteada entre el check inicial y el
+      // re-check: la tx debe revertir con 409.
+      prisma.plantillaMantenimiento.findUniqueOrThrow.mockResolvedValue({
+        activo: false,
+        nombre: PLANTILLA_ACTIVA.nombre,
+      });
+
+      await expect(
+        service.add(TENANT, EQUIPO_ID, PLANTILLA_ID),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 

@@ -115,12 +115,20 @@ export class EquiposService {
   ): Promise<
     PaginatedResult<Prisma.EquipoGetPayload<{ select: typeof LIST_SELECT }>>
   > {
-    const { page = 1, limit = 10, search, includeInactive } = query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      estadoOperativo,
+      includeInactive,
+    } = query;
 
     const where: Prisma.EquipoWhereInput = {
       tenantId,
       // Por defecto solo equipos activos. Si includeInactive=true, devolver todos.
       ...(includeInactive ? {} : { activo: true }),
+      // Filtro por condición técnica (usa el índice tenant_id+estado_operativo).
+      ...(estadoOperativo && { estadoOperativo }),
       // Búsqueda por texto en múltiples campos (OR)
       ...(search && {
         OR: [

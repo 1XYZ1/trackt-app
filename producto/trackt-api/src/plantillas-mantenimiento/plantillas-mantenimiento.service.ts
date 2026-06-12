@@ -170,8 +170,13 @@ export class PlantillasMantenimientoService {
           frecuencia: this.normalizeOptional(dto.frecuencia),
         }),
         ...(dto.activo !== undefined && { activo: dto.activo }),
+        // null limpia la columna (DbNull = NULL SQL, coherente con el
+        // estado inicial de metadata Json?).
         ...(dto.metadata !== undefined && {
-          metadata: dto.metadata as Prisma.InputJsonValue,
+          metadata:
+            dto.metadata === null
+              ? Prisma.DbNull
+              : (dto.metadata as Prisma.InputJsonValue),
         }),
       },
       select: PLANTILLA_SELECT,
@@ -203,50 +208,68 @@ export class PlantillasMantenimientoService {
   ) {
     await this.requirePlantilla(tenantId, plantillaId);
 
-    // Repuesto del mismo tenant (mismo 404 si no existe o es ajeno).
-    const repuesto = await this.prisma.repuesto.findFirst({
-      where: { id: dto.repuestoId, tenantId },
-      select: { id: true, codigo: true, activo: true },
-    });
-    if (!repuesto) {
-      throw new NotFoundException(
-        `Repuesto con id "${dto.repuestoId}" no encontrado`,
-      );
-    }
-    if (!repuesto.activo) {
-      throw new ConflictException(
-        `El repuesto "${repuesto.codigo}" está inactivo y no puede agregarse a la plantilla`,
-      );
-    }
+    // Transacción: cierra la ventana check-activo → create (una
+    // desactivación concurrente del repuesto se detecta con el re-check
+    // post-create y revierte todo).
+    const created = await this.prisma.$transaction(async (tx) => {
+      // Repuesto del mismo tenant (mismo 404 si no existe o es ajeno).
+      const repuesto = await tx.repuesto.findFirst({
+        where: { id: dto.repuestoId, tenantId },
+        select: { id: true, codigo: true, activo: true },
+      });
+      if (!repuesto) {
+        throw new NotFoundException(
+          `Repuesto con id "${dto.repuestoId}" no encontrado`,
+        );
+      }
+      if (!repuesto.activo) {
+        throw new ConflictException(
+          `El repuesto "${repuesto.codigo}" está inactivo y no puede agregarse a la plantilla`,
+        );
+      }
 
-    const existing = await this.prisma.plantillaMantenimientoItem.findUnique({
-      where: {
-        tenantId_plantillaId_repuestoId: {
+      const existing = await tx.plantillaMantenimientoItem.findUnique({
+        where: {
+          tenantId_plantillaId_repuestoId: {
+            tenantId,
+            plantillaId,
+            repuestoId: dto.repuestoId,
+          },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `El repuesto "${repuesto.codigo}" ya está en esta plantilla`,
+        );
+      }
+
+      // Carrera create-create: la unique constraint dispara P2002 y el
+      // PrismaExceptionFilter global lo mapea a 409.
+      const row = await tx.plantillaMantenimientoItem.create({
+        data: {
           tenantId,
           plantillaId,
           repuestoId: dto.repuestoId,
+          cantidad: dto.cantidad,
+          obligatorio: dto.obligatorio,
+          observacion: this.normalizeOptional(dto.observacion),
         },
-      },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new ConflictException(
-        `El repuesto "${repuesto.codigo}" ya está en esta plantilla`,
-      );
-    }
+        include: ITEM_INCLUDE,
+      });
 
-    // Carrera create-create: la unique constraint dispara P2002 y el
-    // PrismaExceptionFilter global lo mapea a 409.
-    const created = await this.prisma.plantillaMantenimientoItem.create({
-      data: {
-        tenantId,
-        plantillaId,
-        repuestoId: dto.repuestoId,
-        cantidad: dto.cantidad,
-        obligatorio: dto.obligatorio,
-        observacion: dto.observacion,
-      },
-      include: ITEM_INCLUDE,
+      // Check-after-write: bajo read-committed, una desactivación commiteada
+      // entre el check inicial y el create se ve aquí y revierte la tx.
+      const fresh = await tx.repuesto.findUniqueOrThrow({
+        where: { id: dto.repuestoId },
+        select: { activo: true, codigo: true },
+      });
+      if (!fresh.activo) {
+        throw new ConflictException(
+          `El repuesto "${fresh.codigo}" está inactivo y no puede agregarse a la plantilla`,
+        );
+      }
+      return row;
     });
     return this.mapItem(created);
   }
@@ -283,7 +306,11 @@ export class PlantillasMantenimientoService {
       data: {
         ...(dto.cantidad !== undefined && { cantidad: dto.cantidad }),
         ...(dto.obligatorio !== undefined && { obligatorio: dto.obligatorio }),
-        ...(dto.observacion !== undefined && { observacion: dto.observacion }),
+        // ''→null: permite limpiar la observación, igual que los campos
+        // opcionales de la plantilla.
+        ...(dto.observacion !== undefined && {
+          observacion: this.normalizeOptional(dto.observacion),
+        }),
       },
       include: ITEM_INCLUDE,
     });
@@ -327,7 +354,9 @@ export class PlantillasMantenimientoService {
    * metadata.checklist es la versión simple del checklist: string[] de
    * pasos. Se valida la forma para que el frontend pueda confiar en ella.
    */
-  private assertChecklistValida(metadata?: Record<string, unknown>): void {
+  private assertChecklistValida(
+    metadata?: Record<string, unknown> | null,
+  ): void {
     if (!metadata || metadata.checklist === undefined) return;
 
     const checklist = metadata.checklist;

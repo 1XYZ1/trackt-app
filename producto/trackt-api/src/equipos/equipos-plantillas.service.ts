@@ -48,43 +48,61 @@ export class EquiposPlantillasService {
   async add(tenantId: string, equipoId: string, plantillaId: string) {
     await this.requireEquipo(tenantId, equipoId);
 
-    // Plantilla del mismo tenant (mismo 404 si no existe o es ajena).
-    const plantilla = await this.prisma.plantillaMantenimiento.findFirst({
-      where: { id: plantillaId, tenantId },
-      select: { id: true, nombre: true, activo: true },
-    });
-    if (!plantilla) {
-      throw new NotFoundException(
-        `Plantilla con id "${plantillaId}" no encontrada`,
-      );
-    }
-    if (!plantilla.activo) {
-      throw new ConflictException(
-        `La plantilla "${plantilla.nombre}" está inactiva y no puede asociarse a un equipo`,
-      );
-    }
+    // Transacción: cierra la ventana check-activo → create (una
+    // desactivación concurrente de la plantilla se detecta con el re-check
+    // post-create y revierte todo).
+    const created = await this.prisma.$transaction(async (tx) => {
+      // Plantilla del mismo tenant (mismo 404 si no existe o es ajena).
+      const plantilla = await tx.plantillaMantenimiento.findFirst({
+        where: { id: plantillaId, tenantId },
+        select: { id: true, nombre: true, activo: true },
+      });
+      if (!plantilla) {
+        throw new NotFoundException(
+          `Plantilla con id "${plantillaId}" no encontrada`,
+        );
+      }
+      if (!plantilla.activo) {
+        throw new ConflictException(
+          `La plantilla "${plantilla.nombre}" está inactiva y no puede asociarse a un equipo`,
+        );
+      }
 
-    const existing = await this.prisma.equipoPlantillaMantenimiento.findUnique({
-      where: {
-        tenantId_equipoId_plantillaId: {
-          tenantId,
-          equipoId,
-          plantillaId,
+      const existing = await tx.equipoPlantillaMantenimiento.findUnique({
+        where: {
+          tenantId_equipoId_plantillaId: {
+            tenantId,
+            equipoId,
+            plantillaId,
+          },
         },
-      },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new ConflictException(
-        `La plantilla "${plantilla.nombre}" ya está asociada a este equipo`,
-      );
-    }
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `La plantilla "${plantilla.nombre}" ya está asociada a este equipo`,
+        );
+      }
 
-    // Carrera create-create: la unique constraint dispara P2002 y el
-    // PrismaExceptionFilter global lo mapea a 409.
-    const created = await this.prisma.equipoPlantillaMantenimiento.create({
-      data: { tenantId, equipoId, plantillaId },
-      include: ASOCIACION_INCLUDE,
+      // Carrera create-create: la unique constraint dispara P2002 y el
+      // PrismaExceptionFilter global lo mapea a 409.
+      const row = await tx.equipoPlantillaMantenimiento.create({
+        data: { tenantId, equipoId, plantillaId },
+        include: ASOCIACION_INCLUDE,
+      });
+
+      // Check-after-write: bajo read-committed, una desactivación commiteada
+      // entre el check inicial y el create se ve aquí y revierte la tx.
+      const fresh = await tx.plantillaMantenimiento.findUniqueOrThrow({
+        where: { id: plantillaId },
+        select: { activo: true, nombre: true },
+      });
+      if (!fresh.activo) {
+        throw new ConflictException(
+          `La plantilla "${fresh.nombre}" está inactiva y no puede asociarse a un equipo`,
+        );
+      }
+      return row;
     });
     return this.mapAsociacion(created);
   }

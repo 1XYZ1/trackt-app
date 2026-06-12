@@ -8,6 +8,7 @@ import {
   OrdenTrabajoEstado,
   Prisma,
   ProgramacionMantenimientoEstado,
+  TicketEstado,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/types';
@@ -116,12 +117,14 @@ export class ProgramacionesMantenimientoService {
    */
   async calendario(tenantId: string, query: CalendarioQueryDto) {
     const desde = this.parseFecha(query.desde, 'desde');
-    const hasta = this.parseFecha(query.hasta, 'hasta');
-    if (desde > hasta) {
+    const hasta = this.parseFechaHasta(query.hasta);
+    // Las validaciones de rango usan la fecha original (no el límite +1d):
+    // desde=hasta del mismo día sigue siendo válido.
+    if (desde > hasta.fecha) {
       throw new BadRequestException('desde no puede ser posterior a hasta');
     }
     if (
-      hasta.getTime() - desde.getTime() >
+      hasta.fecha.getTime() - desde.getTime() >
       CALENDARIO_RANGO_MAX_DIAS * MS_POR_DIA
     ) {
       throw new BadRequestException(
@@ -130,7 +133,13 @@ export class ProgramacionesMantenimientoService {
     }
 
     const rows = await this.prisma.programacionMantenimiento.findMany({
-      where: { tenantId, fechaProgramada: { gte: desde, lte: hasta } },
+      where: {
+        tenantId,
+        fechaProgramada: {
+          gte: desde,
+          ...(hasta.exclusivo ? { lt: hasta.limite } : { lte: hasta.limite }),
+        },
+      },
       include: PROGRAMACION_INCLUDE,
       orderBy: { fechaProgramada: 'asc' },
     });
@@ -261,8 +270,15 @@ export class ProgramacionesMantenimientoService {
       await this.requireResponsable(tenantId, dto.responsableId);
     }
 
-    return this.prisma.programacionMantenimiento.update({
-      where: { id },
+    // Guard anti-TOCTOU (mismo patrón que cancelar): el write va condicionado
+    // al estado — una cancelación o generación concurrente entre el check
+    // inicial y este punto deja count=0 en vez de pisar la fila.
+    const result = await this.prisma.programacionMantenimiento.updateMany({
+      where: {
+        id,
+        tenantId,
+        estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+      },
       data: {
         ...(titulo !== undefined && { titulo }),
         ...(dto.descripcion !== undefined && {
@@ -283,8 +299,23 @@ export class ProgramacionesMantenimientoService {
           metadata: dto.metadata as Prisma.InputJsonValue,
         }),
       },
-      include: PROGRAMACION_INCLUDE,
     });
+    if (result.count === 0) {
+      const actual = await this.prisma.programacionMantenimiento.findFirst({
+        where: { id, tenantId },
+        select: { estado: true },
+      });
+      if (!actual) {
+        throw new NotFoundException(
+          `Programación con id "${id}" no encontrada`,
+        );
+      }
+      throw new ConflictException(
+        `Solo se pueden editar programaciones en estado PROGRAMADA (actual: ${actual.estado})`,
+      );
+    }
+
+    return this.findOne(tenantId, id);
   }
 
   /**
@@ -426,18 +457,38 @@ export class ProgramacionesMantenimientoService {
         metadata: trazabilidad,
       });
 
-      const ticket = await this.tickets.crearEnTx(
-        tx,
-        tenantId,
-        user.id,
-        ot.id,
-        {
-          titulo: programacion.titulo,
-          descripcion,
-          prioridad: programacion.prioridad,
-          metadata: trazabilidad,
-        },
-      );
+      let ticket = await this.tickets.crearEnTx(tx, tenantId, user.id, ot.id, {
+        titulo: programacion.titulo,
+        descripcion,
+        prioridad: programacion.prioridad,
+        metadata: trazabilidad,
+      });
+
+      // mechanic genera para sí mismo: el ticket nace PENDIENTE (crearEnTx)
+      // y se auto-asigna en la misma tx, replicando la semántica de
+      // asignar() — sin esto el mechanic no vería el ticket que generó
+      // (findAll fuerza mecanicoId=user.id) y el modo SUGERIDA quedaría
+      // sin salida (crear la reserva exige ser el mecánico asignado).
+      // jefeId conserva lo que setea crearEnTx (creador/asignador).
+      if (user.role === 'mechanic') {
+        ticket = await tx.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            estado: TicketEstado.ASIGNADO,
+            mecanicoId: user.id,
+            fechaAsignacion: new Date(),
+          },
+        });
+        await tx.eventoEstadoTicket.create({
+          data: {
+            ticketId: ticket.id,
+            estadoAnterior: TicketEstado.PENDIENTE,
+            estadoNuevo: TicketEstado.ASIGNADO,
+            usuarioId: user.id,
+            observacion: 'Auto-asignado al generar OT desde programación',
+          },
+        });
+      }
 
       // La OT nace PENDIENTE y su primer ticket la mueve a EN_PROCESO
       // (misma semántica que el hook onTicketCreated, pero atómica).
@@ -480,8 +531,15 @@ export class ProgramacionesMantenimientoService {
         );
       }
 
-      // Trazabilidad: la programación recuerda qué generó.
-      const metadataActual = (programacion.metadata ?? {}) as Record<
+      // Trazabilidad: la programación recuerda qué generó. La metadata se
+      // relee dentro de la tx — la del findFirst inicial es pre-tx y un
+      // PATCH concurrente en el medio se pisaría (last-write-wins stale).
+      const freshProgramacion =
+        await tx.programacionMantenimiento.findUniqueOrThrow({
+          where: { id },
+          select: { metadata: true },
+        });
+      const metadataActual = (freshProgramacion.metadata ?? {}) as Record<
         string,
         unknown
       >;
@@ -549,9 +607,17 @@ export class ProgramacionesMantenimientoService {
       return [];
     }
 
-    const ajustePorRepuesto = new Map(
-      (ajustes ?? []).map((a) => [a.repuestoId, a.cantidad]),
-    );
+    // Duplicados: un Map haría last-write-wins silencioso e indeterminado
+    // para el cliente — mejor 400 explícito.
+    const ajustePorRepuesto = new Map<string, number>();
+    for (const ajuste of ajustes ?? []) {
+      if (ajustePorRepuesto.has(ajuste.repuestoId)) {
+        throw new BadRequestException(
+          `ajustarItems repite el repuesto "${ajuste.repuestoId}"`,
+        );
+      }
+      ajustePorRepuesto.set(ajuste.repuestoId, ajuste.cantidad);
+    }
     const idsPlantilla = new Set(plantilla.items.map((i) => i.repuestoId));
     for (const repuestoId of ajustePorRepuesto.keys()) {
       if (!idsPlantilla.has(repuestoId)) {
@@ -562,19 +628,30 @@ export class ProgramacionesMantenimientoService {
     }
 
     return plantilla.items
-      .map((item) => ({
-        repuestoId: item.repuestoId,
-        cantidad: ajustePorRepuesto.get(item.repuestoId) ?? item.cantidad,
-        obligatorio: item.obligatorio,
-        repuesto: {
-          codigo: item.repuesto.codigo,
-          nombre: item.repuesto.nombre,
-          unidad: item.repuesto.unidad,
-          stockDisponible:
-            (item.repuesto.stock?.stockActual ?? 0) -
-            (item.repuesto.stock?.stockReservado ?? 0),
-        },
-      }))
+      .map((item) => {
+        const cantidad =
+          ajustePorRepuesto.get(item.repuestoId) ?? item.cantidad;
+        // Los items de plantilla tienen cantidad >= 1: un 0 solo puede venir
+        // de ajustarItems, y los obligatorios no se pueden excluir.
+        if (item.obligatorio && cantidad === 0) {
+          throw new BadRequestException(
+            `El insumo obligatorio "${item.repuesto.codigo}" no puede excluirse de la reserva (cantidad 0)`,
+          );
+        }
+        return {
+          repuestoId: item.repuestoId,
+          cantidad,
+          obligatorio: item.obligatorio,
+          repuesto: {
+            codigo: item.repuesto.codigo,
+            nombre: item.repuesto.nombre,
+            unidad: item.repuesto.unidad,
+            stockDisponible:
+              (item.repuesto.stock?.stockActual ?? 0) -
+              (item.repuesto.stock?.stockReservado ?? 0),
+          },
+        };
+      })
       .filter((item) => item.cantidad > 0);
   }
 
@@ -624,11 +701,35 @@ export class ProgramacionesMantenimientoService {
   ): Prisma.DateTimeFilter | undefined {
     if (!desde && !hasta) return undefined;
     const gte = desde ? this.parseFecha(desde, 'desde') : undefined;
-    const lte = hasta ? this.parseFecha(hasta, 'hasta') : undefined;
-    if (gte && lte && gte > lte) {
+    const h = hasta ? this.parseFechaHasta(hasta) : undefined;
+    if (gte && h && gte > h.fecha) {
       throw new BadRequestException('desde no puede ser posterior a hasta');
     }
-    return { ...(gte && { gte }), ...(lte && { lte }) };
+    return {
+      ...(gte && { gte }),
+      ...(h && (h.exclusivo ? { lt: h.limite } : { lte: h.limite })),
+    };
+  }
+
+  /**
+   * "hasta" date-only (YYYY-MM-DD) se interpreta como fin de día — el
+   * contrato es inclusivo, y parsearlo como T00:00:00Z con lte excluiría
+   * casi todo el último día del rango. Con hora explícita queda lte exacto.
+   */
+  private parseFechaHasta(value: string): {
+    fecha: Date;
+    limite: Date;
+    exclusivo: boolean;
+  } {
+    const fecha = this.parseFecha(value, 'hasta');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return {
+        fecha,
+        limite: new Date(fecha.getTime() + MS_POR_DIA),
+        exclusivo: true,
+      };
+    }
+    return { fecha, limite: fecha, exclusivo: false };
   }
 
   private parseFecha(value: string, campo: string): Date {
