@@ -2,6 +2,7 @@ import {
   EquipoEstadoOperativo,
   OrdenTrabajoEstado,
   Prioridad,
+  ProgramacionMantenimientoEstado,
   TicketEstado,
 } from '@prisma/client';
 
@@ -43,6 +44,15 @@ export interface TicketResumenDto {
   createdAt: Date;
 }
 
+export interface ProgramacionResumenDto {
+  id: string;
+  titulo: string;
+  fechaProgramada: Date;
+  estado: ProgramacionMantenimientoEstado;
+  prioridad: Prioridad;
+  plantilla: { id: string; nombre: string } | null;
+}
+
 export interface EquipoResumenDto {
   equipo: {
     id: string;
@@ -65,8 +75,7 @@ export interface EquipoResumenDto {
   estadisticas: EquipoEstadisticasDto;
   ultimasOrdenes: OrdenResumenDto[];
   ultimosTickets: TicketResumenDto[];
-  // Programaciones de mantenimiento: se completa en Fase 4 (calendario).
-  // Se expone desde ya para que el frontend pueda consumir la forma final.
-  proximasProgramaciones: unknown[];
+  // Próximas 5 programaciones PROGRAMADA con fecha >= hoy (Fase 4).
+  proximasProgramaciones: ProgramacionResumenDto[];
   alertas: EquipoAlertaDto[];
 }

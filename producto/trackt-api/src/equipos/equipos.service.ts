@@ -20,6 +20,7 @@ import {
   OrdenTrabajoEstado,
   Prioridad,
   Prisma,
+  ProgramacionMantenimientoEstado,
   ReservaRepuestoEstado,
   TicketEstado,
   MovimientoInventarioTipo,
@@ -337,7 +338,7 @@ export class EquiposService {
    * - ordenesCerradas cuenta solo CERRADA (CANCELADA no es un cierre operativo).
    * - repuestosConsumidos = unidades consumidas (suma de movimientos CONSUMO,
    *   en valor absoluto: CONSUMO registra cantidad negativa).
-   * - proximasProgramaciones queda vacío hasta Fase 4 (calendario).
+   * - proximasProgramaciones: las 5 próximas PROGRAMADA desde hoy (Fase 4).
    */
   async resumen(tenantId: string, id: string): Promise<EquipoResumenDto> {
     const equipo = await this.prisma.equipo.findFirst({
@@ -355,6 +356,11 @@ export class EquiposService {
       ot: { equipoId: id },
     };
 
+    // Próximas programaciones: solo PROGRAMADA desde hoy (inicio de día UTC,
+    // para no esconder las de hoy por la hora).
+    const desdeHoy = new Date();
+    desdeHoy.setUTCHours(0, 0, 0, 0);
+
     const [
       ordenesAbiertas,
       ordenesCerradas,
@@ -365,6 +371,7 @@ export class EquiposService {
       ultimasOrdenes,
       ultimosTickets,
       otsAltaAbiertas,
+      proximasProgramaciones,
     ] = await this.prisma.$transaction([
       this.prisma.ordenTrabajo.count({
         where: {
@@ -433,6 +440,24 @@ export class EquiposService {
           prioridad: Prioridad.ALTA,
         },
       }),
+      this.prisma.programacionMantenimiento.findMany({
+        where: {
+          tenantId,
+          equipoId: id,
+          estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+          fechaProgramada: { gte: desdeHoy },
+        },
+        select: {
+          id: true,
+          titulo: true,
+          fechaProgramada: true,
+          estado: true,
+          prioridad: true,
+          plantilla: { select: { id: true, nombre: true } },
+        },
+        orderBy: { fechaProgramada: 'asc' },
+        take: 5,
+      }),
     ]);
 
     const alertas: EquipoAlertaDto[] = [];
@@ -475,7 +500,7 @@ export class EquiposService {
       },
       ultimasOrdenes,
       ultimosTickets,
-      proximasProgramaciones: [],
+      proximasProgramaciones,
       alertas,
     };
   }

@@ -87,6 +87,17 @@ enum MarcaTipo {
   AMBOS
 }
 
+// Ciclo de vida de una programación de mantenimiento:
+// PROGRAMADA → GENERADA (se creó la OT, Fase 5) / CANCELADA.
+// VENCIDA y COMPLETADA se setean en Fase 5 (job de vencimiento / cierre de OT).
+enum ProgramacionMantenimientoEstado {
+  PROGRAMADA
+  GENERADA
+  CANCELADA
+  VENCIDA
+  COMPLETADA
+}
+
 // =========================
 // Modelos
 // =========================
@@ -110,6 +121,7 @@ model Tenant {
   plantillas        PlantillaMantenimiento[]
   plantillasItems   PlantillaMantenimientoItem[]
   equiposPlantillas EquipoPlantillaMantenimiento[]
+  programaciones    ProgramacionMantenimiento[]
 
   @@map("tenants")
 }
@@ -135,10 +147,11 @@ model Equipo {
   createdAt        DateTime              @default(now()) @map("created_at")
   updatedAt        DateTime              @updatedAt @map("updated_at")
 
-  tenant     Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ordenes    OrdenTrabajo[]
-  repuestos  EquipoRepuesto[]
-  plantillas EquipoPlantillaMantenimiento[]
+  tenant         Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ordenes        OrdenTrabajo[]
+  repuestos      EquipoRepuesto[]
+  plantillas     EquipoPlantillaMantenimiento[]
+  programaciones ProgramacionMantenimiento[]
 
   @@unique([tenantId, codigo])
   @@index([tenantId])
@@ -204,9 +217,10 @@ model PlantillaMantenimiento {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant  Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  items   PlantillaMantenimientoItem[]
-  equipos EquipoPlantillaMantenimiento[]
+  tenant         Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items          PlantillaMantenimientoItem[]
+  equipos        EquipoPlantillaMantenimiento[]
+  programaciones ProgramacionMantenimiento[]
 
   @@index([tenantId, activo])
   @@index([tenantId, tipoEquipo])
@@ -250,6 +264,36 @@ model EquipoPlantillaMantenimiento {
   @@index([tenantId, equipoId])
   @@index([plantillaId])
   @@map("equipos_plantillas_mantenimiento")
+}
+
+// Programación de mantenimiento: trabajo futuro planificado sobre un equipo,
+// opcionalmente basado en una plantilla. En Fase 5 genera OT/tickets
+// (estado GENERADA) y reserva insumos desde la plantilla.
+model ProgramacionMantenimiento {
+  id              String                          @id @default(cuid())
+  tenantId        String                          @map("tenant_id")
+  equipoId        String                          @map("equipo_id")
+  plantillaId     String?                         @map("plantilla_id")
+  titulo          String
+  descripcion     String?
+  fechaProgramada DateTime                        @map("fecha_programada")
+  responsableId   String?                         @map("responsable_id") // auth.users.id
+  prioridad       Prioridad                       @default(MEDIA)
+  estado          ProgramacionMantenimientoEstado @default(PROGRAMADA)
+  recurrencia     String? // texto libre ("mensual", "cada 500 horas"); se materializa al generar OT (Fase 5)
+  metadata        Json?
+  createdAt       DateTime                        @default(now()) @map("created_at")
+  updatedAt       DateTime                        @updatedAt @map("updated_at")
+
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  equipo    Equipo                  @relation(fields: [equipoId], references: [id])
+  plantilla PlantillaMantenimiento? @relation(fields: [plantillaId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, fechaProgramada])
+  @@index([tenantId, equipoId])
+  @@index([tenantId, estado])
+  @@index([plantillaId])
+  @@map("programaciones_mantenimiento")
 }
 
 model OrdenTrabajo {

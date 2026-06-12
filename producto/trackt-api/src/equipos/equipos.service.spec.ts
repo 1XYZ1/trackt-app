@@ -35,6 +35,9 @@ function buildPrismaMock() {
     movimientoInventario: {
       aggregate: jest.fn(),
     },
+    programacionMantenimiento: {
+      findMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -468,6 +471,9 @@ describe('EquiposService', () => {
       });
       prisma.ordenTrabajo.findMany.mockResolvedValue([{ id: 'ot-1' }]);
       prisma.ticket.findMany.mockResolvedValue([{ id: 'tkt-1' }]);
+      prisma.programacionMantenimiento.findMany.mockResolvedValue([
+        { id: 'prog-1' },
+      ]);
     }
 
     it('devuelve la ficha con estadísticas y consumos en valor absoluto', async () => {
@@ -485,8 +491,24 @@ describe('EquiposService', () => {
       });
       expect(result.ultimasOrdenes).toEqual([{ id: 'ot-1' }]);
       expect(result.ultimosTickets).toEqual([{ id: 'tkt-1' }]);
-      expect(result.proximasProgramaciones).toEqual([]); // Fase 4
+      expect(result.proximasProgramaciones).toEqual([{ id: 'prog-1' }]);
       expect(result.alertas).toEqual([]);
+    });
+
+    it('pide las próximas programaciones PROGRAMADA desde hoy, scoped al equipo', async () => {
+      mockResumenData();
+
+      await service.resumen(TENANT, EQUIPO_ID);
+
+      const args = prisma.programacionMantenimiento.findMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        tenantId: TENANT,
+        equipoId: EQUIPO_ID,
+        estado: 'PROGRAMADA',
+      });
+      expect(args.where.fechaProgramada.gte).toBeInstanceOf(Date);
+      expect(args.orderBy).toEqual({ fechaProgramada: 'asc' });
+      expect(args.take).toBe(5);
     });
 
     it('todas las consultas van scoped por tenant y equipo', async () => {

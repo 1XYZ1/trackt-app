@@ -1,5 +1,63 @@
 # Trackt API — Notas de proyecto
 
+## Fase 4: calendario y programación de mantenimiento (2026-06)
+
+Una programación es un trabajo futuro planificado sobre un equipo,
+opcionalmente basado en una plantilla. En Fase 5 genera OT/tickets
+(estado → GENERADA) y reserva insumos desde la plantilla.
+
+### Modelo nuevo
+
+- `ProgramacionMantenimiento` (`programaciones_mantenimiento`): equipo,
+  plantilla opcional (FK `SetNull`), titulo, fechaProgramada,
+  `responsableId` (auth.users.id, validado contra `public.profiles` del
+  tenant — mismo patrón que la asignación de tickets), prioridad, estado
+  y `recurrencia` (texto libre; se materializa al generar la siguiente
+  ocurrencia en Fase 5).
+- Estado: enum `ProgramacionMantenimientoEstado`
+  (`PROGRAMADA | GENERADA | CANCELADA | VENCIDA | COMPLETADA`) — enum y no
+  String por consistencia con el schema. Transiciones implementadas:
+  `PROGRAMADA → CANCELADA` (endpoint, guard anti-TOCTOU con updateMany
+  condicionado). `GENERADA`/`VENCIDA`/`COMPLETADA` las setea la Fase 5
+  (generación de OT / job de vencimiento / cierre).
+
+Migración: `supabase/migrations/20260611180000_programaciones_mantenimiento.sql`
+(idempotente, RLS lectura tenant / escritura admin+jefe_taller).
+
+### Endpoints nuevos
+
+| Método | Path                                          | Roles                        | Descripción                                  |
+| ------ | --------------------------------------------- | ---------------------------- | -------------------------------------------- |
+| GET    | `/programaciones-mantenimiento`               | admin, jefe_taller, mechanic | Lista paginada. Filtros: `desde`, `hasta`, `equipoId`, `estado`, `responsableId`, `plantillaId`. |
+| GET    | `/programaciones-mantenimiento/calendario`    | admin, jefe_taller, mechanic | Eventos planos `{ id, title, start, estado, prioridad, equipo, plantilla }`. Rango obligatorio, máx 366 días. |
+| GET    | `/programaciones-mantenimiento/:id`           | admin, jefe_taller, mechanic | Detalle con equipo y plantilla. |
+| POST   | `/programaciones-mantenimiento`               | admin, jefe_taller           | Crea. `titulo` opcional si hay plantilla (usa su nombre). |
+| PATCH  | `/programaciones-mantenimiento/:id`           | admin, jefe_taller           | Edita **solo en estado PROGRAMADA** (409 si no). `plantillaId`/`responsableId: null` desvinculan. |
+| PATCH  | `/programaciones-mantenimiento/:id/cancelar`  | admin, jefe_taller           | `PROGRAMADA → CANCELADA` (409 desde otros estados). |
+
+### Validaciones
+
+- Equipo del tenant (404) y activo (409 si está de baja).
+- Plantilla del tenant (404) y **activa** (409) — el compromiso que dejó
+  la Fase 3 para acá.
+- `fechaProgramada` válida y no en el pasado (se compara contra el inicio
+  del día UTC para no rechazar "hoy").
+- `responsableId` debe existir en `public.profiles` del tenant (404).
+- Rango `desde`/`hasta` consistente (400 si invertido).
+
+### Integración con la ficha del equipo
+
+`GET /equipos/:id/resumen` ahora completa `proximasProgramaciones`
+(pendiente desde Fase 1): las próximas 5 `PROGRAMADA` con fecha >= hoy,
+con `{ id, titulo, fechaProgramada, estado, prioridad, plantilla }`.
+
+### Pendientes para Fase 5
+
+- Generar OT/tickets desde programaciones (PROGRAMADA → GENERADA) y crear
+  la siguiente ocurrencia según `recurrencia`.
+- Job/criterio para marcar `VENCIDA` y cierre a `COMPLETADA`.
+- Reserva de insumos desde la plantilla al generar la OT.
+
 ## Fase 3: plantillas de mantenimiento con insumos (2026-06)
 
 Una plantilla es una "receta" reutilizable de mantención: checklist de pasos
