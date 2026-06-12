@@ -1,5 +1,12 @@
+import { EquipoEstadoOperativo } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 export class ListEquiposQueryDto extends PaginationQueryDto {
@@ -7,6 +14,10 @@ export class ListEquiposQueryDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(100)
   search?: string;
+
+  @IsOptional()
+  @IsEnum(EquipoEstadoOperativo)
+  estadoOperativo?: EquipoEstadoOperativo;
 
   // Acepta 'true'/'false' como string (querystring) o boolean.
   @IsOptional()

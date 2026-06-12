@@ -65,10 +65,7 @@ export class EvidenciasController {
 
   @Roles('admin', 'jefe_taller', 'mechanic')
   @Get(':id/evidencias')
-  async list(
-    @Req() req: RequestWithUser,
-    @Param('id') ticketId: string,
-  ) {
+  async list(@Req() req: RequestWithUser, @Param('id') ticketId: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.evidenciasService.listForTicket(tenantId, req.user, ticketId);
   }

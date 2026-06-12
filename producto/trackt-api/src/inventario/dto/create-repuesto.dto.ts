@@ -47,6 +47,30 @@ export class CreateRepuestoDto {
   @Min(0)
   stockInicial?: number;
 
+  // Referencia al catálogo de marcas (ámbito REPUESTO o AMBOS).
+  // IsNotEmpty: '' es falsy y esquivaría assertMarcaUsable en el service,
+  // terminando en una violación FK genérica en vez de un 404 claro.
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  marcaId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  codigoFabricante?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  ubicacionBodega?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  proveedor?: string;
+
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;

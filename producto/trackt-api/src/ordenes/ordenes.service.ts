@@ -101,30 +101,55 @@ export class OrdenesService {
       );
     }
 
+    return this.prisma.$transaction((tx) =>
+      this.crearEnTx(tx, tenantId, userId, {
+        equipoId: dto.equipoId,
+        descripcion: dto.descripcion,
+        prioridad: dto.prioridad,
+      }),
+    );
+  }
+
+  /**
+   * Núcleo de creación de OT, ejecutable dentro de una transacción existente.
+   * Lo usan create (endpoint) y la generación desde programaciones (Fase 5).
+   * Toma el advisory lock de secuencia y calcula el código OT-YYYY-NNNN;
+   * NO valida el equipo — responsabilidad del caller.
+   */
+  async crearEnTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    userId: string,
+    params: {
+      equipoId: string;
+      descripcion: string;
+      prioridad?: Prioridad;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
     const year = new Date().getUTCFullYear();
     const lockKey = `ot:${tenantId}:${year}`;
 
-    return this.prisma.$transaction(async (tx) => {
-      // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
-      // y $queryRaw intenta deserializar la columna → P2010.
-      await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
-      `;
+    // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
+    // y $queryRaw intenta deserializar la columna → P2010.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+    `;
 
-      const codigo = await this.nextCodigo(tx, tenantId, year);
+    const codigo = await this.nextCodigo(tx, tenantId, year);
 
-      return tx.ordenTrabajo.create({
-        data: {
-          tenantId,
-          codigo,
-          equipoId: dto.equipoId,
-          descripcion: dto.descripcion,
-          prioridad: dto.prioridad ?? Prioridad.MEDIA,
-          estado: OrdenTrabajoEstado.PENDIENTE,
-          creadoPorId: userId,
-        },
-        select: LIST_SELECT,
-      });
+    return tx.ordenTrabajo.create({
+      data: {
+        tenantId,
+        codigo,
+        equipoId: params.equipoId,
+        descripcion: params.descripcion,
+        prioridad: params.prioridad ?? Prioridad.MEDIA,
+        estado: OrdenTrabajoEstado.PENDIENTE,
+        creadoPorId: userId,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+      },
+      select: LIST_SELECT,
     });
   }
 

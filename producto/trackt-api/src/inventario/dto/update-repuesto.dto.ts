@@ -53,6 +53,35 @@ export class UpdateRepuestoDto {
   @IsBoolean()
   activo?: boolean;
 
+  // marcaId / codigoFabricante / ubicacionBodega / proveedor aceptan null
+  // para limpiar el campo. undefined = no tocar.
+  // IsNotEmpty: '' es falsy y esquivaría assertMarcaUsable en el service;
+  // para limpiar la marca se envía null, no string vacío.
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  marcaId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(80)
+  codigoFabricante?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(120)
+  ubicacionBodega?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(120)
+  proveedor?: string | null;
+
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
