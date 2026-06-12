@@ -80,6 +80,13 @@ enum EquipoEstadoOperativo {
   FUERA_DE_SERVICIO
 }
 
+// Ámbito de una marca dentro del catálogo: para equipos, repuestos o ambos.
+enum MarcaTipo {
+  EQUIPO
+  REPUESTO
+  AMBOS
+}
+
 // =========================
 // Modelos
 // =========================
@@ -91,13 +98,15 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  equipos        Equipo[]
-  ordenes        OrdenTrabajo[]
-  tickets        Ticket[]
-  notificaciones Notificacion[]
-  repuestos      Repuesto[]
-  reservas       ReservaRepuesto[]
-  movimientos    MovimientoInventario[]
+  equipos          Equipo[]
+  ordenes          OrdenTrabajo[]
+  tickets          Ticket[]
+  notificaciones   Notificacion[]
+  repuestos        Repuesto[]
+  reservas         ReservaRepuesto[]
+  movimientos      MovimientoInventario[]
+  marcas           Marca[]
+  equiposRepuestos EquipoRepuesto[]
 
   @@map("tenants")
 }
@@ -123,14 +132,57 @@ model Equipo {
   createdAt        DateTime              @default(now()) @map("created_at")
   updatedAt        DateTime              @updatedAt @map("updated_at")
 
-  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ordenes OrdenTrabajo[]
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ordenes   OrdenTrabajo[]
+  repuestos EquipoRepuesto[]
 
   @@unique([tenantId, codigo])
   @@index([tenantId])
   @@index([tenantId, activo])
   @@index([tenantId, estadoOperativo])
   @@map("equipos")
+}
+
+// Catálogo de marcas (datos maestros) para equipos y repuestos.
+// Equipo.marca (texto libre) se mantiene por compatibilidad; la migración
+// progresiva a marcaId se hará cuando el frontend consuma el catálogo.
+model Marca {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  nombre    String
+  tipo      MarcaTipo
+  activo    Boolean   @default(true)
+  metadata  Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  repuestos Repuesto[]
+
+  @@unique([tenantId, nombre, tipo])
+  @@index([tenantId, activo])
+  @@map("marcas")
+}
+
+// Repuestos/insumos habituales de un equipo. Base para plantillas de
+// mantenimiento y reservas asistidas (fases siguientes).
+model EquipoRepuesto {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  equipoId    String   @map("equipo_id")
+  repuestoId  String   @map("repuesto_id")
+  cantidadRef Int?     @map("cantidad_ref") // cantidad de referencia por mantención
+  observacion String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  equipo   Equipo   @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+  repuesto Repuesto @relation(fields: [repuestoId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, equipoId, repuestoId])
+  @@index([tenantId, equipoId])
+  @@index([repuestoId])
+  @@map("equipos_repuestos")
 }
 
 model OrdenTrabajo {
@@ -245,26 +297,33 @@ model Notificacion {
 // =========================
 
 model Repuesto {
-  id           String   @id @default(cuid())
-  tenantId     String   @map("tenant_id")
-  codigo       String
-  nombre       String
-  descripcion  String?
-  categoria    String?
-  unidad       String   @default("unidad")
-  stockMinimo  Int      @default(0) @map("stock_minimo")
-  activo       Boolean  @default(true)
-  metadata     Json?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(cuid())
+  tenantId         String   @map("tenant_id")
+  codigo           String
+  nombre           String
+  descripcion      String?
+  categoria        String?
+  unidad           String   @default("unidad")
+  stockMinimo      Int      @default(0) @map("stock_minimo")
+  marcaId          String?  @map("marca_id")
+  codigoFabricante String?  @map("codigo_fabricante")
+  ubicacionBodega  String?  @map("ubicacion_bodega")
+  proveedor        String?
+  activo           Boolean  @default(true)
+  metadata         Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marca       Marca?                 @relation(fields: [marcaId], references: [id], onDelete: SetNull)
   stock       InventarioStock?
   items       ReservaRepuestoItem[]
   movimientos MovimientoInventario[]
+  equipos     EquipoRepuesto[]
 
   @@unique([tenantId, codigo])
   @@index([tenantId, activo])
+  @@index([marcaId])
   @@map("repuestos")
 }
 

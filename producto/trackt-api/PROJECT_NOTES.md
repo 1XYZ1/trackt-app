@@ -1,5 +1,46 @@
 # Trackt API — Notas de proyecto
 
+## Fase 2: marcas, catálogos y repuestos por equipo (2026-06)
+
+Datos maestros para equipos/inventario y la base de las plantillas de
+mantenimiento (Fase 3+): poder decir "este equipo usa normalmente estos
+repuestos".
+
+### Modelos nuevos
+
+- `Marca` (`marcas`): catálogo por tenant. `tipo` es enum `MarcaTipo`
+  (`EQUIPO | REPUESTO | AMBOS`) — se eligió enum en vez de String por
+  consistencia con el resto del schema. Unique `(tenantId, nombre, tipo)`;
+  el dup check del service es case-insensitive.
+- `EquipoRepuesto` (`equipos_repuestos`): repuestos habituales de un equipo.
+  Unique `(tenantId, equipoId, repuestoId)`; `cantidadRef` opcional (> 0,
+  CHECK en BD); FK repuesto con `onDelete: Restrict`.
+- `Repuesto` gana `marcaId` (FK `SetNull`), `codigoFabricante`,
+  `ubicacionBodega`, `proveedor`. Compatibilidad: `Equipo.marca` (texto
+  libre) NO se migra aún — la adopción de `marcaId` en equipos será
+  progresiva cuando el frontend consuma el catálogo.
+
+Migración: `supabase/migrations/20260611000000_marcas_equipos_repuestos.sql`
+(idempotente, con RLS: lectura tenant / escritura admin para marcas;
+lectura tenant / escritura admin+jefe_taller para equipos_repuestos).
+
+### Endpoints nuevos
+
+| Método | Path                                  | Roles                        | Descripción                                  |
+| ------ | ------------------------------------- | ---------------------------- | -------------------------------------------- |
+| GET    | `/marcas`                              | admin, jefe_taller, mechanic | Lista paginada. `tipo` filtra por ámbito (REPUESTO incluye AMBOS). |
+| POST   | `/marcas`                              | admin                        | Crea marca (nombre trim, 409 dup case-insensitive). |
+| PATCH  | `/marcas/:id`                          | admin                        | Edita nombre/tipo/metadata; `activo: true` reactiva. |
+| PATCH  | `/marcas/:id/desactivar`               | admin                        | Baja lógica (no toca repuestos que la referencian). |
+| GET    | `/equipos/:id/repuestos`               | admin, jefe_taller, mechanic | Repuestos habituales del equipo (con stock disponible). |
+| POST   | `/equipos/:id/repuestos`               | admin, jefe_taller           | Asocia repuesto (`{ repuestoId, cantidadRef?, observacion? }`). 409 dup/inactivo. |
+| DELETE | `/equipos/:id/repuestos/:repuestoId`   | admin, jefe_taller           | Quita la asociación. |
+
+Inventario: `POST/PATCH /inventario/repuestos` aceptan `marcaId` (debe ser
+marca del tenant, activa, ámbito REPUESTO/AMBOS — 404/409 si no),
+`codigoFabricante`, `ubicacionBodega`, `proveedor`; `GET /inventario/repuestos`
+filtra por `marcaId` y el detalle incluye `marca { id, nombre }`.
+
 ## Módulo `equipos` — Fase 1: ficha central (2026-06)
 
 El equipo es el eje de la app: la OT y los tickets son parte de su historial.
