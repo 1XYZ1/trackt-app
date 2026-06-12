@@ -1,5 +1,59 @@
 # Trackt API — Notas de proyecto
 
+## Fase 3: plantillas de mantenimiento con insumos (2026-06)
+
+Una plantilla es una "receta" reutilizable de mantención: checklist de pasos
+e insumos sugeridos. En fases 4+ alimenta programaciones de calendario,
+generación de OT/tickets y reservas de inventario.
+
+### Modelos nuevos
+
+- `PlantillaMantenimiento` (`plantillas_mantenimiento`): nombre, descripcion,
+  `tipoEquipo` (texto libre, matchea `Equipo.tipo`), `frecuencia` (texto
+  libre — "mensual", "500 horas" — se formaliza en Fase 4), `activo`,
+  `metadata`. El checklist vive en `metadata.checklist` como `string[]`.
+- `PlantillaMantenimientoItem` (`plantillas_mantenimiento_items`): insumo
+  sugerido. Unique `(tenantId, plantillaId, repuestoId)`; `cantidad > 0`
+  (CHECK en BD); `obligatorio` (default true) distingue insumos que la
+  reserva podrá omitir; FK repuesto `onDelete: Restrict`.
+- `EquipoPlantillaMantenimiento` (`equipos_plantillas_mantenimiento`): qué
+  plantillas aplican a cada equipo. Unique `(tenantId, equipoId, plantillaId)`;
+  FKs equipo/plantilla `Cascade`.
+
+Migración: `supabase/migrations/20260611120000_plantillas_mantenimiento.sql`
+(idempotente, RLS: lectura tenant / escritura admin+jefe_taller en las 3
+tablas — mismo criterio que `equipos_repuestos`).
+
+### Endpoints nuevos
+
+| Método | Path                                             | Roles                        | Descripción                                  |
+| ------ | ------------------------------------------------ | ---------------------------- | -------------------------------------------- |
+| GET    | `/plantillas-mantenimiento`                      | admin, jefe_taller, mechanic | Lista paginada (+`itemsCount`). Filtros: `search`, `tipoEquipo`, `includeInactive`. |
+| GET    | `/plantillas-mantenimiento/:id`                  | admin, jefe_taller, mechanic | Detalle con items (repuesto + stock disponible). |
+| POST   | `/plantillas-mantenimiento`                      | admin, jefe_taller           | Crea plantilla. Valida `metadata.checklist` (string[] no vacíos, máx 100). |
+| PATCH  | `/plantillas-mantenimiento/:id`                  | admin, jefe_taller           | Edita; `activo: true` reactiva; string vacío limpia opcionales. |
+| PATCH  | `/plantillas-mantenimiento/:id/desactivar`       | admin, jefe_taller           | Baja lógica (no toca asociaciones existentes). |
+| POST   | `/plantillas-mantenimiento/:id/items`            | admin, jefe_taller           | Agrega insumo (`{ repuestoId, cantidad, obligatorio?, observacion? }`). 404 repuesto ajeno, 409 dup/inactivo. |
+| PATCH  | `/plantillas-mantenimiento/:id/items/:itemId`    | admin, jefe_taller           | Edita cantidad/obligatorio/observacion (400 si body vacío). |
+| DELETE | `/plantillas-mantenimiento/:id/items/:itemId`    | admin, jefe_taller           | Quita el insumo. |
+| GET    | `/equipos/:equipoId/plantillas`                  | admin, jefe_taller, mechanic | Plantillas asociadas al equipo (+`itemsCount`). |
+| POST   | `/equipos/:equipoId/plantillas/:plantillaId`     | admin, jefe_taller           | Asocia plantilla. **409 si la plantilla está inactiva** o ya asociada. |
+| DELETE | `/equipos/:equipoId/plantillas/:plantillaId`     | admin, jefe_taller           | Quita la asociación. |
+
+### Decisiones
+
+- **Checklist en `metadata.checklist`** (string[]): versión simple y estable.
+  El service valida forma (arreglo de strings no vacíos, máx 100 pasos de
+  hasta 500 chars). Si la operación llega a necesitar estado/orden/fotos por
+  paso, migrar a tabla `plantillas_mantenimiento_checklist` en una fase
+  posterior — la API actual no cambiaría (el detalle seguiría devolviendo
+  `checklist`).
+- **Plantilla inactiva**: no puede asociarse a equipos (409). Sus ítems sí
+  pueden editarse (preparar la receta antes de reactivar). La Fase 4 debe
+  repetir la validación `activo` al crear programaciones desde plantilla.
+- `tipoEquipo` es informativo (sugerencia de filtro en el front); no se
+  bloquea asociar una plantilla a un equipo de otro tipo.
+
 ## Fase 2: marcas, catálogos y repuestos por equipo (2026-06)
 
 Datos maestros para equipos/inventario y la base de las plantillas de

@@ -14,6 +14,7 @@ import { EvidenciasModule } from './evidencias/evidencias.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { MarcasModule } from './marcas/marcas.module';
+import { PlantillasMantenimientoModule } from './plantillas-mantenimiento/plantillas-mantenimiento.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { MarcasModule } from './marcas/marcas.module';
     NotificacionesModule,
     InventarioModule,
     MarcasModule,
+    PlantillasMantenimientoModule,
   ],
   controllers: [AppController],
   providers: [

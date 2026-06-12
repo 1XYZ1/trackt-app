@@ -107,6 +107,9 @@ model Tenant {
   movimientos      MovimientoInventario[]
   marcas           Marca[]
   equiposRepuestos EquipoRepuesto[]
+  plantillas        PlantillaMantenimiento[]
+  plantillasItems   PlantillaMantenimientoItem[]
+  equiposPlantillas EquipoPlantillaMantenimiento[]
 
   @@map("tenants")
 }
@@ -132,9 +135,10 @@ model Equipo {
   createdAt        DateTime              @default(now()) @map("created_at")
   updatedAt        DateTime              @updatedAt @map("updated_at")
 
-  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ordenes   OrdenTrabajo[]
-  repuestos EquipoRepuesto[]
+  tenant     Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ordenes    OrdenTrabajo[]
+  repuestos  EquipoRepuesto[]
+  plantillas EquipoPlantillaMantenimiento[]
 
   @@unique([tenantId, codigo])
   @@index([tenantId])
@@ -183,6 +187,69 @@ model EquipoRepuesto {
   @@index([tenantId, equipoId])
   @@index([repuestoId])
   @@map("equipos_repuestos")
+}
+
+// Plantilla de mantenimiento: "receta" reutilizable con checklist (en
+// metadata.checklist como string[]) e insumos sugeridos. Base para
+// programaciones, generación de OT/tickets y reservas (fases 4+).
+model PlantillaMantenimiento {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  nombre      String
+  descripcion String?
+  tipoEquipo  String?  @map("tipo_equipo") // matchea Equipo.tipo (texto libre)
+  frecuencia  String?  // texto libre ("mensual", "500 horas"); se formaliza en Fase 4
+  activo      Boolean  @default(true)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items   PlantillaMantenimientoItem[]
+  equipos EquipoPlantillaMantenimiento[]
+
+  @@index([tenantId, activo])
+  @@index([tenantId, tipoEquipo])
+  @@map("plantillas_mantenimiento")
+}
+
+// Insumo sugerido de una plantilla. obligatorio=false marca insumos
+// opcionales que la reserva (fase 5+) puede omitir.
+model PlantillaMantenimientoItem {
+  id          String  @id @default(cuid())
+  tenantId    String  @map("tenant_id")
+  plantillaId String  @map("plantilla_id")
+  repuestoId  String  @map("repuesto_id")
+  cantidad    Int // > 0 (CHECK en BD)
+  obligatorio Boolean @default(true)
+  observacion String?
+
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plantilla PlantillaMantenimiento @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+  repuesto  Repuesto               @relation(fields: [repuestoId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, plantillaId, repuestoId])
+  @@index([tenantId, plantillaId])
+  @@index([repuestoId])
+  @@map("plantillas_mantenimiento_items")
+}
+
+// Asociación equipo ↔ plantilla: qué plantillas aplican a cada equipo.
+model EquipoPlantillaMantenimiento {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  equipoId    String   @map("equipo_id")
+  plantillaId String   @map("plantilla_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  equipo    Equipo                 @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+  plantilla PlantillaMantenimiento @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, equipoId, plantillaId])
+  @@index([tenantId, equipoId])
+  @@index([plantillaId])
+  @@map("equipos_plantillas_mantenimiento")
 }
 
 model OrdenTrabajo {
@@ -314,12 +381,13 @@ model Repuesto {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  marca       Marca?                 @relation(fields: [marcaId], references: [id], onDelete: SetNull)
-  stock       InventarioStock?
-  items       ReservaRepuestoItem[]
-  movimientos MovimientoInventario[]
-  equipos     EquipoRepuesto[]
+  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marca           Marca?                       @relation(fields: [marcaId], references: [id], onDelete: SetNull)
+  stock           InventarioStock?
+  items           ReservaRepuestoItem[]
+  movimientos     MovimientoInventario[]
+  equipos         EquipoRepuesto[]
+  plantillasItems PlantillaMantenimientoItem[]
 
   @@unique([tenantId, codigo])
   @@index([tenantId, activo])
