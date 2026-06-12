@@ -1,4 +1,8 @@
+import { EquipoEstadoOperativo } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
+  IsDate,
+  IsEnum,
   IsNotEmpty,
   IsObject,
   IsOptional,
@@ -20,8 +24,14 @@ export class UpdateEquipoDto {
   @MaxLength(120)
   nombre?: string;
 
-  // marca / modelo / ubicacion aceptan null para permitir limpiar el campo
-  // desde el form. undefined = no tocar; null = setear a null en BD.
+  // Campos opcionales aceptan null para permitir limpiar el valor desde el
+  // form. undefined = no tocar; null = setear a null en BD.
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(60)
+  tipo?: string | null;
+
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @IsString()
@@ -38,7 +48,30 @@ export class UpdateEquipoDto {
   @ValidateIf((_, value) => value !== null)
   @IsString()
   @MaxLength(120)
+  numeroSerie?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(120)
   ubicacion?: string | null;
+
+  // estadoOperativo no acepta null: siempre debe tener un valor (default OPERATIVO).
+  @IsOptional()
+  @IsEnum(EquipoEstadoOperativo)
+  estadoOperativo?: EquipoEstadoOperativo;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Date)
+  @IsDate()
+  fechaInstalacion?: Date | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Date)
+  @IsDate()
+  fechaCompra?: Date | null;
 
   @IsOptional()
   @IsObject()
