@@ -583,9 +583,7 @@ describe('EquiposService', () => {
       prisma.ticket.findMany.mockResolvedValue([{ id: 'tkt-1' }]);
       prisma.evidencia.findMany.mockResolvedValue([{ id: 'ev-1' }]);
       prisma.reservaRepuesto.findMany.mockResolvedValue([{ id: 'res-1' }]);
-      prisma.movimientoInventario.findMany.mockResolvedValue([
-        { id: 'mov-1' },
-      ]);
+      prisma.movimientoInventario.findMany.mockResolvedValue([{ id: 'mov-1' }]);
       prisma.movimientoInventario.groupBy.mockResolvedValue([
         {
           repuestoId: 'rep-1',
@@ -597,7 +595,12 @@ describe('EquiposService', () => {
         { id: 'prog-1' },
       ]);
       prisma.repuesto.findMany.mockResolvedValue([
-        { id: 'rep-1', codigo: 'FILTRO-001', nombre: 'Filtro', unidad: 'unidad' },
+        {
+          id: 'rep-1',
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          unidad: 'unidad',
+        },
       ]);
     }
 
@@ -644,10 +647,16 @@ describe('EquiposService', () => {
       });
       expect(
         prisma.reservaRepuesto.findMany.mock.calls[0][0].where,
-      ).toMatchObject({ tenantId: TENANT, ticket: { ot: { equipoId: EQUIPO_ID } } });
+      ).toMatchObject({
+        tenantId: TENANT,
+        ticket: { ot: { equipoId: EQUIPO_ID } },
+      });
       expect(
         prisma.movimientoInventario.findMany.mock.calls[0][0].where,
-      ).toMatchObject({ tenantId: TENANT, ticket: { ot: { equipoId: EQUIPO_ID } } });
+      ).toMatchObject({
+        tenantId: TENANT,
+        ticket: { ot: { equipoId: EQUIPO_ID } },
+      });
       // Evidencias no tienen tenant_id: scoping vía ticket.
       expect(prisma.evidencia.findMany.mock.calls[0][0].where).toMatchObject({
         ticket: { tenantId: TENANT, ot: { equipoId: EQUIPO_ID } },
@@ -687,8 +696,7 @@ describe('EquiposService', () => {
         prisma.reservaRepuesto.findMany.mock.calls[0][0].where.estado,
       ).toBeUndefined();
       expect(
-        prisma.programacionMantenimiento.findMany.mock.calls[0][0].where
-          .estado,
+        prisma.programacionMantenimiento.findMany.mock.calls[0][0].where.estado,
       ).toBeUndefined();
       expect(
         prisma.ordenTrabajo.findMany.mock.calls[0][0].where.createdAt.gte,

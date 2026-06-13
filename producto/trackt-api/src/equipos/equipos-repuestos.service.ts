@@ -121,9 +121,7 @@ export class EquiposRepuestosService {
       select: { id: true },
     });
     if (!equipo) {
-      throw new NotFoundException(
-        `Equipo con id "${equipoId}" no encontrado`,
-      );
+      throw new NotFoundException(`Equipo con id "${equipoId}" no encontrado`);
     }
   }
 

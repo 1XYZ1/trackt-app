@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
+
+// Tipo derivado de createClient: evita el choque de genéricos entre
+// versiones de SupabaseClient (el default del tipo y el del factory
+// difieren en supabase-js v2).
+type Supabase = ReturnType<typeof createClient>;
 
 @Injectable()
 export class SupabaseService {
-  private client: SupabaseClient;
-  private adminClient: SupabaseClient | null = null;
+  private client: Supabase;
+  private adminClient: Supabase | null = null;
 
   constructor() {
     this.client = createClient(
@@ -13,7 +18,7 @@ export class SupabaseService {
     );
   }
 
-  getClient(): SupabaseClient {
+  getClient(): Supabase {
     return this.client;
   }
 
@@ -22,7 +27,7 @@ export class SupabaseService {
    * (crear signed URLs, bypass de RLS en Storage, etc).
    * Lazy: solo se instancia cuando se pide.
    */
-  getAdminClient(): SupabaseClient {
+  getAdminClient(): Supabase {
     if (!this.adminClient) {
       const url = process.env.SUPABASE_URL;
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

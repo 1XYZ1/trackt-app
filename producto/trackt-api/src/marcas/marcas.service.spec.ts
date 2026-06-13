@@ -75,7 +75,10 @@ describe('MarcasService', () => {
       prisma.marca.findFirst.mockResolvedValue({ id: 'otra' });
 
       await expect(
-        service.create(TENANT, { nombre: 'caterpillar', tipo: MarcaTipo.EQUIPO }),
+        service.create(TENANT, {
+          nombre: 'caterpillar',
+          tipo: MarcaTipo.EQUIPO,
+        }),
       ).rejects.toBeInstanceOf(ConflictException);
 
       const args = prisma.marca.findFirst.mock.calls[0][0];
@@ -181,9 +184,9 @@ describe('MarcasService', () => {
 
     it('404 si no existe en el tenant', async () => {
       prisma.marca.findFirst.mockResolvedValue(null);
-      await expect(
-        service.desactivar(TENANT, MARCA_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.desactivar(TENANT, MARCA_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
