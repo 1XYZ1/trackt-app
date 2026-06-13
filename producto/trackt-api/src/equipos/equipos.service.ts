@@ -10,6 +10,7 @@ import { ListEquiposQueryDto } from './dto/list-equipos-query.dto';
 import { CreateEquipoDto } from './dto/create-equipo.dto';
 import { UpdateEquipoDto } from './dto/update-equipo.dto';
 import { EquipoAlertaDto, EquipoResumenDto } from './dto/equipo-resumen.dto';
+import { HistorialQueryDto } from './dto/historial-query.dto';
 import {
   buildPaginatedResult,
   getPrismaSkip,
@@ -503,5 +504,285 @@ export class EquiposService {
       proximasProgramaciones,
       alertas,
     };
+  }
+
+  // ---------- Historial (Fase 6) ----------
+
+  /**
+   * Historial completo del equipo: OTs, tickets, evidencias, reservas,
+   * movimientos de inventario, consumo agregado por repuesto y
+   * programaciones. Cada colección viene acotada (tope defensivo) y
+   * ordenada descendente por fecha.
+   *
+   * Filtros: desde/hasta (createdAt; fechaProgramada en programaciones) y
+   * estado — se aplica a cada colección cuyo enum contenga el valor.
+   * Las reservas siguen viviendo en el ticket: acá solo se agregan vistas.
+   */
+  async historial(tenantId: string, id: string, query: HistorialQueryDto) {
+    const equipo = await this.prisma.equipo.findFirst({
+      where: { id, tenantId },
+      select: DETAIL_SELECT,
+    });
+    if (!equipo) {
+      throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
+    }
+
+    const rango = this.buildRangoHistorial(query.desde, query.hasta);
+    const estados = this.resolverEstadosHistorial(query.estado);
+
+    const ticketsDelEquipo: Prisma.TicketWhereInput = {
+      tenantId,
+      ot: { equipoId: id },
+    };
+
+    const [
+      ordenes,
+      tickets,
+      evidencias,
+      reservas,
+      movimientos,
+      programaciones,
+    ] = await this.prisma.$transaction([
+      this.prisma.ordenTrabajo.findMany({
+        where: {
+          tenantId,
+          equipoId: id,
+          ...(estados.ot && { estado: estados.ot }),
+          ...(rango && { createdAt: rango }),
+        },
+        select: {
+          id: true,
+          codigo: true,
+          descripcion: true,
+          prioridad: true,
+          estado: true,
+          fechaCierre: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.ticket.findMany({
+        where: {
+          ...ticketsDelEquipo,
+          ...(estados.ticket && { estado: estados.ticket }),
+          ...(rango && { createdAt: rango }),
+        },
+        select: {
+          id: true,
+          codigo: true,
+          titulo: true,
+          estado: true,
+          prioridad: true,
+          otId: true,
+          mecanicoId: true,
+          fechaCierre: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      // Evidencias no tienen tenant_id propio: el scoping va por el ticket.
+      this.prisma.evidencia.findMany({
+        where: {
+          ticket: ticketsDelEquipo,
+          ...(rango && { createdAt: rango }),
+        },
+        select: {
+          id: true,
+          ticketId: true,
+          storagePath: true,
+          descripcion: true,
+          createdAt: true,
+          ticket: { select: { codigo: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.reservaRepuesto.findMany({
+        where: {
+          tenantId,
+          ticket: { ot: { equipoId: id } },
+          ...(estados.reserva && { estado: estados.reserva }),
+          ...(rango && { createdAt: rango }),
+        },
+        select: {
+          id: true,
+          ticketId: true,
+          estado: true,
+          observacion: true,
+          createdAt: true,
+          ticket: { select: { codigo: true } },
+          items: {
+            select: {
+              cantidad: true,
+              repuesto: {
+                select: { id: true, codigo: true, nombre: true, unidad: true },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.movimientoInventario.findMany({
+        where: {
+          tenantId,
+          ticket: { ot: { equipoId: id } },
+          ...(rango && { createdAt: rango }),
+        },
+        select: {
+          id: true,
+          tipo: true,
+          cantidad: true,
+          stockResultante: true,
+          ticketId: true,
+          reservaId: true,
+          observacion: true,
+          createdAt: true,
+          repuesto: {
+            select: { id: true, codigo: true, nombre: true, unidad: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      }),
+      this.prisma.programacionMantenimiento.findMany({
+        where: {
+          tenantId,
+          equipoId: id,
+          ...(estados.programacion && { estado: estados.programacion }),
+          ...(rango && { fechaProgramada: rango }),
+        },
+        select: {
+          id: true,
+          titulo: true,
+          fechaProgramada: true,
+          estado: true,
+          prioridad: true,
+          recurrencia: true,
+          plantilla: { select: { id: true, nombre: true } },
+          metadata: true,
+        },
+        orderBy: { fechaProgramada: 'desc' },
+        take: 100,
+      }),
+    ]);
+
+    // Consumo agregado por repuesto. Fuera del $transaction porque el
+    // tipado de groupBy no sobrevive el array de PrismaPromises.
+    const consumoAgrupado = await this.prisma.movimientoInventario.groupBy({
+      by: ['repuestoId'],
+      where: {
+        tenantId,
+        tipo: MovimientoInventarioTipo.CONSUMO,
+        ticket: { ot: { equipoId: id } },
+        ...(rango && { createdAt: rango }),
+      },
+      _sum: { cantidad: true },
+      _count: { _all: true },
+      orderBy: { repuestoId: 'asc' },
+    });
+
+    // Consumo agregado: nombres de repuesto en una sola query extra.
+    const repuestoIds = consumoAgrupado.map((c) => c.repuestoId);
+    const repuestos =
+      repuestoIds.length > 0
+        ? await this.prisma.repuesto.findMany({
+            where: { id: { in: repuestoIds }, tenantId },
+            select: { id: true, codigo: true, nombre: true, unidad: true },
+          })
+        : [];
+    const repuestoById = new Map(repuestos.map((r) => [r.id, r]));
+    const repuestosConsumidos = consumoAgrupado
+      .map((c) => ({
+        repuestoId: c.repuestoId,
+        codigo: repuestoById.get(c.repuestoId)?.codigo ?? c.repuestoId,
+        nombre: repuestoById.get(c.repuestoId)?.nombre ?? null,
+        unidad: repuestoById.get(c.repuestoId)?.unidad ?? null,
+        // CONSUMO registra cantidades negativas; se exponen unidades.
+        cantidadConsumida: Math.abs(c._sum.cantidad ?? 0),
+        movimientos: c._count._all,
+      }))
+      .sort((a, b) => b.cantidadConsumida - a.cantidadConsumida);
+
+    return {
+      equipo,
+      filtros: {
+        desde: query.desde ?? null,
+        hasta: query.hasta ?? null,
+        estado: query.estado ?? null,
+      },
+      ordenes,
+      tickets,
+      evidencias,
+      reservas,
+      movimientos,
+      repuestosConsumidos,
+      programaciones,
+    };
+  }
+
+  /**
+   * Resuelve a qué colecciones aplica el filtro `estado`: a cada enum que
+   * contenga el valor (PENDIENTE existe en OT y ticket; PROGRAMADA solo en
+   * programaciones). 400 si no calza con ninguno.
+   */
+  private resolverEstadosHistorial(estado?: string): {
+    ot?: OrdenTrabajoEstado;
+    ticket?: TicketEstado;
+    reserva?: ReservaRepuestoEstado;
+    programacion?: ProgramacionMantenimientoEstado;
+  } {
+    if (!estado) return {};
+    const valor = estado.trim().toUpperCase();
+    const resultado = {
+      ot: (Object.values(OrdenTrabajoEstado) as string[]).includes(valor)
+        ? (valor as OrdenTrabajoEstado)
+        : undefined,
+      ticket: (Object.values(TicketEstado) as string[]).includes(valor)
+        ? (valor as TicketEstado)
+        : undefined,
+      reserva: (Object.values(ReservaRepuestoEstado) as string[]).includes(
+        valor,
+      )
+        ? (valor as ReservaRepuestoEstado)
+        : undefined,
+      programacion: (
+        Object.values(ProgramacionMantenimientoEstado) as string[]
+      ).includes(valor)
+        ? (valor as ProgramacionMantenimientoEstado)
+        : undefined,
+    };
+    if (
+      !resultado.ot &&
+      !resultado.ticket &&
+      !resultado.reserva &&
+      !resultado.programacion
+    ) {
+      throw new BadRequestException(
+        `estado "${estado}" no corresponde a ningún estado de OT/ticket/reserva/programación`,
+      );
+    }
+    return resultado;
+  }
+
+  private buildRangoHistorial(
+    desde?: string,
+    hasta?: string,
+  ): Prisma.DateTimeFilter | undefined {
+    if (!desde && !hasta) return undefined;
+    const gte = desde ? new Date(desde) : undefined;
+    const lte = hasta ? new Date(hasta) : undefined;
+    if (
+      (gte && Number.isNaN(gte.getTime())) ||
+      (lte && Number.isNaN(lte.getTime()))
+    ) {
+      throw new BadRequestException('Rango de fechas inválido');
+    }
+    if (gte && lte && gte > lte) {
+      throw new BadRequestException('desde no puede ser posterior a hasta');
+    }
+    return { ...(gte && { gte }), ...(lte && { lte }) };
   }
 }

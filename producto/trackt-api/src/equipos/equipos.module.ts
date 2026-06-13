@@ -17,5 +17,7 @@ import { EquiposPlantillasService } from './equipos-plantillas.service';
     EquiposRepuestosService,
     EquiposPlantillasService,
   ],
+  // ReportesModule reutiliza el historial del equipo.
+  exports: [EquiposService],
 })
 export class EquiposModule {}

@@ -16,6 +16,7 @@ import { InventarioModule } from './inventario/inventario.module';
 import { MarcasModule } from './marcas/marcas.module';
 import { PlantillasMantenimientoModule } from './plantillas-mantenimiento/plantillas-mantenimiento.module';
 import { ProgramacionesMantenimientoModule } from './programaciones-mantenimiento/programaciones-mantenimiento.module';
+import { ReportesModule } from './reportes/reportes.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ProgramacionesMantenimientoModule } from './programaciones-mantenimient
     MarcasModule,
     PlantillasMantenimientoModule,
     ProgramacionesMantenimientoModule,
+    ReportesModule,
   ],
   controllers: [AppController],
   providers: [

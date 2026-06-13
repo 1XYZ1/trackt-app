@@ -31,11 +31,20 @@ function buildPrismaMock() {
     },
     reservaRepuesto: {
       count: jest.fn(),
+      findMany: jest.fn(),
     },
     movimientoInventario: {
       aggregate: jest.fn(),
+      findMany: jest.fn(),
+      groupBy: jest.fn(),
     },
     programacionMantenimiento: {
+      findMany: jest.fn(),
+    },
+    evidencia: {
+      findMany: jest.fn(),
+    },
+    repuesto: {
       findMany: jest.fn(),
     },
     $transaction: jest.fn(),
@@ -558,6 +567,147 @@ describe('EquiposService', () => {
         NotFoundException,
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------- historial (Fase 6) ----------
+
+  describe('historial', () => {
+    function mockHistorialData() {
+      prisma.equipo.findFirst.mockResolvedValue({
+        id: EQUIPO_ID,
+        codigo: 'EQ-100',
+        nombre: 'Excavadora',
+      });
+      prisma.ordenTrabajo.findMany.mockResolvedValue([{ id: 'ot-1' }]);
+      prisma.ticket.findMany.mockResolvedValue([{ id: 'tkt-1' }]);
+      prisma.evidencia.findMany.mockResolvedValue([{ id: 'ev-1' }]);
+      prisma.reservaRepuesto.findMany.mockResolvedValue([{ id: 'res-1' }]);
+      prisma.movimientoInventario.findMany.mockResolvedValue([
+        { id: 'mov-1' },
+      ]);
+      prisma.movimientoInventario.groupBy.mockResolvedValue([
+        {
+          repuestoId: 'rep-1',
+          _sum: { cantidad: -8 },
+          _count: { _all: 3 },
+        },
+      ]);
+      prisma.programacionMantenimiento.findMany.mockResolvedValue([
+        { id: 'prog-1' },
+      ]);
+      prisma.repuesto.findMany.mockResolvedValue([
+        { id: 'rep-1', codigo: 'FILTRO-001', nombre: 'Filtro', unidad: 'unidad' },
+      ]);
+    }
+
+    it('devuelve todas las colecciones y el consumo agregado en unidades', async () => {
+      mockHistorialData();
+
+      const result = await service.historial(TENANT, EQUIPO_ID, {});
+
+      expect(result.ordenes).toEqual([{ id: 'ot-1' }]);
+      expect(result.tickets).toEqual([{ id: 'tkt-1' }]);
+      expect(result.evidencias).toEqual([{ id: 'ev-1' }]);
+      expect(result.reservas).toEqual([{ id: 'res-1' }]);
+      expect(result.movimientos).toEqual([{ id: 'mov-1' }]);
+      expect(result.programaciones).toEqual([{ id: 'prog-1' }]);
+      // CONSUMO negativo → unidades positivas, con la ficha del repuesto.
+      expect(result.repuestosConsumidos).toEqual([
+        {
+          repuestoId: 'rep-1',
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          unidad: 'unidad',
+          cantidadConsumida: 8,
+          movimientos: 3,
+        },
+      ]);
+    });
+
+    it('scopea todas las consultas por tenant (no expone otros tenants)', async () => {
+      mockHistorialData();
+
+      await service.historial(TENANT, EQUIPO_ID, {});
+
+      // OTs y programaciones: tenant + equipo directos.
+      expect(prisma.ordenTrabajo.findMany.mock.calls[0][0].where).toMatchObject(
+        { tenantId: TENANT, equipoId: EQUIPO_ID },
+      );
+      expect(
+        prisma.programacionMantenimiento.findMany.mock.calls[0][0].where,
+      ).toMatchObject({ tenantId: TENANT, equipoId: EQUIPO_ID });
+      // Tickets/reservas/movimientos: tenant + navegación ot.equipoId.
+      expect(prisma.ticket.findMany.mock.calls[0][0].where).toMatchObject({
+        tenantId: TENANT,
+        ot: { equipoId: EQUIPO_ID },
+      });
+      expect(
+        prisma.reservaRepuesto.findMany.mock.calls[0][0].where,
+      ).toMatchObject({ tenantId: TENANT, ticket: { ot: { equipoId: EQUIPO_ID } } });
+      expect(
+        prisma.movimientoInventario.findMany.mock.calls[0][0].where,
+      ).toMatchObject({ tenantId: TENANT, ticket: { ot: { equipoId: EQUIPO_ID } } });
+      // Evidencias no tienen tenant_id: scoping vía ticket.
+      expect(prisma.evidencia.findMany.mock.calls[0][0].where).toMatchObject({
+        ticket: { tenantId: TENANT, ot: { equipoId: EQUIPO_ID } },
+      });
+      // Repuestos del consumo agregado también filtran tenant.
+      expect(prisma.repuesto.findMany.mock.calls[0][0].where).toMatchObject({
+        tenantId: TENANT,
+      });
+    });
+
+    it('404 si el equipo es de otro tenant', async () => {
+      prisma.equipo.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.historial(TENANT, EQUIPO_ID, {}),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('aplica rango de fechas y filtro estado a los enums que correspondan', async () => {
+      mockHistorialData();
+
+      await service.historial(TENANT, EQUIPO_ID, {
+        desde: '2026-06-01',
+        hasta: '2026-06-30',
+        estado: 'pendiente',
+      });
+
+      // PENDIENTE existe en OT y ticket; no en reserva ni programación.
+      expect(prisma.ordenTrabajo.findMany.mock.calls[0][0].where.estado).toBe(
+        'PENDIENTE',
+      );
+      expect(prisma.ticket.findMany.mock.calls[0][0].where.estado).toBe(
+        'PENDIENTE',
+      );
+      expect(
+        prisma.reservaRepuesto.findMany.mock.calls[0][0].where.estado,
+      ).toBeUndefined();
+      expect(
+        prisma.programacionMantenimiento.findMany.mock.calls[0][0].where
+          .estado,
+      ).toBeUndefined();
+      expect(
+        prisma.ordenTrabajo.findMany.mock.calls[0][0].where.createdAt.gte,
+      ).toBeInstanceOf(Date);
+    });
+
+    it('400 si el estado no existe en ningún enum o el rango está invertido', async () => {
+      mockHistorialData();
+
+      await expect(
+        service.historial(TENANT, EQUIPO_ID, { estado: 'NO_EXISTE' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      await expect(
+        service.historial(TENANT, EQUIPO_ID, {
+          desde: '2026-07-01',
+          hasta: '2026-06-01',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });

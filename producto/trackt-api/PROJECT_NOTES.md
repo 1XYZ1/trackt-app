@@ -1,5 +1,60 @@
 # Trackt API — Notas de proyecto
 
+## Fase 6: historial, PDF de OT y reportes descargables (2026-06)
+
+Cierra el ciclo: equipo → programación → OT/ticket → reserva → ejecución →
+consumo/liberación → historial → PDF/reporte. Sin cambios de schema.
+Dependencia nueva: `pdfkit` (+ `@types/pdfkit` dev) — generación en memoria,
+sin navegador headless.
+
+### Historial del equipo
+
+`GET /equipos/:id/historial` (admin, jefe_taller, mechanic): ficha + OTs +
+tickets + evidencias + reservas + movimientos + **consumo agregado por
+repuesto** (`repuestosConsumidos`, unidades en valor absoluto) +
+programaciones. Filtros `desde`/`hasta` (createdAt; fechaProgramada en
+programaciones) y `estado` — se aplica a cada colección cuyo enum contenga
+el valor (PENDIENTE → OTs y tickets; 400 si no calza con ninguno). Cada
+colección viene acotada (take 100/200) y ordenada desc. Evidencias se
+scopean vía ticket (no tienen tenant_id propio).
+
+### PDF de OT
+
+`GET /ordenes/:id/pdf` (admin, jefe_taller, mechanic) → `application/pdf`
+inline (`OT-YYYY-NNNN.pdf`). Incluye: código, equipo (código/nombre/tipo/
+ubicación), descripción, prioridad, estado, fechas, creador, tickets con
+mecánicos (nombres desde profiles), reservas con items, consumos agregados,
+evidencias resumidas, líneas para observaciones y doble espacio de firma
+(responsable / supervisor). `OrdenesPdfService` arma un Buffer con pdfkit;
+el controller responde con `StreamableFile`.
+
+### Módulo reportes (`src/reportes/`)
+
+Roles: admin + jefe_taller. `formato=json` (default: `{ data, total }`) |
+`formato=csv` (attachment con BOM UTF-8, RFC 4180, `csv.util.ts` propio sin
+dependencias). xlsx/pdf quedaron fuera a propósito: CSV abre en Excel y el
+único PDF con layout real es el de la OT.
+
+| Endpoint | Cubre |
+| -------- | ----- |
+| `GET /reportes/equipos` | actividad por equipo, ordenado por total de OTs desc → **equipos con más fallas** |
+| `GET /reportes/equipos/:id/historial` | historial (JSON completo; CSV = línea de tiempo aplanada `fecha,tipo,codigo,detalle,estado`) |
+| `GET /reportes/ordenes?desde&hasta&estado` | **OT por rango de fechas** |
+| `GET /reportes/tickets?estado&mecanicoId&desde&hasta` | **tickets por estado / por mecánico** (nombres desde profiles) |
+| `GET /reportes/inventario` (vista=stock, `soloCriticos`) | existencias + **stock crítico** (disponible ≤ mínimo) |
+| `GET /reportes/inventario?vista=consumos&equipoId&desde&hasta` | **consumo por equipo** y **repuestos más consumidos** (orden desc) |
+| `GET /reportes/mantenimientos?vista=todos\|vencidos\|proximos` | **mantenimientos vencidos** (PROGRAMADA pasada, con `diasAtraso`) y **próximos** |
+
+`ReportesService` reutiliza `EquiposService.historial` (EquiposModule ahora
+exporta el service). La reserva sigue viviendo en el ticket — los reportes
+son lecturas agregadas, nada se mueve de lugar.
+
+### Nota técnica
+
+El tipado de `groupBy` de Prisma exige `orderBy` y no sobrevive dentro del
+array de `$transaction([...])` — los groupBy van como awaits separados /
+`Promise.all` (lecturas agregadas, no necesitan transaccionalidad).
+
 ## Fase 5: generar OT/ticket con reserva desde plantilla (2026-06)
 
 El flujo principal del sistema: programación → OT → ticket → reserva de
