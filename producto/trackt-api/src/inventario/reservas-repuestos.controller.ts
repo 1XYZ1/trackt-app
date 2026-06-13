@@ -6,22 +6,18 @@ import {
   HttpStatus,
   Param,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import { AuthUser } from '../auth/types';
-import { TenantService } from '../common/tenant/tenant.service';
+import { TenantId } from '../common/decorators/tenant-id.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/types';
 import { InventarioService } from './inventario.service';
 import { AprobarReservaDto } from './dto/aprobar-reserva.dto';
 import { CreateReservaDto } from './dto/create-reserva.dto';
 import { ReservaActionDto } from './dto/reserva-action.dto';
-
-interface RequestWithUser extends Request {
-  user: AuthUser;
-}
 
 /**
  * Endpoints de reservas montados en dos prefijos distintos:
@@ -34,37 +30,29 @@ interface RequestWithUser extends Request {
 @UseGuards(AuthGuard, RolesGuard)
 @Controller()
 export class ReservasRepuestosController {
-  constructor(
-    private readonly inventarioService: InventarioService,
-    private readonly tenantService: TenantService,
-  ) {}
+  constructor(private readonly inventarioService: InventarioService) {}
 
   @Roles('admin', 'jefe_taller', 'mechanic')
   @Post('tickets/:ticketId/reservas-repuestos')
   async createReserva(
-    @Req() req: RequestWithUser,
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
     @Param('ticketId') ticketId: string,
     @Body() dto: CreateReservaDto,
   ) {
-    const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.inventarioService.createReserva(
-      tenantId,
-      req.user,
-      ticketId,
-      dto,
-    );
+    return this.inventarioService.createReserva(tenantId, user, ticketId, dto);
   }
 
   @Roles('admin', 'jefe_taller', 'mechanic')
   @Get('tickets/:ticketId/reservas-repuestos')
   async findReservasByTicket(
-    @Req() req: RequestWithUser,
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
     @Param('ticketId') ticketId: string,
   ) {
-    const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.inventarioService.findReservasByTicket(
       tenantId,
-      req.user,
+      user,
       ticketId,
     );
   }
@@ -73,24 +61,24 @@ export class ReservasRepuestosController {
   @HttpCode(HttpStatus.OK)
   @Post('reservas-repuestos/:id/liberar')
   async liberar(
-    @Req() req: RequestWithUser,
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: ReservaActionDto,
   ) {
-    const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.inventarioService.liberarReserva(tenantId, req.user, id, dto);
+    return this.inventarioService.liberarReserva(tenantId, user, id, dto);
   }
 
   @Roles('admin', 'jefe_taller', 'mechanic')
   @HttpCode(HttpStatus.OK)
   @Post('reservas-repuestos/:id/consumir')
   async consumir(
-    @Req() req: RequestWithUser,
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: ReservaActionDto,
   ) {
-    const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.inventarioService.consumirReserva(tenantId, req.user, id, dto);
+    return this.inventarioService.consumirReserva(tenantId, user, id, dto);
   }
 
   /**
@@ -101,12 +89,12 @@ export class ReservasRepuestosController {
   @HttpCode(HttpStatus.OK)
   @Post('reservas-repuestos/:id/aprobar')
   async aprobar(
-    @Req() req: RequestWithUser,
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: AprobarReservaDto,
   ) {
-    const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.inventarioService.aprobarReserva(tenantId, req.user, id, dto);
+    return this.inventarioService.aprobarReserva(tenantId, user, id, dto);
   }
 
   /**
@@ -116,8 +104,7 @@ export class ReservasRepuestosController {
    */
   @Roles('admin', 'jefe_taller')
   @Get('reservas-repuestos')
-  async findPendientes(@Req() req: RequestWithUser) {
-    const tenantId = this.tenantService.resolveTenantId(req.user);
+  async findPendientes(@TenantId() tenantId: string) {
     return this.inventarioService.findReservasPendientes(tenantId);
   }
 }

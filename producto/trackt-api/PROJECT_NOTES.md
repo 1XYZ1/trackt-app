@@ -27,9 +27,11 @@ Refactors aplicados:
 - `ProfileService` (auth, global) es ahora el punto único de acceso a
   `public.profiles` para nombres (`getUserSummaries`) y pertenencia al
   tenant (`existsInTenant`). Migrados: ordenes-pdf, reportes,
-  programaciones. **Pendiente**: migrar las copias legadas de
-  `fetchUserSummaries` en `TicketsService`/`OrdenesService` y los queries
-  con rol de la asignación de tickets (post-merge de la pila de PRs).
+  programaciones, y luego también `TicketsService`/`OrdenesService`
+  (rama refactor-decorators-profiles). Los queries con rol de la
+  asignación de tickets y el de carga de mecánicos siguen en
+  TicketsService a propósito (son consultas especializadas, no lookups
+  de nombres).
 - `common/utils/codigo.util.ts` (`siguienteCodigo`): lógica de secuencia
   PREFIJO-NNNN compartida por OT y tickets.
 - Código muerto eliminado: `OrdenesService.onTicketCreated` (nadie lo
@@ -38,11 +40,17 @@ Refactors aplicados:
 - `package.json`: eliminado `test:e2e` (no existe `test/`), `format` y
   `lint` apuntan solo a `src`.
 
+Refactor mecánico posterior (rama `refactor-decorators-profiles`, al tope
+de la pila):
+
+- **Decorators `@TenantId()`/`@CurrentUser()`** en `common/decorators/`,
+  aplicados a los 14 controllers. `TenantService`/`TenantModule`
+  eliminados (quedaron sin uso). Nota: los tipos en firmas decoradas
+  requieren `import type` (TS1272 con isolatedModules +
+  emitDecoratorMetadata).
+
 Decisiones de NO hacer (con razón):
 
-- **Decorators `@TenantId()`/`@CurrentUser()`**: conviene, pero son 79
-  sitios en 14 controllers — hacerlo sobre la pila de 6 PRs sin mergear
-  maximiza conflictos. Hacer como PR mecánico único post-merge.
 - **Centralizar reglas de acceso a tickets más allá de reservas**: las
   transiciones de tickets tienen reglas por estado/rol deliberadamente
   específicas; extraerlas hoy agrega indirection sin un tercer consumidor.

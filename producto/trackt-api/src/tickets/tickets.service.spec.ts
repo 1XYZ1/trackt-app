@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { ProfileService } from '../auth/profile.service';
 
 /**
  * Mock del PrismaService.
@@ -128,6 +129,7 @@ describe('TicketsService', () => {
   let ordenesService: { onTicketEstadoCambiado: jest.Mock };
   let notificaciones: { emit: jest.Mock };
   let inventario: { liberarReservasDeTicket: jest.Mock };
+  let profiles: { getUserSummaries: jest.Mock };
 
   beforeEach(() => {
     prisma = buildPrismaMock();
@@ -136,11 +138,14 @@ describe('TicketsService', () => {
     inventario = {
       liberarReservasDeTicket: jest.fn().mockResolvedValue(undefined),
     };
+    // Default: sin perfiles hidratados (los mappers caen al fallback {id}).
+    profiles = { getUserSummaries: jest.fn().mockResolvedValue(new Map()) };
     service = new TicketsService(
       prisma as unknown as PrismaService,
       ordenesService as unknown as OrdenesService,
       notificaciones as unknown as NotificacionesService,
       inventario as unknown as InventarioService,
+      profiles as unknown as ProfileService,
     );
   });
 
@@ -391,9 +396,9 @@ describe('TicketsService', () => {
 
     it('mapea la respuesta al contrato del frontend (ordenId, equipo, mecanico, timeline)', async () => {
       mockCreateChain();
-      prisma.$queryRaw.mockResolvedValue([
-        { id: USER, full_name: 'Andrés Admin' },
-      ]);
+      profiles.getUserSummaries.mockResolvedValue(
+        new Map([[USER, { id: USER, nombre: 'Andrés Admin' }]]),
+      );
 
       const result = await service.createFromOrden(TENANT, USER, OT_ID, {
         titulo: 'Falla motor',
@@ -512,9 +517,9 @@ describe('TicketsService', () => {
       ];
       prisma.ticket.findMany.mockResolvedValue(rows);
       prisma.ticket.count.mockResolvedValue(12);
-      prisma.$queryRaw.mockResolvedValue([
-        { id: 'mec-1', full_name: 'Mecanico 1' },
-      ]);
+      profiles.getUserSummaries.mockResolvedValue(
+        new Map([['mec-1', { id: 'mec-1', nombre: 'Mecanico 1' }]]),
+      );
 
       const result = await service.findAll(TENANT, userAdmin(), {
         page: 2,
@@ -551,9 +556,9 @@ describe('TicketsService', () => {
     it('busca por id + tenant e incluye OT padre + equipo + eventos asc, y mapea al contrato del frontend', async () => {
       const row = fakeTicketRow();
       prisma.ticket.findFirst.mockResolvedValue(row);
-      prisma.$queryRaw.mockResolvedValue([
-        { id: USER, full_name: 'Andrés Admin' },
-      ]);
+      profiles.getUserSummaries.mockResolvedValue(
+        new Map([[USER, { id: USER, nombre: 'Andrés Admin' }]]),
+      );
 
       const result = await service.findOne(TENANT, userAdmin(), TICKET_ID);
 

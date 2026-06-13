@@ -5,7 +5,6 @@ import { AppService } from './app.service';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { TenantModule } from './common/tenant/tenant.module';
 import { EquiposModule } from './equipos/equipos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { OrdenesModule } from './ordenes/ordenes.module';
@@ -22,7 +21,6 @@ import { ReportesModule } from './reportes/reportes.module';
   imports: [
     PrismaModule,
     AuthModule,
-    TenantModule,
     EquiposModule,
     UsuariosModule,
     OrdenesModule,

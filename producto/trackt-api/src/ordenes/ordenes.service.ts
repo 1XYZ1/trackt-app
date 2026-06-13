@@ -18,6 +18,7 @@ import {
 } from '../common/utils/pagination';
 import { siguienteCodigo } from '../common/utils/codigo.util';
 import { InventarioService } from '../inventario/inventario.service';
+import { ProfileService } from '../auth/profile.service';
 import { CreateOrdenDto } from './dto/create-orden.dto';
 import { UpdateOrdenDto } from './dto/update-orden.dto';
 import { ListOrdenesQueryDto } from './dto/list-ordenes-query.dto';
@@ -81,6 +82,7 @@ export class OrdenesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventario: InventarioService,
+    private readonly profiles: ProfileService,
   ) {}
 
   // ---------- CRUD ----------
@@ -203,7 +205,7 @@ export class OrdenesService {
       ot.creadoPorId,
       ...ot.tickets.map((t) => t.mecanicoId),
     ].filter((v): v is string => Boolean(v));
-    const users = await this.fetchUserSummaries(userIds);
+    const users = await this.profiles.getUserSummaries(userIds);
 
     return {
       ...ot,
@@ -396,26 +398,6 @@ export class OrdenesService {
         },
       });
     }
-  }
-
-  /**
-   * Batch fetch de resúmenes de usuario desde `public.profiles`.
-   * Mismo patrón que TicketsService.fetchUserSummaries (la tabla profiles no
-   * está modelada en prisma/schema.prisma; se consulta vía $queryRaw).
-   */
-  private async fetchUserSummaries(
-    userIds: string[],
-  ): Promise<Map<string, { id: string; nombre: string | null }>> {
-    const uniq = Array.from(new Set(userIds));
-    if (uniq.length === 0) return new Map();
-    const rows = await this.prisma.$queryRaw<
-      Array<{ id: string; full_name: string | null }>
-    >`
-      SELECT id::text AS id, full_name
-      FROM public.profiles
-      WHERE id = ANY(${uniq}::uuid[])
-    `;
-    return new Map(rows.map((r) => [r.id, { id: r.id, nombre: r.full_name }]));
   }
 
   // ---------- Helpers ----------

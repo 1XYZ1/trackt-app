@@ -21,6 +21,7 @@ import {
   PaginatedResult,
 } from '../common/utils/pagination';
 import { siguienteCodigo } from '../common/utils/codigo.util';
+import { ProfileService } from '../auth/profile.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { InventarioService } from '../inventario/inventario.service';
@@ -33,10 +34,7 @@ import { FinalizarTicketDto } from './dto/finalizar-ticket.dto';
 import { ValidarTicketDto } from './dto/validar-ticket.dto';
 import { CerrarTicketDto } from './dto/cerrar-ticket.dto';
 import { CargaMecanicoDto } from './dto/carga-mecanicos-response.dto';
-import {
-  TicketResponseDto,
-  UsuarioResumenDto,
-} from './dto/ticket-response.dto';
+import { TicketResponseDto } from './dto/ticket-response.dto';
 import {
   TICKET_DETAIL_INCLUDE,
   TICKET_LIST_INCLUDE,
@@ -61,6 +59,8 @@ export class TicketsService {
     private readonly ordenesService: OrdenesService,
     private readonly notificaciones: NotificacionesService,
     private readonly inventario: InventarioService,
+    // Acceso centralizado a profiles (nombres de usuario).
+    private readonly profiles: ProfileService,
   ) {}
 
   /**
@@ -144,7 +144,9 @@ export class TicketsService {
       });
     });
 
-    const users = await this.fetchUserSummaries(collectUserIds([ticketRow]));
+    const users = await this.profiles.getUserSummaries(
+      collectUserIds([ticketRow]),
+    );
     return mapTicketDetail(ticketRow, users);
   }
 
@@ -243,7 +245,7 @@ export class TicketsService {
       this.prisma.ticket.count({ where }),
     ]);
 
-    const users = await this.fetchUserSummaries(collectUserIds(rows));
+    const users = await this.profiles.getUserSummaries(collectUserIds(rows));
     const data = rows.map((row) => mapTicketListItem(row, users));
     return buildPaginatedResult(data, total, page, limit);
   }
@@ -269,7 +271,9 @@ export class TicketsService {
       // Mismo mensaje que NotFound para no filtrar existencia.
       throw new NotFoundException(`Ticket con id "${id}" no encontrado`);
     }
-    const users = await this.fetchUserSummaries(collectUserIds([ticket]));
+    const users = await this.profiles.getUserSummaries(
+      collectUserIds([ticket]),
+    );
     return mapTicketDetail(ticket, users);
   }
 
@@ -288,7 +292,9 @@ export class TicketsService {
     if (!ticket) {
       throw new NotFoundException(`Ticket con id "${ticketId}" no encontrado`);
     }
-    const users = await this.fetchUserSummaries(collectUserIds([ticket]));
+    const users = await this.profiles.getUserSummaries(
+      collectUserIds([ticket]),
+    );
     return mapTicketDetail(ticket, users);
   }
 
@@ -937,7 +943,7 @@ export class TicketsService {
       where: { id: ticketId },
       include: TICKET_DETAIL_INCLUDE,
     });
-    const users = await this.fetchUserSummaries(collectUserIds([row]));
+    const users = await this.profiles.getUserSummaries(collectUserIds([row]));
     return mapTicketDetail(row, users);
   }
 
@@ -962,27 +968,5 @@ export class TicketsService {
       select: { codigo: true },
     });
     return siguienteCodigo(prefix, last?.codigo ?? null);
-  }
-
-  /**
-   * Batch fetch de resúmenes de usuario desde `public.profiles`.
-   * Patrón consistente con `auth/profile.service.ts` que también queriea
-   * profiles vía $queryRaw (la tabla no está modelada en prisma/schema.prisma).
-   *
-   * Email + avatarUrl viven en `auth.users` (managed by Supabase) — requieren
-   * admin API y se omiten por ahora. Frontend los maneja como opcionales.
-   */
-  private async fetchUserSummaries(
-    userIds: string[],
-  ): Promise<Map<string, UsuarioResumenDto>> {
-    if (userIds.length === 0) return new Map();
-    const rows = await this.prisma.$queryRaw<
-      Array<{ id: string; full_name: string | null }>
-    >`
-      SELECT id::text AS id, full_name
-      FROM public.profiles
-      WHERE id = ANY(${userIds}::uuid[])
-    `;
-    return new Map(rows.map((r) => [r.id, { id: r.id, nombre: r.full_name }]));
   }
 }

@@ -3,6 +3,7 @@ import { OrdenTrabajoEstado, Prioridad, TicketEstado } from '@prisma/client';
 import { OrdenesService } from './ordenes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { ProfileService } from '../auth/profile.service';
 
 /**
  * Mock del PrismaService.
@@ -54,6 +55,11 @@ function buildInventarioMock() {
   };
 }
 
+function buildProfilesMock() {
+  // Default: sin perfiles hidratados (findOne cae al fallback {id}).
+  return { getUserSummaries: jest.fn().mockResolvedValue(new Map()) };
+}
+
 const TENANT = 'tenant-1';
 const USER = 'user-admin';
 const EQUIPO_ID = 'eq-1';
@@ -62,14 +68,17 @@ const OT_ID = 'ot-1';
 describe('OrdenesService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
   let inventario: ReturnType<typeof buildInventarioMock>;
+  let profiles: ReturnType<typeof buildProfilesMock>;
   let service: OrdenesService;
 
   beforeEach(() => {
     prisma = buildPrismaMock();
     inventario = buildInventarioMock();
+    profiles = buildProfilesMock();
     service = new OrdenesService(
       prisma as unknown as PrismaService,
       inventario as unknown as InventarioService,
+      profiles as unknown as ProfileService,
     );
   });
 
