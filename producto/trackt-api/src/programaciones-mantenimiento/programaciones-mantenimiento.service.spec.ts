@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { ProfileService } from '../auth/profile.service';
 import { AuthUser } from '../auth/types';
 
 function buildPrismaMock() {
@@ -52,6 +53,10 @@ function buildTicketsMock() {
 
 function buildInventarioMock() {
   return { crearReservaEnTx: jest.fn() };
+}
+
+function buildProfilesMock() {
+  return { existsInTenant: jest.fn() };
 }
 
 const TENANT = 'tenant-1';
@@ -109,6 +114,7 @@ describe('ProgramacionesMantenimientoService', () => {
   let ordenes: ReturnType<typeof buildOrdenesMock>;
   let tickets: ReturnType<typeof buildTicketsMock>;
   let inventario: ReturnType<typeof buildInventarioMock>;
+  let profiles: ReturnType<typeof buildProfilesMock>;
   let service: ProgramacionesMantenimientoService;
 
   beforeEach(() => {
@@ -116,11 +122,13 @@ describe('ProgramacionesMantenimientoService', () => {
     ordenes = buildOrdenesMock();
     tickets = buildTicketsMock();
     inventario = buildInventarioMock();
+    profiles = buildProfilesMock();
     service = new ProgramacionesMantenimientoService(
       prisma as unknown as PrismaService,
       ordenes as unknown as OrdenesService,
       tickets as unknown as TicketsService,
       inventario as unknown as InventarioService,
+      profiles as unknown as ProfileService,
     );
   });
 
@@ -252,7 +260,7 @@ describe('ProgramacionesMantenimientoService', () => {
 
     it('valida que el responsable pertenezca al tenant (404 si no)', async () => {
       prisma.equipo.findFirst.mockResolvedValue(EQUIPO_ACTIVO);
-      prisma.$queryRaw.mockResolvedValue([]);
+      profiles.existsInTenant.mockResolvedValue(false);
 
       await expect(
         service.create(TENANT, {
@@ -266,7 +274,7 @@ describe('ProgramacionesMantenimientoService', () => {
 
     it('crea con responsable válido del tenant', async () => {
       prisma.equipo.findFirst.mockResolvedValue(EQUIPO_ACTIVO);
-      prisma.$queryRaw.mockResolvedValue([{ id: RESPONSABLE_ID }]);
+      profiles.existsInTenant.mockResolvedValue(true);
       prisma.programacionMantenimiento.create.mockResolvedValue(PROG_ROW);
 
       await service.create(TENANT, {
@@ -476,7 +484,7 @@ describe('ProgramacionesMantenimientoService', () => {
       let args = prisma.programacionMantenimiento.update.mock.calls[0][0];
       expect(args.data).toEqual({ responsableId: null });
 
-      prisma.$queryRaw.mockResolvedValue([{ id: RESPONSABLE_ID }]);
+      profiles.existsInTenant.mockResolvedValue(true);
       await service.update(TENANT, PROG_ID, { responsableId: RESPONSABLE_ID });
       args = prisma.programacionMantenimiento.update.mock.calls[1][0];
       expect(args.data).toEqual({ responsableId: RESPONSABLE_ID });

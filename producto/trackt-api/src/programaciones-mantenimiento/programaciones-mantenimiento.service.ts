@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/types';
+import { ProfileService } from '../auth/profile.service';
 import {
   buildPaginatedResult,
   getPrismaSkip,
@@ -67,6 +68,7 @@ export class ProgramacionesMantenimientoService {
     private readonly ordenes: OrdenesService,
     private readonly tickets: TicketsService,
     private readonly inventario: InventarioService,
+    private readonly profiles: ProfileService,
   ) {}
 
   async findAll(
@@ -597,21 +599,15 @@ export class ProgramacionesMantenimientoService {
   }
 
   /**
-   * El responsable debe ser un usuario del tenant (cualquier rol). Mismo
-   * acceso a public.profiles que usa la asignación de tickets.
+   * El responsable debe ser un usuario del tenant (cualquier rol).
+   * Acceso a profiles centralizado en ProfileService.
    */
   private async requireResponsable(
     tenantId: string,
     responsableId: string,
   ): Promise<void> {
-    const responsable = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT id::text AS id
-      FROM public.profiles
-      WHERE id = ${responsableId}::uuid
-        AND tenant_id = ${tenantId}
-      LIMIT 1
-    `;
-    if (responsable.length === 0) {
+    const existe = await this.profiles.existsInTenant(tenantId, responsableId);
+    if (!existe) {
       throw new NotFoundException(
         `Responsable "${responsableId}" no encontrado en el tenant`,
       );

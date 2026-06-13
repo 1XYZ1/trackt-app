@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ReportesService } from './reportes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EquiposService } from '../equipos/equipos.service';
+import { ProfileService } from '../auth/profile.service';
 import { toCsv } from './csv.util';
 
 function buildPrismaMock() {
@@ -35,20 +36,27 @@ function buildEquiposMock() {
   return { historial: jest.fn() };
 }
 
+function buildProfilesMock() {
+  return { getUserSummaries: jest.fn() };
+}
+
 const TENANT = 'tenant-1';
 const EQUIPO_ID = 'eq-1';
 
 describe('ReportesService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
   let equipos: ReturnType<typeof buildEquiposMock>;
+  let profiles: ReturnType<typeof buildProfilesMock>;
   let service: ReportesService;
 
   beforeEach(() => {
     prisma = buildPrismaMock();
     equipos = buildEquiposMock();
+    profiles = buildProfilesMock();
     service = new ReportesService(
       prisma as unknown as PrismaService,
       equipos as unknown as EquiposService,
+      profiles as unknown as ProfileService,
     );
   });
 
@@ -155,9 +163,9 @@ describe('ReportesService', () => {
           },
         },
       ]);
-      prisma.$queryRaw.mockResolvedValue([
-        { id: 'mec-1', full_name: 'Mecánico Uno' },
-      ]);
+      profiles.getUserSummaries.mockResolvedValue(
+        new Map([['mec-1', { id: 'mec-1', nombre: 'Mecánico Uno' }]]),
+      );
 
       const reporte = await service.reporteTickets(TENANT, {
         estado: 'ASIGNADO',

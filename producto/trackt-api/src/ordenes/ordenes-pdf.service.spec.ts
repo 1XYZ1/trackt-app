@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { OrdenesPdfService } from './ordenes-pdf.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProfileService } from '../auth/profile.service';
 
 function buildPrismaMock() {
   return {
@@ -16,9 +17,12 @@ function buildPrismaMock() {
     movimientoInventario: {
       findMany: jest.fn(),
     },
-    $queryRaw: jest.fn(),
     $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
   };
+}
+
+function buildProfilesMock() {
+  return { getUserSummaries: jest.fn() };
 }
 
 const TENANT = 'tenant-1';
@@ -53,11 +57,16 @@ const OT_ROW = {
 
 describe('OrdenesPdfService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let profiles: ReturnType<typeof buildProfilesMock>;
   let service: OrdenesPdfService;
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    service = new OrdenesPdfService(prisma as unknown as PrismaService);
+    profiles = buildProfilesMock();
+    service = new OrdenesPdfService(
+      prisma as unknown as PrismaService,
+      profiles as unknown as ProfileService,
+    );
   });
 
   function mockDataOk() {
@@ -96,10 +105,18 @@ describe('OrdenesPdfService', () => {
         },
       },
     ]);
-    prisma.$queryRaw.mockResolvedValue([
-      { id: OT_ROW.creadoPorId, full_name: 'Jefa Taller' },
-      { id: '660e8400-e29b-41d4-a716-446655440000', full_name: 'Mecánico Uno' },
-    ]);
+    profiles.getUserSummaries.mockResolvedValue(
+      new Map([
+        [OT_ROW.creadoPorId, { id: OT_ROW.creadoPorId, nombre: 'Jefa Taller' }],
+        [
+          '660e8400-e29b-41d4-a716-446655440000',
+          {
+            id: '660e8400-e29b-41d4-a716-446655440000',
+            nombre: 'Mecánico Uno',
+          },
+        ],
+      ]),
+    );
   }
 
   it('genera un PDF válido con el código de la OT como nombre de archivo', async () => {
@@ -153,7 +170,7 @@ describe('OrdenesPdfService', () => {
     prisma.evidencia.findMany.mockResolvedValue([]);
     prisma.reservaRepuesto.findMany.mockResolvedValue([]);
     prisma.movimientoInventario.findMany.mockResolvedValue([]);
-    prisma.$queryRaw.mockResolvedValue([]);
+    profiles.getUserSummaries.mockResolvedValue(new Map());
 
     const { buffer } = await service.generarPdf(TENANT, OT_ID);
     expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');

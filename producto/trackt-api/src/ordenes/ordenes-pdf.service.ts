@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { MovimientoInventarioTipo } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProfileService } from '../auth/profile.service';
 
 // Datos ya hidratados que consume el armado del documento.
 interface OtPdfData {
@@ -58,7 +59,10 @@ interface OtPdfData {
  */
 @Injectable()
 export class OrdenesPdfService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly profiles: ProfileService,
+  ) {}
 
   async generarPdf(
     tenantId: string,
@@ -132,12 +136,12 @@ export class OrdenesPdfService {
       }),
     ]);
 
-    // Nombres de usuario desde profiles (mismo patrón que OrdenesService).
+    // Nombres de usuario: acceso centralizado en ProfileService.
     const userIds = [
       ot.creadoPorId,
       ...ot.tickets.map((t) => t.mecanicoId),
     ].filter((v): v is string => Boolean(v));
-    const users = await this.fetchUserNames(userIds);
+    const users = await this.profiles.getUserSummaries(userIds);
 
     // Consumos agregados por repuesto (CONSUMO registra negativos).
     const consumoPorRepuesto = new Map<
@@ -167,7 +171,7 @@ export class OrdenesPdfService {
         estado: ot.estado,
         createdAt: ot.createdAt,
         fechaCierre: ot.fechaCierre,
-        creadoPor: users.get(ot.creadoPorId) ?? ot.creadoPorId,
+        creadoPor: users.get(ot.creadoPorId)?.nombre ?? ot.creadoPorId,
       },
       equipo: {
         codigo: ot.equipo?.codigo ?? '-',
@@ -181,7 +185,7 @@ export class OrdenesPdfService {
         estado: t.estado,
         prioridad: t.prioridad,
         mecanico: t.mecanicoId
-          ? (users.get(t.mecanicoId) ?? t.mecanicoId)
+          ? (users.get(t.mecanicoId)?.nombre ?? t.mecanicoId)
           : 'Sin asignar',
       })),
       reservas: reservas.map((r) => ({
@@ -370,20 +374,5 @@ export class OrdenesPdfService {
       .text(`${label}: `, { continued: true })
       .font('Helvetica')
       .text(valor);
-  }
-
-  private async fetchUserNames(
-    userIds: string[],
-  ): Promise<Map<string, string>> {
-    const uniq = Array.from(new Set(userIds));
-    if (uniq.length === 0) return new Map();
-    const rows = await this.prisma.$queryRaw<
-      Array<{ id: string; full_name: string | null }>
-    >`
-      SELECT id::text AS id, full_name
-      FROM public.profiles
-      WHERE id = ANY(${uniq}::uuid[])
-    `;
-    return new Map(rows.map((r) => [r.id, r.full_name ?? r.id]));
   }
 }

@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EquiposService } from '../equipos/equipos.service';
+import { ProfileService } from '../auth/profile.service';
 import {
   ReporteHistorialQueryDto,
   ReporteInventarioQueryDto,
@@ -37,6 +38,7 @@ export class ReportesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly equipos: EquiposService,
+    private readonly profiles: ProfileService,
   ) {}
 
   /**
@@ -288,7 +290,7 @@ export class ReportesService {
       take: 1000,
     });
 
-    const nombres = await this.fetchUserNames(
+    const nombres = await this.profiles.getUserSummaries(
       tickets.map((t) => t.mecanicoId).filter((v): v is string => Boolean(v)),
     );
 
@@ -315,7 +317,7 @@ export class ReportesService {
           ? `${t.ot.equipo.codigo} - ${t.ot.equipo.nombre}`
           : '',
         mecanico: t.mecanicoId
-          ? (nombres.get(t.mecanicoId) ?? t.mecanicoId)
+          ? (nombres.get(t.mecanicoId)?.nombre ?? t.mecanicoId)
           : '',
         fechaCreacion: t.createdAt,
         fechaCierre: t.fechaCierre,
@@ -545,20 +547,5 @@ export class ReportesService {
       throw new BadRequestException('desde no puede ser posterior a hasta');
     }
     return { ...(gte && { gte }), ...(lte && { lte }) };
-  }
-
-  private async fetchUserNames(
-    userIds: string[],
-  ): Promise<Map<string, string>> {
-    const uniq = Array.from(new Set(userIds));
-    if (uniq.length === 0) return new Map();
-    const rows = await this.prisma.$queryRaw<
-      Array<{ id: string; full_name: string | null }>
-    >`
-      SELECT id::text AS id, full_name
-      FROM public.profiles
-      WHERE id = ANY(${uniq}::uuid[])
-    `;
-    return new Map(rows.map((r) => [r.id, r.full_name ?? r.id]));
   }
 }
