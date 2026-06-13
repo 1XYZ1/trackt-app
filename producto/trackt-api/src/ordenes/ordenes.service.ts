@@ -16,6 +16,7 @@ import {
   getPrismaSkip,
   PaginatedResult,
 } from '../common/utils/pagination';
+import { siguienteCodigo } from '../common/utils/codigo.util';
 import { InventarioService } from '../inventario/inventario.service';
 import { CreateOrdenDto } from './dto/create-orden.dto';
 import { UpdateOrdenDto } from './dto/update-orden.dto';
@@ -101,30 +102,55 @@ export class OrdenesService {
       );
     }
 
+    return this.prisma.$transaction((tx) =>
+      this.crearEnTx(tx, tenantId, userId, {
+        equipoId: dto.equipoId,
+        descripcion: dto.descripcion,
+        prioridad: dto.prioridad,
+      }),
+    );
+  }
+
+  /**
+   * Núcleo de creación de OT, ejecutable dentro de una transacción existente.
+   * Lo usan create (endpoint) y la generación desde programaciones (Fase 5).
+   * Toma el advisory lock de secuencia y calcula el código OT-YYYY-NNNN;
+   * NO valida el equipo — responsabilidad del caller.
+   */
+  async crearEnTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    userId: string,
+    params: {
+      equipoId: string;
+      descripcion: string;
+      prioridad?: Prioridad;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
     const year = new Date().getUTCFullYear();
     const lockKey = `ot:${tenantId}:${year}`;
 
-    return this.prisma.$transaction(async (tx) => {
-      // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
-      // y $queryRaw intenta deserializar la columna → P2010.
-      await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
-      `;
+    // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
+    // y $queryRaw intenta deserializar la columna → P2010.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+    `;
 
-      const codigo = await this.nextCodigo(tx, tenantId, year);
+    const codigo = await this.nextCodigo(tx, tenantId, year);
 
-      return tx.ordenTrabajo.create({
-        data: {
-          tenantId,
-          codigo,
-          equipoId: dto.equipoId,
-          descripcion: dto.descripcion,
-          prioridad: dto.prioridad ?? Prioridad.MEDIA,
-          estado: OrdenTrabajoEstado.PENDIENTE,
-          creadoPorId: userId,
-        },
-        select: LIST_SELECT,
-      });
+    return tx.ordenTrabajo.create({
+      data: {
+        tenantId,
+        codigo,
+        equipoId: params.equipoId,
+        descripcion: params.descripcion,
+        prioridad: params.prioridad ?? Prioridad.MEDIA,
+        estado: OrdenTrabajoEstado.PENDIENTE,
+        creadoPorId: userId,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+      },
+      select: LIST_SELECT,
     });
   }
 
@@ -311,22 +337,9 @@ export class OrdenesService {
   }
 
   // ---------- Hooks de integración con tickets ----------
-
-  /**
-   * Llamar desde TicketsService cuando se crea un ticket asociado a una OT.
-   * Si la OT está PENDIENTE, transiciona a EN_PROCESO.
-   * No-op si ya está EN_PROCESO/CERRADA/CANCELADA.
-   */
-  async onTicketCreated(tenantId: string, otId: string): Promise<void> {
-    await this.prisma.ordenTrabajo.updateMany({
-      where: {
-        id: otId,
-        tenantId,
-        estado: OrdenTrabajoEstado.PENDIENTE,
-      },
-      data: { estado: OrdenTrabajoEstado.EN_PROCESO },
-    });
-  }
+  // (onTicketCreated se eliminó en la revisión integral: nadie lo invocaba —
+  // la transición PENDIENTE → EN_PROCESO se hace inline y con guard dentro
+  // de las tx de TicketsService.createFromOrden y generarOt.)
 
   /**
    * Llamar desde TicketsService cuando un ticket cambia de estado.
@@ -424,16 +437,6 @@ export class OrdenesService {
       orderBy: { codigo: 'desc' },
       select: { codigo: true },
     });
-
-    let nextSeq = 1;
-    if (last) {
-      const suffix = last.codigo.slice(prefix.length);
-      const parsed = parseInt(suffix, 10);
-      if (!Number.isNaN(parsed)) {
-        nextSeq = parsed + 1;
-      }
-    }
-
-    return `${prefix}${String(nextSeq).padStart(4, '0')}`;
+    return siguienteCodigo(prefix, last?.codigo ?? null);
   }
 }

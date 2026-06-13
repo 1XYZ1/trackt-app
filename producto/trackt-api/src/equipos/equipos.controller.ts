@@ -20,6 +20,7 @@ import { CreateEquipoDto } from './dto/create-equipo.dto';
 import { UpdateEquipoDto } from './dto/update-equipo.dto';
 import { TenantService } from '../common/tenant/tenant.service';
 import { AuthUser } from '../auth/types';
+import { HistorialQueryDto } from './dto/historial-query.dto';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -43,11 +44,44 @@ export class EquiposController {
     return this.equiposService.findAll(tenantId, query);
   }
 
+  // Resolución por QR: declarado antes de :id por claridad de ruteo.
+  // Requiere auth: el QR de otro tenant responde 404.
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Get('qr/:qrToken')
+  async findByQr(
+    @Req() req: RequestWithUser,
+    @Param('qrToken') qrToken: string,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.equiposService.findByQrToken(tenantId, qrToken);
+  }
+
   @Roles('admin', 'jefe_taller', 'mechanic')
   @Get(':id')
   async findOne(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.equiposService.findOne(tenantId, id);
+  }
+
+  // Ficha central del equipo: datos + estadísticas + últimas OTs/tickets + alertas.
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Get(':id/resumen')
+  async resumen(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.equiposService.resumen(tenantId, id);
+  }
+
+  // Historial completo: OTs, tickets, evidencias, reservas, movimientos,
+  // consumo por repuesto y programaciones (Fase 6).
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Get(':id/historial')
+  async historial(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Query() query: HistorialQueryDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.equiposService.historial(tenantId, id, query);
   }
 
   @Roles('admin')
@@ -74,5 +108,14 @@ export class EquiposController {
   async desactivar(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.equiposService.desactivar(tenantId, id);
+  }
+
+  // Genera o regenera el token QR del equipo (invalida el anterior).
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/qr')
+  async generarQr(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.equiposService.generarQr(tenantId, id);
   }
 }

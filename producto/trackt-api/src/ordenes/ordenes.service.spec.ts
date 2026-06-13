@@ -337,29 +337,6 @@ describe('OrdenesService', () => {
 
   // ---------- hooks integración tickets ----------
 
-  describe('onTicketCreated', () => {
-    it('mueve OT PENDIENTE → EN_PROCESO via updateMany filtrando estado', async () => {
-      prisma.ordenTrabajo.updateMany.mockResolvedValue({ count: 1 });
-
-      await service.onTicketCreated(TENANT, OT_ID);
-
-      const args = prisma.ordenTrabajo.updateMany.mock.calls[0][0];
-      expect(args.where).toEqual({
-        id: OT_ID,
-        tenantId: TENANT,
-        estado: OrdenTrabajoEstado.PENDIENTE,
-      });
-      expect(args.data).toEqual({ estado: OrdenTrabajoEstado.EN_PROCESO });
-    });
-
-    it('es idempotente: si la OT ya está EN_PROCESO, no cambia nada (updateMany match 0)', async () => {
-      prisma.ordenTrabajo.updateMany.mockResolvedValue({ count: 0 });
-      await expect(
-        service.onTicketCreated(TENANT, OT_ID),
-      ).resolves.toBeUndefined();
-    });
-  });
-
   describe('onTicketEstadoCambiado', () => {
     it('cierra la OT (updateMany guardado) cuando todos los tickets están CERRADOS', async () => {
       prisma.ordenTrabajo.findFirst.mockResolvedValue({

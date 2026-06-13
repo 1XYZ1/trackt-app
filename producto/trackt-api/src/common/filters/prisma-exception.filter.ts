@@ -2,7 +2,6 @@ import {
   ArgumentsHost,
   Catch,
   ConflictException,
-  ExceptionFilter,
   HttpException,
   Logger,
   NotFoundException,
