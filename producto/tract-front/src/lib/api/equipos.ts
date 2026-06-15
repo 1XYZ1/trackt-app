@@ -4,11 +4,16 @@ export type Equipo = {
   id: string;
   codigo: string;
   nombre: string;
-  marca: string;
-  modelo: string;
-  ubicacion: string;
+  // Nullable en BD: el backend devuelve null si el campo se limpió.
+  marca: string | null;
+  modelo: string | null;
+  ubicacion: string | null;
   activo?: boolean;
 };
+
+// Límite de página del listado (sin UI de paginación todavía). Se expone para
+// que la UI pueda avisar cuando la lista se trunca.
+export const EQUIPOS_PAGE_LIMIT = 200;
 
 export type CreateEquipoPayload = {
   codigo: string;
@@ -66,19 +71,36 @@ export async function getEquipos(
   if (filters.search) {
     params.set("search", filters.search);
   }
-  // Pedimos un límite alto para mantener el comportamiento previo del listado
-  // (todos los equipos en una sola página).
-  params.set("limit", "200");
+  // Sin UI de paginación todavía: traemos hasta EQUIPOS_PAGE_LIMIT en una página.
+  params.set("limit", String(EQUIPOS_PAGE_LIMIT));
 
   const url = `${API_BASE_URL}/equipos${params.toString() ? `?${params.toString()}` : ""}`;
   const response = await authFetch(url);
 
   if (!response.ok) {
-    throw new Error("No se pudieron cargar los equipos");
+    throw new Error(
+      await extractError(response, "No se pudieron cargar los equipos"),
+    );
   }
 
   const result = (await response.json()) as { data: Equipo[] };
   return result.data;
+}
+
+export async function reactivarEquipo(id: string): Promise<Equipo> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/${id}/reactivar`, {
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo reactivar el equipo"),
+    );
+  }
+
+  return (await response.json()) as Equipo;
 }
 
 export async function createEquipo(payload: CreateEquipoPayload): Promise<Equipo> {
