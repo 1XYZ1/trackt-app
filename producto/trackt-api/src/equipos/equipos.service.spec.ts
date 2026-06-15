@@ -149,7 +149,7 @@ describe('EquiposService', () => {
     });
 
     it('rechaza con ConflictException si el codigo ya existe en el tenant', async () => {
-      prisma.equipo.findUnique.mockResolvedValue({ id: 'otro' });
+      prisma.equipo.findUnique.mockResolvedValue({ id: 'otro', activo: true });
 
       await expect(
         service.create(TENANT, { codigo: 'EQ-100', nombre: 'X' }),
@@ -187,8 +187,8 @@ describe('EquiposService', () => {
 
       const args = prisma.equipo.update.mock.calls[0][0];
       expect(args.data).toEqual({ nombre: 'Nuevo nombre' });
-      // No debe consultar findUnique si no cambia el codigo
-      expect(prisma.equipo.findUnique).not.toHaveBeenCalled();
+      // Sin cambio de codigo: solo el lookup del equipo, sin chequeo de duplicado.
+      expect(prisma.equipo.findFirst).toHaveBeenCalledTimes(1);
     });
 
     it('no dispara check de duplicado si el codigo normalizado es el mismo', async () => {
@@ -211,8 +211,8 @@ describe('EquiposService', () => {
       prisma.equipo.findFirst.mockResolvedValue({
         id: EQUIPO_ID,
         codigo: 'EQ-100',
-      });
-      prisma.equipo.findUnique.mockResolvedValue(null);
+      }); // lookup
+      prisma.equipo.findUnique.mockResolvedValue(null); // dup check
       prisma.equipo.update.mockImplementation(({ data }) =>
         Promise.resolve({ id: EQUIPO_ID, ...data }),
       );
@@ -227,8 +227,8 @@ describe('EquiposService', () => {
       prisma.equipo.findFirst.mockResolvedValue({
         id: EQUIPO_ID,
         codigo: 'EQ-100',
-      });
-      prisma.equipo.findUnique.mockResolvedValue({ id: 'otro' });
+      }); // lookup
+      prisma.equipo.findUnique.mockResolvedValue({ id: 'otro' }); // dup check
 
       await expect(
         service.update(TENANT, EQUIPO_ID, { codigo: 'EQ-200' }),
@@ -288,6 +288,28 @@ describe('EquiposService', () => {
       prisma.equipo.findFirst.mockResolvedValue(null);
       await expect(
         service.desactivar(TENANT, EQUIPO_ID),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // ---------- reactivar ----------
+
+  describe('reactivar', () => {
+    it('setea activo=true', async () => {
+      prisma.equipo.findFirst.mockResolvedValue({ id: EQUIPO_ID });
+      prisma.equipo.update.mockResolvedValue({ id: EQUIPO_ID, activo: true });
+
+      const result = await service.reactivar(TENANT, EQUIPO_ID);
+
+      const args = prisma.equipo.update.mock.calls[0][0];
+      expect(args.data).toEqual({ activo: true });
+      expect(result.activo).toBe(true);
+    });
+
+    it('falla con NotFoundException si el equipo no existe en el tenant', async () => {
+      prisma.equipo.findFirst.mockResolvedValue(null);
+      await expect(
+        service.reactivar(TENANT, EQUIPO_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });

@@ -5,6 +5,7 @@ import {
   createEquipo,
   desactivarEquipo,
   getEquipos,
+  reactivarEquipo,
   updateEquipo,
   type CreateEquipoPayload,
   type EquiposFilters,
@@ -51,6 +52,17 @@ export function useDesactivarEquipo() {
 
   return useMutation({
     mutationFn: (id: string) => desactivarEquipo(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["equipos"] });
+    },
+  });
+}
+
+export function useReactivarEquipo() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => reactivarEquipo(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["equipos"] });
     },

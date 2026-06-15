@@ -773,7 +773,7 @@ describe('ProgramacionesMantenimientoService', () => {
 
       const params = inventario.crearReservaEnTx.mock.calls[0][4];
       expect(params.solicitar).toBe(true);
-      expect(result.reserva.estado).toBe('SOLICITADA');
+      expect(result.reserva?.estado).toBe('SOLICITADA');
     });
 
     it('mechanic: auto-asigna el ticket (ASIGNADO + evento) en la misma tx', async () => {

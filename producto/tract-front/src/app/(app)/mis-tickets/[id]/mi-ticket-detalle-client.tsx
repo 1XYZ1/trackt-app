@@ -55,14 +55,20 @@ function EvidenceGrid({ evidencias }: { evidencias: TicketEvidence[] }) {
           className="overflow-hidden rounded-xl border border-border bg-secondary/20"
           key={evidencia.id}
         >
-          <Image
-            alt={evidencia.fileName}
-            className="aspect-square w-full object-cover"
-            height={280}
-            src={evidencia.url}
-            unoptimized
-            width={280}
-          />
+          {evidencia.url ? (
+            <Image
+              alt={evidencia.fileName}
+              className="aspect-square w-full object-cover"
+              height={280}
+              src={evidencia.url}
+              unoptimized
+              width={280}
+            />
+          ) : (
+            <div className="flex aspect-square w-full items-center justify-center bg-secondary/30 text-muted-foreground text-xs">
+              Sin vista previa
+            </div>
+          )}
           <div className="p-2">
             <p className="truncate text-xs">{evidencia.fileName}</p>
           </div>
@@ -93,7 +99,7 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
   useEffect(() => {
     return () => {
       for (const e of evidenciasRef.current) {
-        if (e.url.startsWith("blob:")) URL.revokeObjectURL(e.url);
+        if (e.url?.startsWith("blob:")) URL.revokeObjectURL(e.url);
       }
     };
   }, []);

@@ -64,6 +64,23 @@ export class EvidenciasController {
   }
 
   @Roles('admin', 'jefe_taller', 'mechanic')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post(':id/evidencia/descartar')
+  async descartar(
+    @Req() req: RequestWithUser,
+    @Param('id') ticketId: string,
+    @Body() dto: ConfirmUploadDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    await this.evidenciasService.descartarUpload(
+      tenantId,
+      req.user,
+      ticketId,
+      dto.storagePath,
+    );
+  }
+
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Get(':id/evidencias')
   async list(@Req() req: RequestWithUser, @Param('id') ticketId: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);

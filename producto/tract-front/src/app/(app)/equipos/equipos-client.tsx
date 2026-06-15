@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, PowerOff, Search, Truck } from "lucide-react";
+import { Loader2, Pencil, Plus, Power, PowerOff, Search, Truck } from "lucide-react";
+import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { DesactivarEquipoDialog, EquipoFormSheet } from "@/components/equipos";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useHasRole } from "@/contexts/auth-context";
-import { useEquipos } from "@/hooks/use-equipos";
-import type { Equipo } from "@/lib/api/equipos";
+import { useEquipos, useReactivarEquipo } from "@/hooks/use-equipos";
+import { EQUIPOS_PAGE_LIMIT, type Equipo } from "@/lib/api/equipos";
 
 export function EquiposClient() {
   const [query, setQuery] = useState("");
@@ -19,8 +20,22 @@ export function EquiposClient() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Equipo | null>(null);
   const [toDeactivate, setToDeactivate] = useState<Equipo | null>(null);
+  const [reactivarId, setReactivarId] = useState<string | null>(null);
 
   const isAdmin = useHasRole("admin");
+  const reactivar = useReactivarEquipo();
+
+  const handleReactivar = (equipo: Equipo) => {
+    setReactivarId(equipo.id);
+    reactivar.mutate(equipo.id, {
+      onSuccess: () => toast.success(`Equipo ${equipo.codigo} reactivado`),
+      onError: (err) =>
+        toast.error(
+          err instanceof Error ? err.message : "No se pudo reactivar el equipo",
+        ),
+      onSettled: () => setReactivarId(null),
+    });
+  };
 
   // Debounce 300ms para que el search server-side no dispare a cada tecla.
   useEffect(() => {
@@ -91,6 +106,13 @@ export function EquiposClient() {
             <p className="text-muted-foreground text-xs">
               {filteredEquipos.length} resultado
               {filteredEquipos.length === 1 ? "" : "s"} disponibles.
+              {equipos.length >= EQUIPOS_PAGE_LIMIT && (
+                <span className="text-warning-foreground">
+                  {" "}
+                  Mostrando los primeros {EQUIPOS_PAGE_LIMIT}; refina la busqueda
+                  para ver el resto.
+                </span>
+              )}
             </p>
           </div>
           {isAdmin && (
@@ -192,13 +214,19 @@ export function EquiposClient() {
                         </td>
                         <td className="px-5 py-3.5 font-medium">{equipo.nombre}</td>
                         <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.marca}
+                          {equipo.marca ?? "—"}
                         </td>
                         <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.modelo}
+                          {equipo.modelo ?? "—"}
                         </td>
                         <td className="whitespace-nowrap px-5 py-3.5">
-                          <Badge variant="secondary">{equipo.ubicacion}</Badge>
+                          {equipo.ubicacion ? (
+                            <Badge variant="secondary">{equipo.ubicacion}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">
+                              —
+                            </span>
+                          )}
                         </td>
                         {includeInactive && (
                           <td className="whitespace-nowrap px-5 py-3.5">
@@ -218,15 +246,29 @@ export function EquiposClient() {
                                 <Pencil />
                                 Editar
                               </Button>
-                              <Button
-                                disabled={inactive}
-                                onClick={() => setToDeactivate(equipo)}
-                                size="sm"
-                                variant="destructive-outline"
-                              >
-                                <PowerOff />
-                                Desactivar
-                              </Button>
+                              {inactive ? (
+                                <Button
+                                  loading={
+                                    reactivar.isPending &&
+                                    reactivarId === equipo.id
+                                  }
+                                  onClick={() => handleReactivar(equipo)}
+                                  size="sm"
+                                  variant="outline"
+                                >
+                                  <Power />
+                                  Reactivar
+                                </Button>
+                              ) : (
+                                <Button
+                                  onClick={() => setToDeactivate(equipo)}
+                                  size="sm"
+                                  variant="destructive-outline"
+                                >
+                                  <PowerOff />
+                                  Desactivar
+                                </Button>
+                              )}
                             </div>
                           </td>
                         )}
