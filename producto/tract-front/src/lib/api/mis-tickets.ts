@@ -10,7 +10,8 @@ export type MisTicketPrioridad = "BAJA" | "MEDIA" | "ALTA";
 export type TicketEvidence = {
   id: string;
   fileName: string;
-  url: string;
+  // null si el backend no logró firmar la URL de descarga.
+  url: string | null;
   createdAt: string;
 };
 
@@ -40,7 +41,7 @@ type EvidenciaResponseDto = {
   descripcion?: string | null;
   subidoPorId: string;
   createdAt: string;
-  downloadUrl: string;
+  downloadUrl: string | null;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -281,25 +282,38 @@ export async function subirEvidencia(
       throw new Error("No se pudo subir la evidencia al storage");
     }
 
-    // 3. Confirmar al backend que el archivo ya está subido
-    const confirmResponse = await authFetch(
-      `${API_BASE_URL}/tickets/${ticketId}/evidencia`,
-      {
-        body: JSON.stringify({
-          storagePath: signedUrl.storagePath,
-        }),
-        headers: {
-          "Content-Type": "application/json",
+    // 3. Confirmar al backend que el archivo ya está subido. Si el confirm
+    // falla tras el PUT, el objeto quedaría huérfano en storage → lo descartamos
+    // (best-effort) antes de propagar el error.
+    try {
+      const confirmResponse = await authFetch(
+        `${API_BASE_URL}/tickets/${ticketId}/evidencia`,
+        {
+          body: JSON.stringify({
+            storagePath: signedUrl.storagePath,
+          }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "POST",
         },
-        method: "POST",
-      },
-    );
-    const evidencia = await parseJsonResponse<EvidenciaResponseDto>(
-      confirmResponse,
-      "No se pudo confirmar la evidencia",
-    );
+      );
+      const evidencia = await parseJsonResponse<EvidenciaResponseDto>(
+        confirmResponse,
+        "No se pudo confirmar la evidencia",
+      );
 
-    return adaptEvidencia(evidencia);
+      return adaptEvidencia(evidencia);
+    } catch (err) {
+      await authFetch(`${API_BASE_URL}/tickets/${ticketId}/evidencia/descartar`, {
+        body: JSON.stringify({ storagePath: signedUrl.storagePath }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }).catch(() => {
+        // limpieza best-effort: si tambien falla, no enmascarar el error original
+      });
+      throw err;
+    }
 }
 
 export async function finalizarEjecucion(

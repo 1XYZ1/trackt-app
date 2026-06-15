@@ -40,21 +40,21 @@ function mapOrdenEstado(estado: string): TracktEstado {
   return (map[estado] ?? "PENDIENTE") as TracktEstado;
 }
 
+// Lanza ante cualquier fallo (token nulo, !ok, red). El llamador distingue
+// "error real" de "cero legítimo" — antes ambos se pintaban como 0.
 async function fetchWithAuth(
   url: string,
   token: string | null,
 ): Promise<unknown> {
-  if (!token) return null;
-  try {
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
+  if (!token) throw new Error("Sesion no valida");
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Error ${res.status} al consultar el resumen`);
   }
+  return res.json();
 }
 
 async function countByEstado(
@@ -84,34 +84,28 @@ export async function DashboardAdmin({ profile }: Props) {
   }
 
   const supabase = await createClient();
+  // getUser() revalida el token contra el server de auth (getSession solo lee
+  // cookies y puede devolver uno expirado). Validamos y luego tomamos el token.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  const token = session?.access_token ?? null;
+  const token = user ? (session?.access_token ?? null) : null;
 
   const ordenesUrl = `${API_BASE_URL}/ordenes`;
   const ticketsUrl = `${API_BASE_URL}/tickets`;
 
-  const [
-    ordenesPendiente,
-    ordenesEnProceso,
-    ordenesCerradas,
-    ticketsPendiente,
-    ticketsAsignado,
-    ticketsEnEjecucion,
-    ticketsEjecutado,
-    ticketsCerrado,
-    ultimasOrdenes,
-  ] = await Promise.all([
-    countByEstado(ordenesUrl, "PENDIENTE", token),
-    countByEstado(ordenesUrl, "EN_PROCESO", token),
-    countByEstado(ordenesUrl, "CERRADA", token),
-    countByEstado(ticketsUrl, "PENDIENTE", token),
-    countByEstado(ticketsUrl, "ASIGNADO", token),
-    countByEstado(ticketsUrl, "EN_EJECUCION", token),
-    countByEstado(ticketsUrl, "EJECUTADO", token),
-    countByEstado(ticketsUrl, "CERRADO", token),
-    fetchWithAuth(`${ordenesUrl}?limit=5&page=1`, token) as Promise<{
+  let kpis: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    {
       data?: Array<{
         id: string;
         codigo: string;
@@ -120,8 +114,55 @@ export async function DashboardAdmin({ profile }: Props) {
         prioridad: string;
         createdAt: string;
       }>;
-    } | null>,
-  ]);
+    } | null,
+  ];
+  try {
+    kpis = await Promise.all([
+      countByEstado(ordenesUrl, "PENDIENTE", token),
+      countByEstado(ordenesUrl, "EN_PROCESO", token),
+      countByEstado(ticketsUrl, "PENDIENTE", token),
+      countByEstado(ticketsUrl, "ASIGNADO", token),
+      countByEstado(ticketsUrl, "EN_EJECUCION", token),
+      countByEstado(ticketsUrl, "EJECUTADO", token),
+      countByEstado(ticketsUrl, "CERRADO", token),
+      fetchWithAuth(`${ordenesUrl}?limit=5&page=1`, token) as Promise<{
+        data?: Array<{
+          id: string;
+          codigo: string;
+          descripcion: string;
+          estado: string;
+          prioridad: string;
+          createdAt: string;
+        }>;
+      } | null>,
+    ]);
+  } catch {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <AlertCircle className="size-4 text-destructive" />
+            No se pudo cargar el resumen
+          </CardTitle>
+          <CardDescription>
+            Hubo un problema al consultar la API. Recarga la página; si persiste,
+            revisa tu sesión.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const [
+    ordenesPendiente,
+    ordenesEnProceso,
+    ticketsPendiente,
+    ticketsAsignado,
+    ticketsEnEjecucion,
+    ticketsEjecutado,
+    ticketsCerrado,
+    ultimasOrdenes,
+  ] = kpis;
 
   const otActivas = ordenesPendiente + ordenesEnProceso;
   const ticketsActivos =
@@ -163,7 +204,7 @@ export async function DashboardAdmin({ profile }: Props) {
         <KpiCard
           icon={<CheckCircle2 className="size-4 text-emerald-500" />}
           label="Tickets cerrados"
-          subline={`${ordenesCerradas} OTs cerradas`}
+          subline="Validados y cerrados"
           value={ticketsCerrado}
         />
       </div>

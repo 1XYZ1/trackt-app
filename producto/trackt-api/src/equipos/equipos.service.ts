@@ -98,14 +98,18 @@ export class EquiposService {
 
   async create(tenantId: string, dto: CreateEquipoDto) {
     // Validar duplicado de código antes de insertar para devolver 409 explícito.
+    // Chequeo case-insensitive para evitar duplicados de facto ("EQ-1" vs "eq-1"):
+    // el search de la lista es insensitive, así que se verían como el mismo.
     // La constraint @@unique([tenantId, codigo]) actúa como red de seguridad.
-    const existing = await this.prisma.equipo.findUnique({
-      where: { tenantId_codigo: { tenantId, codigo: dto.codigo } },
-      select: { id: true },
+    const existing = await this.prisma.equipo.findFirst({
+      where: { tenantId, codigo: { equals: dto.codigo, mode: 'insensitive' } },
+      select: { id: true, activo: true },
     });
     if (existing) {
       throw new ConflictException(
-        `Ya existe un equipo con codigo "${dto.codigo}" en este tenant`,
+        existing.activo
+          ? `Ya existe un equipo con codigo "${dto.codigo}" en este tenant`
+          : `Existe un equipo desactivado con codigo "${dto.codigo}". Reactívalo en vez de crear uno nuevo.`,
       );
     }
 
@@ -133,10 +137,10 @@ export class EquiposService {
       throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
     }
 
-    // Si cambia el codigo, validar duplicados en el mismo tenant.
+    // Si cambia el codigo, validar duplicados en el mismo tenant (insensitive).
     if (dto.codigo !== undefined && dto.codigo !== equipo.codigo) {
-      const dup = await this.prisma.equipo.findUnique({
-        where: { tenantId_codigo: { tenantId, codigo: dto.codigo } },
+      const dup = await this.prisma.equipo.findFirst({
+        where: { tenantId, codigo: { equals: dto.codigo, mode: 'insensitive' } },
         select: { id: true },
       });
       if (dup && dup.id !== id) {
@@ -178,6 +182,25 @@ export class EquiposService {
     return this.prisma.equipo.update({
       where: { id },
       data: { activo: false },
+      select: DETAIL_SELECT,
+    });
+  }
+
+  /**
+   * Reactivar un equipo dado de baja: setea activo=true. Idempotente.
+   */
+  async reactivar(tenantId: string, id: string) {
+    const equipo = await this.prisma.equipo.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!equipo) {
+      throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
+    }
+
+    return this.prisma.equipo.update({
+      where: { id },
+      data: { activo: true },
       select: DETAIL_SELECT,
     });
   }
