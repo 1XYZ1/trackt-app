@@ -118,4 +118,12 @@ export class EquiposController {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.equiposService.generarQr(tenantId, id);
   }
+
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @Patch(':id/reactivar')
+  async reactivar(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.equiposService.reactivar(tenantId, id);
+  }
 }
