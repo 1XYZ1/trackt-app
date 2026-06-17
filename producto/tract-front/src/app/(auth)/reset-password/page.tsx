@@ -34,17 +34,17 @@ export default async function ResetPasswordPage({
               Trackt
             </h1>
           </div>
-          <p className="text-sm text-zinc-400">Define tu nueva contrasena</p>
+          <p className="text-sm text-zinc-400">Define tu nueva contraseña</p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-zinc-900/70 shadow-2xl shadow-black/40 backdrop-blur-xl">
           <div className="p-7 sm:p-8">
             <div className="mb-6">
               <h2 className="font-semibold text-white text-xl">
-                Nueva contrasena
+                Nueva contraseña
               </h2>
               <p className="mt-1 text-sm text-zinc-400">
-                Ingresa una nueva contrasena. Deberas iniciar sesion despues
+                Ingresa una nueva contraseña. Deberas iniciar sesion despues
                 de actualizarla.
               </p>
             </div>

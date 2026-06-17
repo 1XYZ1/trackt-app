@@ -92,16 +92,7 @@ export class TicketsService {
       );
     }
 
-    const year = new Date().getUTCFullYear();
-    const lockKey = `ticket:${tenantId}:${year}`;
-
     const ticketRow = await this.prisma.$transaction(async (tx) => {
-      // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
-      // y $queryRaw intenta deserializar la columna → P2010.
-      await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
-      `;
-
       // Re-leer la OT dentro de la TX para cerrar la ventana de carrera
       // entre la validación inicial y la creación del ticket. Si entre medio
       // la OT fue cancelada/cerrada, abortamos antes de crear nada.
@@ -121,29 +112,10 @@ export class TicketsService {
         );
       }
 
-      const codigo = await this.nextCodigo(tx, tenantId, year);
-
-      const ticket = await tx.ticket.create({
-        data: {
-          tenantId,
-          otId,
-          codigo,
-          titulo: dto.titulo,
-          descripcion: dto.descripcion,
-          prioridad: dto.prioridad ?? Prioridad.MEDIA,
-          estado: TicketEstado.PENDIENTE,
-          jefeId: userId,
-        },
-      });
-
-      await tx.eventoEstadoTicket.create({
-        data: {
-          ticketId: ticket.id,
-          estadoAnterior: null,
-          estadoNuevo: TicketEstado.PENDIENTE,
-          usuarioId: userId,
-          observacion: 'Ticket creado',
-        },
+      const ticket = await this.crearEnTx(tx, tenantId, userId, otId, {
+        titulo: dto.titulo,
+        descripcion: dto.descripcion,
+        prioridad: dto.prioridad,
       });
 
       if (otFresh.estado === OrdenTrabajoEstado.PENDIENTE) {
@@ -173,6 +145,63 @@ export class TicketsService {
 
     const users = await this.fetchUserSummaries(collectUserIds([ticketRow]));
     return mapTicketDetail(ticketRow, users);
+  }
+
+  /**
+   * Núcleo de creación de ticket, ejecutable dentro de una transacción
+   * existente. Lo usan createFromOrden (endpoint) y la generación desde
+   * programaciones (Fase 5). Toma el advisory lock de secuencia (reentrante
+   * dentro de la misma tx), calcula el código TKT-YYYY-NNNN y registra el
+   * evento inicial. NO valida la OT — responsabilidad del caller.
+   */
+  async crearEnTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    userId: string,
+    otId: string,
+    params: {
+      titulo: string;
+      descripcion: string;
+      prioridad?: Prioridad;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    const year = new Date().getUTCFullYear();
+    const lockKey = `ticket:${tenantId}:${year}`;
+
+    // $executeRaw en vez de $queryRaw: pg_advisory_xact_lock retorna void
+    // y $queryRaw intenta deserializar la columna → P2010.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+    `;
+
+    const codigo = await this.nextCodigo(tx, tenantId, year);
+
+    const ticket = await tx.ticket.create({
+      data: {
+        tenantId,
+        otId,
+        codigo,
+        titulo: params.titulo,
+        descripcion: params.descripcion,
+        prioridad: params.prioridad ?? Prioridad.MEDIA,
+        estado: TicketEstado.PENDIENTE,
+        jefeId: userId,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+      },
+    });
+
+    await tx.eventoEstadoTicket.create({
+      data: {
+        ticketId: ticket.id,
+        estadoAnterior: null,
+        estadoNuevo: TicketEstado.PENDIENTE,
+        usuarioId: userId,
+        observacion: 'Ticket creado',
+      },
+    });
+
+    return ticket;
   }
 
   /**

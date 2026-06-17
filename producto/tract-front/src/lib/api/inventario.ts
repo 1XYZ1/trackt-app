@@ -162,7 +162,26 @@ function assertApiBaseUrl() {
 
 async function extractError(response: Response, fallback: string) {
   try {
-    const body = (await response.json()) as { message?: string | string[] };
+    const body = (await response.json()) as {
+      message?: string | string[];
+      // 409 de stock insuficiente: el backend detalla cada repuesto faltante.
+      faltantes?: Array<{
+        codigo: string;
+        nombre: string;
+        requerido: number;
+        disponible: number;
+      }>;
+    };
+    if (
+      typeof body.message === "string" &&
+      body.message &&
+      body.faltantes?.length
+    ) {
+      const detalle = body.faltantes
+        .map((f) => `${f.codigo} (disponible ${f.disponible}, requerido ${f.requerido})`)
+        .join(", ");
+      return `${body.message}: ${detalle}`;
+    }
     if (Array.isArray(body.message)) return body.message.join(", ");
     if (typeof body.message === "string" && body.message) return body.message;
   } catch {

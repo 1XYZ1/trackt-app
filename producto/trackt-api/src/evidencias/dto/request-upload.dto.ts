@@ -1,10 +1,6 @@
 import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
 
-export const ALLOWED_MIME = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-] as const;
+export const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 export type AllowedMime = (typeof ALLOWED_MIME)[number];
 
