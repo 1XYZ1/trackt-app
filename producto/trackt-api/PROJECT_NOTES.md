@@ -1,5 +1,115 @@
 # Trackt API — Notas de proyecto
 
+## Revisión integral post-fases (2026-06-12)
+
+Auditoría de seguridad/consistencia tras completar las fases 1–6, más
+refactors menores. Resultados de la auditoría:
+
+- **Multi-tenant**: todas las lecturas usan `id + tenantId` (no hay
+  `findUnique`/`findFirst` solo por id); los `update`/`delete` por id van
+  precedidos de verificación de tenant, y donde la carrera importa se usa
+  `updateMany` condicionado (tickets, programaciones, cancelaciones).
+  Evidencias (sin tenant_id propio) se scopean siempre vía ticket.
+- **Transacciones**: creación de OT/ticket/reserva, generar-ot, stock
+  (entrada/ajuste/aprobar/liberar/consumir) y cancelaciones en cascada son
+  transaccionales, con advisory locks por secuencia y por repuesto.
+- **Reservas**: una sola fuente (`InventarioService.crearReservaEnTx`);
+  el acceso a tickets para reservas centralizado en `assertCanActOnTicket`.
+- **Stock**: `stockReservado` solo lo mueven aprobar/crear RESERVADA,
+  liberar (con piso 0) y consumir (descuenta actual+reservado); SOLICITADA
+  nunca toca stock. Sin caminos que dejen reservado colgado: cancelar
+  OT/ticket libera vía `liberarReservasDeTicket`.
+- **Doble generación**: bloqueada por pre-check + guard `updateMany`
+  condicionado a PROGRAMADA dentro de la tx (cubierto por tests).
+
+Refactors aplicados:
+
+- `ProfileService` (auth, global) es ahora el punto único de acceso a
+  `public.profiles` para nombres (`getUserSummaries`) y pertenencia al
+  tenant (`existsInTenant`). Migrados: ordenes-pdf, reportes,
+  programaciones. **Pendiente**: migrar las copias legadas de
+  `fetchUserSummaries` en `TicketsService`/`OrdenesService` y los queries
+  con rol de la asignación de tickets (post-merge de la pila de PRs).
+- `common/utils/codigo.util.ts` (`siguienteCodigo`): lógica de secuencia
+  PREFIJO-NNNN compartida por OT y tickets.
+- Código muerto eliminado: `OrdenesService.onTicketCreated` (nadie lo
+  invocaba — la transición PENDIENTE→EN_PROCESO se hace inline y con guard
+  en las tx) e import sin uso en `prisma-exception.filter`.
+- `package.json`: eliminado `test:e2e` (no existe `test/`), `format` y
+  `lint` apuntan solo a `src`.
+
+Decisiones de NO hacer (con razón):
+
+- **Decorators `@TenantId()`/`@CurrentUser()`**: conviene, pero son 79
+  sitios en 14 controllers — hacerlo sobre la pila de 6 PRs sin mergear
+  maximiza conflictos. Hacer como PR mecánico único post-merge.
+- **Centralizar reglas de acceso a tickets más allá de reservas**: las
+  transiciones de tickets tienen reglas por estado/rol deliberadamente
+  específicas; extraerlas hoy agrega indirection sin un tercer consumidor.
+
+Inconsistencias de roles detectadas (decisión de producto, no se cambió):
+
+- `POST/PATCH /ordenes` permiten `admin, mechanic` pero NO `jefe_taller`
+  (que sí puede generar OTs desde programaciones); `POST /ordenes/:id/cancelar`
+  es solo admin. Revisar si jefe_taller debería poder crear/editar/cancelar.
+- `PATCH /marcas/*` es solo admin mientras el resto de catálogos de
+  mantenimiento (plantillas, programaciones) son admin+jefe_taller.
+
+## Fase 6: historial, PDF de OT y reportes descargables (2026-06)
+
+Cierra el ciclo: equipo → programación → OT/ticket → reserva → ejecución →
+consumo/liberación → historial → PDF/reporte. Sin cambios de schema.
+Dependencia nueva: `pdfkit` (+ `@types/pdfkit` dev) — generación en memoria,
+sin navegador headless.
+
+### Historial del equipo
+
+`GET /equipos/:id/historial` (admin, jefe_taller, mechanic): ficha + OTs +
+tickets + evidencias + reservas + movimientos + **consumo agregado por
+repuesto** (`repuestosConsumidos`, unidades en valor absoluto) +
+programaciones. Filtros `desde`/`hasta` (createdAt; fechaProgramada en
+programaciones) y `estado` — se aplica a cada colección cuyo enum contenga
+el valor (PENDIENTE → OTs y tickets; 400 si no calza con ninguno). Cada
+colección viene acotada (take 100/200) y ordenada desc. Evidencias se
+scopean vía ticket (no tienen tenant_id propio).
+
+### PDF de OT
+
+`GET /ordenes/:id/pdf` (admin, jefe_taller, mechanic) → `application/pdf`
+inline (`OT-YYYY-NNNN.pdf`). Incluye: código, equipo (código/nombre/tipo/
+ubicación), descripción, prioridad, estado, fechas, creador, tickets con
+mecánicos (nombres desde profiles), reservas con items, consumos agregados,
+evidencias resumidas, líneas para observaciones y doble espacio de firma
+(responsable / supervisor). `OrdenesPdfService` arma un Buffer con pdfkit;
+el controller responde con `StreamableFile`.
+
+### Módulo reportes (`src/reportes/`)
+
+Roles: admin + jefe_taller. `formato=json` (default: `{ data, total }`) |
+`formato=csv` (attachment con BOM UTF-8, RFC 4180, `csv.util.ts` propio sin
+dependencias). xlsx/pdf quedaron fuera a propósito: CSV abre en Excel y el
+único PDF con layout real es el de la OT.
+
+| Endpoint | Cubre |
+| -------- | ----- |
+| `GET /reportes/equipos` | actividad por equipo, ordenado por total de OTs desc → **equipos con más fallas** |
+| `GET /reportes/equipos/:id/historial` | historial (JSON completo; CSV = línea de tiempo aplanada `fecha,tipo,codigo,detalle,estado`) |
+| `GET /reportes/ordenes?desde&hasta&estado` | **OT por rango de fechas** |
+| `GET /reportes/tickets?estado&mecanicoId&desde&hasta` | **tickets por estado / por mecánico** (nombres desde profiles) |
+| `GET /reportes/inventario` (vista=stock, `soloCriticos`) | existencias + **stock crítico** (disponible ≤ mínimo) |
+| `GET /reportes/inventario?vista=consumos&equipoId&desde&hasta` | **consumo por equipo** y **repuestos más consumidos** (orden desc) |
+| `GET /reportes/mantenimientos?vista=todos\|vencidos\|proximos` | **mantenimientos vencidos** (PROGRAMADA pasada, con `diasAtraso`) y **próximos** |
+
+`ReportesService` reutiliza `EquiposService.historial` (EquiposModule ahora
+exporta el service). La reserva sigue viviendo en el ticket — los reportes
+son lecturas agregadas, nada se mueve de lugar.
+
+### Nota técnica
+
+El tipado de `groupBy` de Prisma exige `orderBy` y no sobrevive dentro del
+array de `$transaction([...])` — los groupBy van como awaits separados /
+`Promise.all` (lecturas agregadas, no necesitan transaccionalidad).
+
 ## Fase 5: generar OT/ticket con reserva desde plantilla (2026-06)
 
 El flujo principal del sistema: programación → OT → ticket → reserva de
@@ -317,10 +427,10 @@ El advisory lock es por transacción (`xact_lock`), se libera al commit/rollback
 
 ### Integración con tickets
 
-Como `TicketsService` aún no existe, `OrdenesService` expone dos hooks que el futuro service de tickets debe invocar:
+`OrdenesService` expone un hook que `TicketsService` invoca:
 
-- `onTicketCreated(tenantId, otId)` — llamar **al crear un ticket**. Si la OT está `PENDIENTE`, la mueve a `EN_PROCESO` (idempotente; usa `updateMany` filtrando por estado).
-- `onTicketEstadoCambiado(tenantId, otId)` — llamar **cuando un ticket cambia de estado**. Si la OT está `EN_PROCESO` y todos sus tickets quedaron `CERRADO`, la cierra (`CERRADA` + `fechaCierre`).
+- `onTicketEstadoCambiado(tenantId, otId, tx?)` — llamar **cuando un ticket cambia de estado**. Si la OT está `EN_PROCESO` y todos sus tickets quedaron `CERRADO`, la cierra (`CERRADA` + `fechaCierre`).
+- (`onTicketCreated` existió como hook para la transición `PENDIENTE → EN_PROCESO`, pero se eliminó en la revisión integral: la transición se hace inline y con guard dentro de las transacciones de `createFromOrden` y `generarOt`.)
 
 `OrdenesModule` exporta `OrdenesService`, así que basta importarlo desde el módulo de tickets.
 

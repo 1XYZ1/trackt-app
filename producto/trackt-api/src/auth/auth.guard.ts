@@ -4,6 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { SupabaseService } from '../supabase.service';
 import { ProfileService } from './profile.service';
 import { AuthUser } from './types';
@@ -16,8 +17,10 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
-    const auth = req.headers.authorization as string | undefined;
+    const req = context
+      .switchToHttp()
+      .getRequest<Request & { user?: AuthUser }>();
+    const auth = req.headers.authorization;
     const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
     if (!token) {
       throw new UnauthorizedException('Missing token');

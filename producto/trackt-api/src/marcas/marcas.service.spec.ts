@@ -16,9 +16,6 @@ function buildPrismaMock() {
       create: jest.fn(),
       update: jest.fn(),
     },
-    repuesto: {
-      count: jest.fn(),
-    },
     $transaction: jest.fn(),
   };
 
@@ -78,22 +75,23 @@ describe('MarcasService', () => {
       prisma.marca.findFirst.mockResolvedValue({ id: 'otra' });
 
       await expect(
-        service.create(TENANT, { nombre: 'caterpillar', tipo: MarcaTipo.EQUIPO }),
+        service.create(TENANT, {
+          nombre: 'caterpillar',
+          tipo: MarcaTipo.EQUIPO,
+        }),
       ).rejects.toBeInstanceOf(ConflictException);
 
       const args = prisma.marca.findFirst.mock.calls[0][0];
       expect(args.where).toMatchObject({
         tenantId: TENANT,
-        // El ámbito EQUIPO también choca con AMBOS (findAll los lista juntos).
-        tipo: { in: [MarcaTipo.EQUIPO, MarcaTipo.AMBOS] },
+        tipo: MarcaTipo.EQUIPO,
         nombre: { equals: 'caterpillar', mode: 'insensitive' },
       });
       expect(prisma.marca.create).not.toHaveBeenCalled();
     });
 
     it('permite el mismo nombre en ámbito distinto', async () => {
-      // El dup check filtra por ámbito (tipo + AMBOS): no encuentra
-      // colisión en REPUESTO si solo existe en EQUIPO.
+      // El dup check filtra por tipo: no encuentra colisión en REPUESTO.
       prisma.marca.findFirst.mockResolvedValue(null);
       prisma.marca.create.mockImplementation(({ data }) =>
         Promise.resolve({ id: MARCA_ID, ...data }),
@@ -105,26 +103,8 @@ describe('MarcasService', () => {
       });
 
       const dupArgs = prisma.marca.findFirst.mock.calls[0][0];
-      expect(dupArgs.where.tipo).toEqual({
-        in: [MarcaTipo.REPUESTO, MarcaTipo.AMBOS],
-      });
+      expect(dupArgs.where.tipo).toBe(MarcaTipo.REPUESTO);
       expect(prisma.marca.create).toHaveBeenCalledTimes(1);
-    });
-
-    it('rechaza crear AMBOS si el nombre existe en cualquier ámbito (409)', async () => {
-      // AMBOS se solapa con todo: el dup check no filtra por tipo.
-      prisma.marca.findFirst.mockResolvedValue({ id: 'otra' });
-
-      await expect(
-        service.create(TENANT, {
-          nombre: 'Caterpillar',
-          tipo: MarcaTipo.AMBOS,
-        }),
-      ).rejects.toBeInstanceOf(ConflictException);
-
-      const dupArgs = prisma.marca.findFirst.mock.calls[0][0];
-      expect(dupArgs.where.tipo).toBeUndefined();
-      expect(prisma.marca.create).not.toHaveBeenCalled();
     });
   });
 
@@ -186,46 +166,6 @@ describe('MarcasService', () => {
         service.update(TENANT, MARCA_ID, { nombre: 'X' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
-
-    it('409 al cambiar a ámbito EQUIPO con repuestos vinculados', async () => {
-      prisma.marca.findFirst
-        .mockResolvedValueOnce({
-          id: MARCA_ID,
-          nombre: 'Bosch',
-          tipo: MarcaTipo.AMBOS,
-        })
-        .mockResolvedValueOnce(null); // dup check sin colisión
-      prisma.repuesto.count.mockResolvedValue(2);
-
-      await expect(
-        service.update(TENANT, MARCA_ID, { tipo: MarcaTipo.EQUIPO }),
-      ).rejects.toBeInstanceOf(ConflictException);
-
-      expect(prisma.repuesto.count.mock.calls[0][0].where).toEqual({
-        tenantId: TENANT,
-        marcaId: MARCA_ID,
-      });
-      expect(prisma.marca.update).not.toHaveBeenCalled();
-    });
-
-    it('permite cambiar a EQUIPO si no hay repuestos vinculados', async () => {
-      prisma.marca.findFirst
-        .mockResolvedValueOnce({
-          id: MARCA_ID,
-          nombre: 'Bosch',
-          tipo: MarcaTipo.REPUESTO,
-        })
-        .mockResolvedValueOnce(null);
-      prisma.repuesto.count.mockResolvedValue(0);
-      prisma.marca.update.mockResolvedValue({
-        id: MARCA_ID,
-        tipo: MarcaTipo.EQUIPO,
-      });
-
-      await service.update(TENANT, MARCA_ID, { tipo: MarcaTipo.EQUIPO });
-
-      expect(prisma.marca.update).toHaveBeenCalledTimes(1);
-    });
   });
 
   // ---------- desactivar ----------
@@ -244,9 +184,9 @@ describe('MarcasService', () => {
 
     it('404 si no existe en el tenant', async () => {
       prisma.marca.findFirst.mockResolvedValue(null);
-      await expect(
-        service.desactivar(TENANT, MARCA_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.desactivar(TENANT, MARCA_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 

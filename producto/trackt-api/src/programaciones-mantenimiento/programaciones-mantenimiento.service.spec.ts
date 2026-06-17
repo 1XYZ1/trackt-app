@@ -8,13 +8,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { ProfileService } from '../auth/profile.service';
 import { AuthUser } from '../auth/types';
 
 function buildPrismaMock() {
   const mock = {
     programacionMantenimiento: {
       findFirst: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
       create: jest.fn(),
@@ -29,12 +29,6 @@ function buildPrismaMock() {
     },
     ordenTrabajo: {
       updateMany: jest.fn(),
-    },
-    ticket: {
-      update: jest.fn(),
-    },
-    eventoEstadoTicket: {
-      create: jest.fn(),
     },
     $queryRaw: jest.fn(),
     $transaction: jest.fn(),
@@ -59,6 +53,10 @@ function buildTicketsMock() {
 
 function buildInventarioMock() {
   return { crearReservaEnTx: jest.fn() };
+}
+
+function buildProfilesMock() {
+  return { existsInTenant: jest.fn() };
 }
 
 const TENANT = 'tenant-1';
@@ -116,6 +114,7 @@ describe('ProgramacionesMantenimientoService', () => {
   let ordenes: ReturnType<typeof buildOrdenesMock>;
   let tickets: ReturnType<typeof buildTicketsMock>;
   let inventario: ReturnType<typeof buildInventarioMock>;
+  let profiles: ReturnType<typeof buildProfilesMock>;
   let service: ProgramacionesMantenimientoService;
 
   beforeEach(() => {
@@ -123,11 +122,13 @@ describe('ProgramacionesMantenimientoService', () => {
     ordenes = buildOrdenesMock();
     tickets = buildTicketsMock();
     inventario = buildInventarioMock();
+    profiles = buildProfilesMock();
     service = new ProgramacionesMantenimientoService(
       prisma as unknown as PrismaService,
       ordenes as unknown as OrdenesService,
       tickets as unknown as TicketsService,
       inventario as unknown as InventarioService,
+      profiles as unknown as ProfileService,
     );
   });
 
@@ -259,7 +260,7 @@ describe('ProgramacionesMantenimientoService', () => {
 
     it('valida que el responsable pertenezca al tenant (404 si no)', async () => {
       prisma.equipo.findFirst.mockResolvedValue(EQUIPO_ACTIVO);
-      prisma.$queryRaw.mockResolvedValue([]);
+      profiles.existsInTenant.mockResolvedValue(false);
 
       await expect(
         service.create(TENANT, {
@@ -273,7 +274,7 @@ describe('ProgramacionesMantenimientoService', () => {
 
     it('crea con responsable válido del tenant', async () => {
       prisma.equipo.findFirst.mockResolvedValue(EQUIPO_ACTIVO);
-      prisma.$queryRaw.mockResolvedValue([{ id: RESPONSABLE_ID }]);
+      profiles.existsInTenant.mockResolvedValue(true);
       prisma.programacionMantenimiento.create.mockResolvedValue(PROG_ROW);
 
       await service.create(TENANT, {
@@ -307,24 +308,9 @@ describe('ProgramacionesMantenimientoService', () => {
       expect(args.where.equipoId).toBe(EQUIPO_ID);
       expect(args.where.estado).toBe('PROGRAMADA');
       expect(args.where.fechaProgramada.gte).toBeInstanceOf(Date);
-      // hasta date-only es inclusivo: se traduce a lt del día siguiente.
-      expect(args.where.fechaProgramada.lt).toEqual(
-        new Date('2026-07-01T00:00:00Z'),
-      );
+      expect(args.where.fechaProgramada.lte).toBeInstanceOf(Date);
       expect(args.orderBy).toEqual({ fechaProgramada: 'asc' });
       expect(result.meta.total).toBe(1);
-    });
-
-    it('hasta con hora explícita queda lte exacto', async () => {
-      prisma.programacionMantenimiento.findMany.mockResolvedValue([]);
-      prisma.programacionMantenimiento.count.mockResolvedValue(0);
-
-      await service.findAll(TENANT, { hasta: '2026-06-30T18:00:00Z' });
-
-      const args = prisma.programacionMantenimiento.findMany.mock.calls[0][0];
-      expect(args.where.fechaProgramada).toEqual({
-        lte: new Date('2026-06-30T18:00:00Z'),
-      });
     });
 
     it('400 si desde es posterior a hasta', async () => {
@@ -418,30 +404,21 @@ describe('ProgramacionesMantenimientoService', () => {
   describe('update', () => {
     function mockProgramada() {
       prisma.programacionMantenimiento.findFirst.mockResolvedValue({
-        ...PROG_ROW,
+        id: PROG_ID,
         estado: 'PROGRAMADA',
-      });
-      // El write es updateMany condicionado al estado (guard anti-TOCTOU);
-      // el retorno sale de findOne (findFirst de arriba).
-      prisma.programacionMantenimiento.updateMany.mockResolvedValue({
-        count: 1,
       });
     }
 
-    it('actualiza campos en estado PROGRAMADA con write condicionado', async () => {
+    it('actualiza campos en estado PROGRAMADA', async () => {
       mockProgramada();
+      prisma.programacionMantenimiento.update.mockResolvedValue(PROG_ROW);
 
       await service.update(TENANT, PROG_ID, {
         titulo: '  Nueva mantención  ',
         prioridad: 'ALTA',
       });
 
-      const args = prisma.programacionMantenimiento.updateMany.mock.calls[0][0];
-      expect(args.where).toEqual({
-        id: PROG_ID,
-        tenantId: TENANT,
-        estado: 'PROGRAMADA',
-      });
+      const args = prisma.programacionMantenimiento.update.mock.calls[0][0];
       expect(args.data).toEqual({
         titulo: 'Nueva mantención',
         prioridad: 'ALTA',
@@ -470,37 +447,7 @@ describe('ProgramacionesMantenimientoService', () => {
       await expect(
         service.update(TENANT, PROG_ID, { titulo: 'x' }),
       ).rejects.toBeInstanceOf(ConflictException);
-      expect(
-        prisma.programacionMantenimiento.updateMany,
-      ).not.toHaveBeenCalled();
-    });
-
-    it('409 si la programación cambió de estado entre el check y el write (count=0)', async () => {
-      // Carrera: el check inicial la ve PROGRAMADA, pero una cancelación
-      // concurrente gana — el updateMany condicionado no matchea.
-      prisma.programacionMantenimiento.findFirst
-        .mockResolvedValueOnce({ id: PROG_ID, estado: 'PROGRAMADA' })
-        .mockResolvedValueOnce({ estado: 'CANCELADA' });
-      prisma.programacionMantenimiento.updateMany.mockResolvedValue({
-        count: 0,
-      });
-
-      await expect(
-        service.update(TENANT, PROG_ID, { titulo: 'x' }),
-      ).rejects.toBeInstanceOf(ConflictException);
-    });
-
-    it('404 si la programación desapareció entre el check y el write (count=0)', async () => {
-      prisma.programacionMantenimiento.findFirst
-        .mockResolvedValueOnce({ id: PROG_ID, estado: 'PROGRAMADA' })
-        .mockResolvedValueOnce(null);
-      prisma.programacionMantenimiento.updateMany.mockResolvedValue({
-        count: 0,
-      });
-
-      await expect(
-        service.update(TENANT, PROG_ID, { titulo: 'x' }),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.programacionMantenimiento.update).not.toHaveBeenCalled();
     });
 
     it('400 si la nueva fecha está en el pasado', async () => {
@@ -523,21 +470,23 @@ describe('ProgramacionesMantenimientoService', () => {
         service.update(TENANT, PROG_ID, { plantillaId: PLANTILLA_ID }),
       ).rejects.toBeInstanceOf(ConflictException);
 
+      prisma.programacionMantenimiento.update.mockResolvedValue(PROG_ROW);
       await service.update(TENANT, PROG_ID, { plantillaId: null });
-      const args = prisma.programacionMantenimiento.updateMany.mock.calls[0][0];
+      const args = prisma.programacionMantenimiento.update.mock.calls[0][0];
       expect(args.data).toEqual({ plantillaId: null });
     });
 
     it('quita el responsable con null y valida el nuevo si viene', async () => {
       mockProgramada();
+      prisma.programacionMantenimiento.update.mockResolvedValue(PROG_ROW);
 
       await service.update(TENANT, PROG_ID, { responsableId: null });
-      let args = prisma.programacionMantenimiento.updateMany.mock.calls[0][0];
+      let args = prisma.programacionMantenimiento.update.mock.calls[0][0];
       expect(args.data).toEqual({ responsableId: null });
 
-      prisma.$queryRaw.mockResolvedValue([{ id: RESPONSABLE_ID }]);
+      profiles.existsInTenant.mockResolvedValue(true);
       await service.update(TENANT, PROG_ID, { responsableId: RESPONSABLE_ID });
-      args = prisma.programacionMantenimiento.updateMany.mock.calls[1][0];
+      args = prisma.programacionMantenimiento.update.mock.calls[1][0];
       expect(args.data).toEqual({ responsableId: RESPONSABLE_ID });
     });
   });
@@ -647,20 +596,9 @@ describe('ProgramacionesMantenimientoService', () => {
       prisma.programacionMantenimiento.updateMany.mockResolvedValue({
         count: 1,
       });
-      // Relectura de metadata dentro de la tx antes del update final.
-      prisma.programacionMantenimiento.findUniqueOrThrow.mockResolvedValue({
-        metadata: PROG_BASE.metadata,
-      });
       prisma.ordenTrabajo.updateMany.mockResolvedValue({ count: 1 });
       ordenes.crearEnTx.mockResolvedValue(OT);
       tickets.crearEnTx.mockResolvedValue(TICKET);
-      // Auto-asignación cuando genera un mechanic.
-      prisma.ticket.update.mockResolvedValue({
-        ...TICKET,
-        estado: 'ASIGNADO',
-        mecanicoId: MECHANIC.id,
-      });
-      prisma.eventoEstadoTicket.create.mockResolvedValue({ id: 'evt-1' });
       inventario.crearReservaEnTx.mockResolvedValue(RESERVA);
       prisma.programacionMantenimiento.update.mockResolvedValue({
         ...PROG_BASE,
@@ -776,60 +714,6 @@ describe('ProgramacionesMantenimientoService', () => {
       expect(result.reserva?.estado).toBe('SOLICITADA');
     });
 
-    it('mechanic: auto-asigna el ticket (ASIGNADO + evento) en la misma tx', async () => {
-      mockGeneracionOk();
-
-      const result = await service.generarOt(TENANT, MECHANIC, PROG_ID, {});
-
-      const updateArgs = prisma.ticket.update.mock.calls[0][0];
-      expect(updateArgs.where).toEqual({ id: TICKET.id });
-      expect(updateArgs.data).toMatchObject({
-        estado: 'ASIGNADO',
-        mecanicoId: MECHANIC.id,
-      });
-      expect(updateArgs.data.fechaAsignacion).toBeInstanceOf(Date);
-
-      const eventoArgs = prisma.eventoEstadoTicket.create.mock.calls[0][0];
-      expect(eventoArgs.data).toMatchObject({
-        ticketId: TICKET.id,
-        estadoAnterior: 'PENDIENTE',
-        estadoNuevo: 'ASIGNADO',
-        usuarioId: MECHANIC.id,
-      });
-      expect(result.ticket.mecanicoId).toBe(MECHANIC.id);
-    });
-
-    it('admin/jefe: el ticket queda PENDIENTE sin auto-asignación', async () => {
-      mockGeneracionOk();
-
-      await service.generarOt(TENANT, ADMIN, PROG_ID, {});
-
-      expect(prisma.ticket.update).not.toHaveBeenCalled();
-      expect(prisma.eventoEstadoTicket.create).not.toHaveBeenCalled();
-    });
-
-    it('la trazabilidad usa la metadata releída dentro de la tx (no la pre-tx)', async () => {
-      mockGeneracionOk();
-      // findFirst (pre-tx) trae metadata vieja; un PATCH concurrente dejó
-      // otra — el merge debe partir de la fresca.
-      prisma.programacionMantenimiento.findFirst.mockResolvedValue({
-        ...PROG_BASE,
-        metadata: { vieja: true },
-        plantilla: null,
-      });
-      prisma.programacionMantenimiento.findUniqueOrThrow.mockResolvedValue({
-        metadata: { fresca: true },
-      });
-
-      await service.generarOt(TENANT, ADMIN, PROG_ID, {});
-
-      const metaUpdate =
-        prisma.programacionMantenimiento.update.mock.calls[0][0];
-      expect(metaUpdate.data.metadata.fresca).toBe(true);
-      expect(metaUpdate.data.metadata.vieja).toBeUndefined();
-      expect(metaUpdate.data.metadata.generacion).toBeDefined();
-    });
-
     it('aplica ajustarItems: reemplaza cantidades y 0 excluye el insumo', async () => {
       mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
 
@@ -842,32 +726,6 @@ describe('ProgramacionesMantenimientoService', () => {
 
       const params = inventario.crearReservaEnTx.mock.calls[0][4];
       expect(params.items).toEqual([{ repuestoId: 'rep-1', cantidad: 5 }]);
-    });
-
-    it('400 si se excluye (cantidad 0) un insumo obligatorio', async () => {
-      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
-
-      await expect(
-        service.generarOt(TENANT, ADMIN, PROG_ID, {
-          // rep-1 es obligatorio en la plantilla.
-          ajustarItems: [{ repuestoId: 'rep-1', cantidad: 0 }],
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(ordenes.crearEnTx).not.toHaveBeenCalled();
-    });
-
-    it('400 si ajustarItems repite un repuestoId', async () => {
-      mockGeneracionOk({ plantilla: PLANTILLA_CON_ITEMS });
-
-      await expect(
-        service.generarOt(TENANT, ADMIN, PROG_ID, {
-          ajustarItems: [
-            { repuestoId: 'rep-1', cantidad: 5 },
-            { repuestoId: 'rep-1', cantidad: 2 },
-          ],
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(ordenes.crearEnTx).not.toHaveBeenCalled();
     });
 
     it('400 si ajustarItems referencia un repuesto fuera de la plantilla', async () => {

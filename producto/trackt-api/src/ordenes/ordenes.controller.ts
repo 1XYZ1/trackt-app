@@ -10,15 +10,19 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
   forwardRef,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { AuthUser } from '../auth/types';
 import { TenantService } from '../common/tenant/tenant.service';
 import { OrdenesService } from './ordenes.service';
+import { OrdenesPdfService } from './ordenes-pdf.service';
 import { CreateOrdenDto } from './dto/create-orden.dto';
 import { UpdateOrdenDto } from './dto/update-orden.dto';
 import { ListOrdenesQueryDto } from './dto/list-ordenes-query.dto';
@@ -34,6 +38,7 @@ interface RequestWithUser extends Request {
 export class OrdenesController {
   constructor(
     private readonly ordenesService: OrdenesService,
+    private readonly ordenesPdfService: OrdenesPdfService,
     @Inject(forwardRef(() => TicketsService))
     private readonly ticketsService: TicketsService,
     private readonly tenantService: TenantService,
@@ -61,6 +66,27 @@ export class OrdenesController {
   async findOne(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.ordenesService.findOne(tenantId, id);
+  }
+
+  // PDF imprimible de la OT (Fase 6): ficha completa con tickets, reservas,
+  // consumos, evidencias y espacio para firmas.
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Get(':id/pdf')
+  async pdf(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    const { buffer, filename } = await this.ordenesPdfService.generarPdf(
+      tenantId,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
   }
 
   @Roles('admin', 'mechanic')

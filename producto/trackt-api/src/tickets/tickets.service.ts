@@ -20,6 +20,7 @@ import {
   getPrismaSkip,
   PaginatedResult,
 } from '../common/utils/pagination';
+import { siguienteCodigo } from '../common/utils/codigo.util';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { InventarioService } from '../inventario/inventario.service';
@@ -960,17 +961,7 @@ export class TicketsService {
       orderBy: { codigo: 'desc' },
       select: { codigo: true },
     });
-
-    let nextSeq = 1;
-    if (last) {
-      const suffix = last.codigo.slice(prefix.length);
-      const parsed = parseInt(suffix, 10);
-      if (!Number.isNaN(parsed)) {
-        nextSeq = parsed + 1;
-      }
-    }
-
-    return `${prefix}${String(nextSeq).padStart(4, '0')}`;
+    return siguienteCodigo(prefix, last?.codigo ?? null);
   }
 
   /**

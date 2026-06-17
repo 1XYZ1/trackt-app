@@ -50,4 +50,40 @@ export class ProfileService {
   invalidate(userId: string): void {
     this.cache.delete(userId);
   }
+
+  /**
+   * Batch de resúmenes { id, nombre } para hidratar respuestas (tickets,
+   * OTs, PDF, reportes). Sin caché: se usa en listados puntuales y el
+   * volumen es bajo. Punto único de acceso a profiles para nombres —
+   * no duplicar este query en los services.
+   */
+  async getUserSummaries(
+    userIds: string[],
+  ): Promise<Map<string, { id: string; nombre: string | null }>> {
+    const uniq = Array.from(new Set(userIds)).filter(Boolean);
+    if (uniq.length === 0) return new Map();
+    const rows = await this.prisma.$queryRaw<
+      Array<{ id: string; full_name: string | null }>
+    >`
+      SELECT id::text AS id, full_name
+      FROM public.profiles
+      WHERE id = ANY(${uniq}::uuid[])
+    `;
+    return new Map(rows.map((r) => [r.id, { id: r.id, nombre: r.full_name }]));
+  }
+
+  /**
+   * ¿El usuario pertenece al tenant? (cualquier rol). Para validar
+   * referencias a usuarios (ej. responsable de una programación).
+   */
+  async existsInTenant(tenantId: string, userId: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id::text AS id
+      FROM public.profiles
+      WHERE id = ${userId}::uuid
+        AND tenant_id = ${tenantId}
+      LIMIT 1
+    `;
+    return rows.length > 0;
+  }
 }

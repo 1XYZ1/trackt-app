@@ -16,6 +16,7 @@ import {
   getPrismaSkip,
   PaginatedResult,
 } from '../common/utils/pagination';
+import { siguienteCodigo } from '../common/utils/codigo.util';
 import { InventarioService } from '../inventario/inventario.service';
 import { CreateOrdenDto } from './dto/create-orden.dto';
 import { UpdateOrdenDto } from './dto/update-orden.dto';
@@ -336,22 +337,9 @@ export class OrdenesService {
   }
 
   // ---------- Hooks de integración con tickets ----------
-
-  /**
-   * Llamar desde TicketsService cuando se crea un ticket asociado a una OT.
-   * Si la OT está PENDIENTE, transiciona a EN_PROCESO.
-   * No-op si ya está EN_PROCESO/CERRADA/CANCELADA.
-   */
-  async onTicketCreated(tenantId: string, otId: string): Promise<void> {
-    await this.prisma.ordenTrabajo.updateMany({
-      where: {
-        id: otId,
-        tenantId,
-        estado: OrdenTrabajoEstado.PENDIENTE,
-      },
-      data: { estado: OrdenTrabajoEstado.EN_PROCESO },
-    });
-  }
+  // (onTicketCreated se eliminó en la revisión integral: nadie lo invocaba —
+  // la transición PENDIENTE → EN_PROCESO se hace inline y con guard dentro
+  // de las tx de TicketsService.createFromOrden y generarOt.)
 
   /**
    * Llamar desde TicketsService cuando un ticket cambia de estado.
@@ -449,16 +437,6 @@ export class OrdenesService {
       orderBy: { codigo: 'desc' },
       select: { codigo: true },
     });
-
-    let nextSeq = 1;
-    if (last) {
-      const suffix = last.codigo.slice(prefix.length);
-      const parsed = parseInt(suffix, 10);
-      if (!Number.isNaN(parsed)) {
-        nextSeq = parsed + 1;
-      }
-    }
-
-    return `${prefix}${String(nextSeq).padStart(4, '0')}`;
+    return siguienteCodigo(prefix, last?.codigo ?? null);
   }
 }

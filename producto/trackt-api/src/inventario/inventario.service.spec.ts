@@ -200,7 +200,7 @@ describe('InventarioService', () => {
 
     it('filtra bajoStock via SQL (raw) y pagina sobre el resultado', async () => {
       // El raw query devuelve solo los ids que cumplen la condicion.
-      (prisma.$queryRaw as jest.Mock).mockResolvedValueOnce([{ id: 'b' }]);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'b' }]);
       prisma.repuesto.findMany.mockResolvedValue([
         {
           id: 'b',
@@ -411,7 +411,12 @@ describe('InventarioService', () => {
   }
 
   function mockRepuestos(
-    items: Array<{ id: string; activo?: boolean; actual: number; reservado: number }>,
+    items: Array<{
+      id: string;
+      activo?: boolean;
+      actual: number;
+      reservado: number;
+    }>,
   ) {
     prisma.repuesto.findMany.mockResolvedValue(
       items.map((it) => ({
@@ -471,7 +476,10 @@ describe('InventarioService', () => {
     it('agrega cantidades cuando vienen items duplicados por repuesto', async () => {
       mockTicketForReserva(TicketEstado.ASIGNADO, 'user-mech');
       mockRepuestos([{ id: 'r1', actual: 10, reservado: 0 }]);
-      prisma.reservaRepuesto.create.mockResolvedValue({ id: 'res-1', items: [] });
+      prisma.reservaRepuesto.create.mockResolvedValue({
+        id: 'res-1',
+        items: [],
+      });
 
       await service.createReserva(TENANT, MECH('user-mech'), TICKET_ID, {
         items: [
@@ -556,12 +564,7 @@ describe('InventarioService', () => {
         estado: ReservaRepuestoEstado.LIBERADA,
       });
 
-      const result = await service.liberarReserva(
-        TENANT,
-        ADMIN,
-        'res-1',
-        {},
-      );
+      const result = await service.liberarReserva(TENANT, ADMIN, 'res-1', {});
 
       const stockArgs = prisma.inventarioStock.update.mock.calls[0][0];
       expect(stockArgs.data.stockReservado).toBe(0);
@@ -628,12 +631,9 @@ describe('InventarioService', () => {
         estado: ReservaRepuestoEstado.CONSUMIDA,
       });
 
-      const result = await service.consumirReserva(
-        TENANT,
-        JEFE,
-        'res-1',
-        { observacion: 'reparación' },
-      );
+      const result = await service.consumirReserva(TENANT, JEFE, 'res-1', {
+        observacion: 'reparación',
+      });
 
       const stockArgs = prisma.inventarioStock.update.mock.calls[0][0];
       expect(stockArgs.data.stockActual).toBe(8);
@@ -989,4 +989,3 @@ describe('InventarioService', () => {
     });
   });
 });
-

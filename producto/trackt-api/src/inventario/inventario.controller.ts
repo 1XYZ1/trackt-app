@@ -60,10 +60,7 @@ export class InventarioController {
 
   @Roles('admin', 'jefe_taller', 'mechanic')
   @Get('repuestos/:id')
-  async findOneRepuesto(
-    @Req() req: RequestWithUser,
-    @Param('id') id: string,
-  ) {
+  async findOneRepuesto(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.inventarioService.findOneRepuesto(tenantId, req.user, id);
   }
