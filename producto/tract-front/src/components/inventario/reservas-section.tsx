@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   CheckCircle2,
+  ClipboardCheck,
   Loader2,
   PackageOpen,
   PackagePlus,
@@ -25,6 +26,7 @@ import {
   useReservasByTicket,
 } from "@/hooks/use-inventario";
 import type { ReservaEstado, ReservaRepuesto } from "@/lib/api/inventario";
+import { AprobarReservaDialog } from "./aprobar-reserva-dialog";
 import { NuevaReservaDialog } from "./nueva-reserva-dialog";
 
 interface Props {
@@ -35,8 +37,10 @@ interface Props {
 
 function estadoBadgeVariant(
   estado: ReservaEstado,
-): "default" | "secondary" | "outline" | "error" {
+): "default" | "secondary" | "outline" | "error" | "warning" {
   switch (estado) {
+    case "SOLICITADA":
+      return "warning";
     case "RESERVADA":
       return "default";
     case "CONSUMIDA":
@@ -59,6 +63,9 @@ export function ReservasSection({
   ticketMecanicoId,
 }: Props) {
   const [nuevaOpen, setNuevaOpen] = useState(false);
+  const [aprobarTarget, setAprobarTarget] = useState<ReservaRepuesto | null>(
+    null,
+  );
   const auth = useAuth();
   const role = auth.role;
   const isAdmin = useHasRole("admin");
@@ -147,8 +154,14 @@ export function ReservasSection({
         {!isLoading && !error && reservas.length > 0 && (
           <div className="flex flex-col gap-4">
             {reservas.map((reserva) => {
-              const canActOnThis =
+              const canActOnReservada =
                 canModifyReserva && reserva.estado === "RESERVADA";
+              // Solo admin/jefe pueden aprobar (mechanic ve SOLICITADA read-only).
+              const canAprobar =
+                (isAdmin || isJefe) && reserva.estado === "SOLICITADA";
+              // Liberar tambien funciona para SOLICITADA (cancela la solicitud).
+              const canLiberarSolicitada =
+                canModifyReserva && reserva.estado === "SOLICITADA";
               return (
                 <div
                   className="rounded-lg border border-border/60 bg-secondary/15 p-4"
@@ -163,7 +176,7 @@ export function ReservasSection({
                         {new Date(reserva.createdAt).toLocaleString("es-CL")}
                       </span>
                     </div>
-                    {canActOnThis && (
+                    {canActOnReservada && (
                       <div className="flex gap-2">
                         <Button
                           loading={consumir.isPending}
@@ -183,6 +196,31 @@ export function ReservasSection({
                           <RotateCcw />
                           Liberar
                         </Button>
+                      </div>
+                    )}
+                    {(canAprobar || canLiberarSolicitada) && (
+                      <div className="flex gap-2">
+                        {canAprobar && (
+                          <Button
+                            onClick={() => setAprobarTarget(reserva)}
+                            size="sm"
+                            variant="default"
+                          >
+                            <ClipboardCheck />
+                            Aprobar
+                          </Button>
+                        )}
+                        {canLiberarSolicitada && (
+                          <Button
+                            loading={liberar.isPending}
+                            onClick={() => handleLiberar(reserva)}
+                            size="sm"
+                            variant="destructive-outline"
+                          >
+                            <RotateCcw />
+                            Rechazar
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -247,6 +285,15 @@ export function ReservasSection({
           onOpenChange={setNuevaOpen}
           open={nuevaOpen}
           ticketId={ticketId}
+        />
+      )}
+      {(isAdmin || isJefe) && (
+        <AprobarReservaDialog
+          onOpenChange={(open) => {
+            if (!open) setAprobarTarget(null);
+          }}
+          open={Boolean(aprobarTarget)}
+          reserva={aprobarTarget}
         />
       )}
     </Card>

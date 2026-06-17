@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -28,6 +29,14 @@ export class CreateReservaDto {
   @IsString()
   @MaxLength(500)
   observacion?: string;
+
+  // Si true Y el usuario es mechanic: crea la reserva en estado SOLICITADA
+  // (sin aplicar stockReservado). Requiere aprobacion posterior de admin/jefe
+  // via POST /reservas-repuestos/:id/aprobar.
+  // Para admin/jefe el campo se ignora (crean RESERVADA directo).
+  @IsOptional()
+  @IsBoolean()
+  solicitar?: boolean;
 
   @IsArray()
   @ArrayMinSize(1)

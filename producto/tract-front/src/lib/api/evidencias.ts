@@ -7,7 +7,9 @@ export type Evidencia = {
   descripcion?: string | null;
   subidoPorId: string;
   createdAt: string;
-  downloadUrl: string;
+  // El backend puede devolver null si no logra firmar la URL; la UI lo maneja
+  // con un placeholder. Tiparlo evita asumir un string siempre presente.
+  downloadUrl: string | null;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;

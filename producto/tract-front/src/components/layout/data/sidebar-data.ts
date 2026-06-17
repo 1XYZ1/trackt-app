@@ -10,6 +10,8 @@ import {
   Command,
   Gauge,
   Package,
+  History,
+  ClipboardCheck,
 } from 'lucide-react';
 import type { SidebarData } from '../types';
 
@@ -72,6 +74,18 @@ export const sidebarData: SidebarData = {
           title: 'Inventario',
           url: '/inventario',
           icon: Package,
+          roles: ['admin', 'jefe_taller'],
+        },
+        {
+          title: 'Movimientos',
+          url: '/inventario/movimientos',
+          icon: History,
+          roles: ['admin', 'jefe_taller'],
+        },
+        {
+          title: 'Solicitudes pendientes',
+          url: '/inventario/reservas-pendientes',
+          icon: ClipboardCheck,
           roles: ['admin', 'jefe_taller'],
         },
       ],

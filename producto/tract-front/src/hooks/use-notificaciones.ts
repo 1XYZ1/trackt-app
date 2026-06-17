@@ -12,6 +12,7 @@ export function useNotificaciones(limit = 10) {
   return useQuery({
     queryFn: () => getNotificaciones({ limit }),
     queryKey: ["notificaciones", { limit }],
+    refetchInterval: 60_000, // fallback poll por si Realtime se cae
   });
 }
 

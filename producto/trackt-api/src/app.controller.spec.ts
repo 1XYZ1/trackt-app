@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthGuard } from './auth/auth.guard';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -9,14 +10,20 @@ describe('AppController', () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
       providers: [AppService],
-    }).compile();
+    })
+      // getMe usa @UseGuards(AuthGuard); lo sustituimos para no resolver sus deps.
+      .overrideGuard(AuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     appController = app.get<AppController>(AppController);
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('devuelve el mensaje de saludo', () => {
+      expect(appController.getHello()).toEqual({
+        message: 'Hello World from Trackt API!',
+      });
     });
   });
 });

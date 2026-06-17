@@ -15,6 +15,7 @@ import { Roles } from '../auth/roles.decorator';
 import { AuthUser } from '../auth/types';
 import { TenantService } from '../common/tenant/tenant.service';
 import { InventarioService } from './inventario.service';
+import { AprobarReservaDto } from './dto/aprobar-reserva.dto';
 import { CreateReservaDto } from './dto/create-reserva.dto';
 import { ReservaActionDto } from './dto/reserva-action.dto';
 
@@ -90,5 +91,33 @@ export class ReservasRepuestosController {
   ) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.inventarioService.consumirReserva(tenantId, req.user, id, dto);
+  }
+
+  /**
+   * Aprobar reserva SOLICITADA → RESERVADA. Aplica stockReservado y emite
+   * movimiento RESERVA por item. Solo admin/jefe_taller.
+   */
+  @Roles('admin', 'jefe_taller')
+  @HttpCode(HttpStatus.OK)
+  @Post('reservas-repuestos/:id/aprobar')
+  async aprobar(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Body() dto: AprobarReservaDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.inventarioService.aprobarReserva(tenantId, req.user, id, dto);
+  }
+
+  /**
+   * Listado global de reservas pendientes (SOLICITADA) del tenant.
+   * Solo admin/jefe_taller. Mechanic accede a sus reservas via el endpoint
+   * anidado /tickets/:ticketId/reservas-repuestos.
+   */
+  @Roles('admin', 'jefe_taller')
+  @Get('reservas-repuestos')
+  async findPendientes(@Req() req: RequestWithUser) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.inventarioService.findReservasPendientes(tenantId);
   }
 }

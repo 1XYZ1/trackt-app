@@ -42,6 +42,9 @@ function buildPrismaMock() {
     ticket: {
       findFirst: jest.fn(),
     },
+    marca: {
+      findFirst: jest.fn(),
+    },
     $executeRaw: jest.fn().mockResolvedValue(0),
     $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(),
@@ -683,6 +686,305 @@ describe('InventarioService', () => {
         tenantId: TENANT,
         tipo: MovimientoInventarioTipo.RESERVA,
         reservaId: 'res-1',
+      });
+    });
+  });
+
+  // ============================================================
+  // Solicitud + Aprobacion (SOLICITADA → RESERVADA)
+  // ============================================================
+
+  describe('createReserva con solicitar=true', () => {
+    it('mechanic con solicitar=true crea reserva SOLICITADA sin tocar stockReservado ni emitir movimientos', async () => {
+      mockTicketForReserva(TicketEstado.ASIGNADO, 'user-mech');
+      mockRepuestos([{ id: 'r1', actual: 10, reservado: 0 }]);
+      prisma.reservaRepuesto.create.mockResolvedValue({
+        id: 'res-sol',
+        estado: ReservaRepuestoEstado.SOLICITADA,
+        items: [{ id: 'i1', repuestoId: 'r1', cantidad: 2 }],
+      });
+
+      const result = await service.createReserva(
+        TENANT,
+        MECH('user-mech'),
+        TICKET_ID,
+        {
+          solicitar: true,
+          items: [{ repuestoId: 'r1', cantidad: 2 }],
+        },
+      );
+
+      expect(result.estado).toBe(ReservaRepuestoEstado.SOLICITADA);
+      const createArgs = prisma.reservaRepuesto.create.mock.calls[0][0];
+      expect(createArgs.data.estado).toBe(ReservaRepuestoEstado.SOLICITADA);
+      // SOLICITADA NO toca stockReservado ni emite movimientos.
+      expect(prisma.inventarioStock.update).not.toHaveBeenCalled();
+      expect(prisma.movimientoInventario.create).not.toHaveBeenCalled();
+    });
+
+    it('admin con solicitar=true ignora el flag y crea directamente RESERVADA', async () => {
+      mockTicketForReserva(TicketEstado.ASIGNADO, 'user-mech');
+      mockRepuestos([{ id: 'r1', actual: 10, reservado: 0 }]);
+      prisma.reservaRepuesto.create.mockResolvedValue({
+        id: 'res-direct',
+        estado: ReservaRepuestoEstado.RESERVADA,
+        items: [{ id: 'i1', repuestoId: 'r1', cantidad: 2 }],
+      });
+      prisma.inventarioStock.update.mockResolvedValue({});
+      prisma.movimientoInventario.create.mockResolvedValue({});
+
+      await service.createReserva(TENANT, ADMIN, TICKET_ID, {
+        solicitar: true,
+        items: [{ repuestoId: 'r1', cantidad: 2 }],
+      });
+
+      const createArgs = prisma.reservaRepuesto.create.mock.calls[0][0];
+      expect(createArgs.data.estado).toBe(ReservaRepuestoEstado.RESERVADA);
+      expect(prisma.inventarioStock.update).toHaveBeenCalledTimes(1);
+      expect(prisma.movimientoInventario.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('aprobarReserva', () => {
+    it('transiciona SOLICITADA → RESERVADA aplicando stockReservado y emitiendo movimiento RESERVA', async () => {
+      prisma.reservaRepuesto.findFirst.mockResolvedValue({
+        id: 'res-1',
+        tenantId: TENANT,
+        ticketId: TICKET_ID,
+        estado: ReservaRepuestoEstado.SOLICITADA,
+        items: [{ repuestoId: 'r1', cantidad: 3 }],
+        ticket: { id: TICKET_ID, mecanicoId: 'user-mech' },
+      });
+      prisma.repuesto.findMany.mockResolvedValue([
+        {
+          id: 'r1',
+          codigo: 'R1',
+          activo: true,
+          stock: { id: 'st-r1', stockActual: 10, stockReservado: 2 },
+        },
+      ]);
+      prisma.inventarioStock.update.mockResolvedValue({});
+      prisma.movimientoInventario.create.mockResolvedValue({});
+      prisma.reservaRepuesto.update.mockResolvedValue({
+        id: 'res-1',
+        estado: ReservaRepuestoEstado.RESERVADA,
+        aprobadoPorId: ADMIN.id,
+      });
+
+      const result = await service.aprobarReserva(TENANT, ADMIN, 'res-1', {});
+
+      const stockArgs = prisma.inventarioStock.update.mock.calls[0][0];
+      expect(stockArgs.data.stockReservado).toBe(5); // 2 + 3
+      const movArgs = prisma.movimientoInventario.create.mock.calls[0][0];
+      expect(movArgs.data.tipo).toBe(MovimientoInventarioTipo.RESERVA);
+      expect(movArgs.data.cantidad).toBe(3);
+      const updArgs = prisma.reservaRepuesto.update.mock.calls[0][0];
+      expect(updArgs.data.estado).toBe(ReservaRepuestoEstado.RESERVADA);
+      expect(updArgs.data.aprobadoPorId).toBe(ADMIN.id);
+      expect(result.estado).toBe(ReservaRepuestoEstado.RESERVADA);
+    });
+
+    it.each([
+      ReservaRepuestoEstado.RESERVADA,
+      ReservaRepuestoEstado.CONSUMIDA,
+      ReservaRepuestoEstado.LIBERADA,
+      ReservaRepuestoEstado.CANCELADA,
+    ])('rechaza aprobar reserva en estado %s', async (estado) => {
+      prisma.reservaRepuesto.findFirst.mockResolvedValue({
+        id: 'res-1',
+        tenantId: TENANT,
+        estado,
+        items: [],
+        ticket: { id: TICKET_ID, mecanicoId: null },
+      });
+
+      await expect(
+        service.aprobarReserva(TENANT, ADMIN, 'res-1', {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rechaza aprobar si el stock disponible ya no cubre la cantidad solicitada', async () => {
+      prisma.reservaRepuesto.findFirst.mockResolvedValue({
+        id: 'res-1',
+        tenantId: TENANT,
+        ticketId: TICKET_ID,
+        estado: ReservaRepuestoEstado.SOLICITADA,
+        items: [{ repuestoId: 'r1', cantidad: 5 }],
+        ticket: { id: TICKET_ID, mecanicoId: null },
+      });
+      prisma.repuesto.findMany.mockResolvedValue([
+        {
+          id: 'r1',
+          codigo: 'R1',
+          activo: true,
+          stock: { id: 'st-r1', stockActual: 5, stockReservado: 3 }, // dispon=2
+        },
+      ]);
+
+      await expect(
+        service.aprobarReserva(TENANT, ADMIN, 'res-1', {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.reservaRepuesto.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findReservasPendientes', () => {
+    it('filtra solo reservas en estado SOLICITADA del tenant', async () => {
+      prisma.reservaRepuesto.findMany.mockResolvedValue([]);
+
+      await service.findReservasPendientes(TENANT);
+
+      const args = prisma.reservaRepuesto.findMany.mock.calls[0][0];
+      expect(args.where).toEqual({
+        tenantId: TENANT,
+        estado: ReservaRepuestoEstado.SOLICITADA,
+      });
+    });
+  });
+
+  // ============================================================
+  // Marca en repuestos (Fase 2)
+  // ============================================================
+
+  describe('repuestos con marca', () => {
+    const MARCA_OK = {
+      id: 'marca-1',
+      nombre: 'Bosch',
+      tipo: 'REPUESTO',
+      activo: true,
+    };
+
+    function mockCreateRepuestoOk() {
+      prisma.repuesto.findUnique.mockResolvedValue(null);
+      prisma.repuesto.create.mockResolvedValue({ id: REPUESTO_ID });
+      prisma.inventarioStock.create.mockResolvedValue({});
+      prisma.repuesto.findUniqueOrThrow.mockResolvedValue({
+        id: REPUESTO_ID,
+        codigo: 'FILTRO-001',
+        nombre: 'Filtro',
+        unidad: 'unidad',
+        stockMinimo: 0,
+        activo: true,
+        descripcion: null,
+        categoria: null,
+        marcaId: MARCA_OK.id,
+        marca: MARCA_OK,
+        codigoFabricante: 'BX-99',
+        ubicacionBodega: null,
+        proveedor: null,
+        metadata: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        stock: { stockActual: 0, stockReservado: 0 },
+      });
+    }
+
+    it('createRepuesto valida la marca del tenant y persiste los campos nuevos', async () => {
+      prisma.marca.findFirst.mockResolvedValue(MARCA_OK);
+      mockCreateRepuestoOk();
+
+      const result = await service.createRepuesto(TENANT, ADMIN.id, {
+        codigo: 'FILTRO-001',
+        nombre: 'Filtro',
+        marcaId: MARCA_OK.id,
+        codigoFabricante: 'BX-99',
+      });
+
+      const marcaArgs = prisma.marca.findFirst.mock.calls[0][0];
+      expect(marcaArgs.where).toMatchObject({
+        id: MARCA_OK.id,
+        tenantId: TENANT,
+      });
+      const createArgs = prisma.repuesto.create.mock.calls[0][0];
+      expect(createArgs.data.marcaId).toBe(MARCA_OK.id);
+      expect(createArgs.data.codigoFabricante).toBe('BX-99');
+      expect(result.marca).toEqual({ id: MARCA_OK.id, nombre: 'Bosch' });
+      expect(result.codigoFabricante).toBe('BX-99');
+    });
+
+    it('createRepuesto rechaza marca inexistente o de otro tenant (404)', async () => {
+      prisma.marca.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.createRepuesto(TENANT, ADMIN.id, {
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          marcaId: 'marca-ajena',
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(prisma.repuesto.create).not.toHaveBeenCalled();
+    });
+
+    it('createRepuesto rechaza marca inactiva (409)', async () => {
+      prisma.marca.findFirst.mockResolvedValue({
+        ...MARCA_OK,
+        activo: false,
+      });
+
+      await expect(
+        service.createRepuesto(TENANT, ADMIN.id, {
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          marcaId: MARCA_OK.id,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('createRepuesto rechaza marca de ámbito EQUIPO (409)', async () => {
+      prisma.marca.findFirst.mockResolvedValue({
+        ...MARCA_OK,
+        tipo: 'EQUIPO',
+      });
+
+      await expect(
+        service.createRepuesto(TENANT, ADMIN.id, {
+          codigo: 'FILTRO-001',
+          nombre: 'Filtro',
+          marcaId: MARCA_OK.id,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('updateRepuesto permite limpiar la marca con null sin validarla', async () => {
+      prisma.repuesto.findFirst.mockResolvedValue({
+        id: REPUESTO_ID,
+        codigo: 'FILTRO-001',
+      });
+      prisma.repuesto.update.mockResolvedValue({
+        id: REPUESTO_ID,
+        codigo: 'FILTRO-001',
+        nombre: 'Filtro',
+        unidad: 'unidad',
+        stockMinimo: 0,
+        activo: true,
+        marcaId: null,
+        marca: null,
+        stock: { stockActual: 0, stockReservado: 0 },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await service.updateRepuesto(TENANT, REPUESTO_ID, { marcaId: null });
+
+      expect(prisma.marca.findFirst).not.toHaveBeenCalled();
+      const args = prisma.repuesto.update.mock.calls[0][0];
+      expect(args.data.marcaId).toBeNull();
+    });
+
+    it('findAllRepuestos filtra por marcaId', async () => {
+      prisma.repuesto.findMany.mockResolvedValue([]);
+      prisma.repuesto.count.mockResolvedValue(0);
+
+      await service.findAllRepuestos(TENANT, ADMIN, {
+        page: 1,
+        limit: 10,
+        marcaId: MARCA_OK.id,
+      });
+
+      const args = prisma.repuesto.findMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        tenantId: TENANT,
+        marcaId: MARCA_OK.id,
       });
     });
   });

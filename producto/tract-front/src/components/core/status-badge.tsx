@@ -17,6 +17,7 @@ const statusConfig = {
     dotClassName: "bg-estado-asignado-dot",
     icon: CircleDashed,
     label: "Asignado",
+    pulse: true,
   },
   CANCELADO: {
     className:
@@ -24,6 +25,7 @@ const statusConfig = {
     dotClassName: "bg-estado-cancelado-dot",
     icon: XCircle,
     label: "Cancelado",
+    pulse: false,
   },
   CERRADO: {
     className:
@@ -31,6 +33,7 @@ const statusConfig = {
     dotClassName: "bg-estado-cerrado-dot",
     icon: CheckCircle2,
     label: "Cerrado",
+    pulse: false,
   },
   EJECUTADO: {
     className:
@@ -38,6 +41,7 @@ const statusConfig = {
     dotClassName: "bg-estado-ejecutado-dot",
     icon: CheckCircle2,
     label: "Ejecutado",
+    pulse: true,
   },
   EN_EJECUCION: {
     className:
@@ -45,6 +49,7 @@ const statusConfig = {
     dotClassName: "bg-estado-en-ejecucion-dot",
     icon: PlayCircle,
     label: "En ejecucion",
+    pulse: true,
   },
   PENDIENTE: {
     className:
@@ -52,6 +57,7 @@ const statusConfig = {
     dotClassName: "bg-estado-pendiente-dot",
     icon: Clock3,
     label: "Pendiente",
+    pulse: true,
   },
 } satisfies Record<
   TracktEstado,
@@ -60,6 +66,7 @@ const statusConfig = {
     dotClassName: string;
     icon: typeof Circle;
     label: string;
+    pulse: boolean;
   }
 >;
 
@@ -93,7 +100,13 @@ export function StatusBadge({
       variant="outline"
     >
       <span
-        className={cn("size-1.5 rounded-full animate-pulse-dot", config.dotClassName)}
+        className={cn(
+          "size-1.5 rounded-full",
+          // No pulsar en estados terminales (CERRADO/CANCELADO): el punto
+          // pulsante sugiere actividad en curso.
+          config.pulse && "animate-pulse-dot",
+          config.dotClassName,
+        )}
       />
       {showIcon && <Icon className="size-3.5" />}
       {config.label}

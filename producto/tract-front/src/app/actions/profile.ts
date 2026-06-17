@@ -4,7 +4,6 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireSession } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 
 const AVATAR_BUCKET = 'avatars';
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
@@ -77,20 +76,12 @@ export async function uploadAvatar(
   const path = `${session.id}/avatar.${ext}`;
 
   const supabase = await createClient();
-  let uploadError = (
-    await supabase.storage
-      .from(AVATAR_BUCKET)
-      .upload(path, file, { upsert: true, contentType: file.type })
-  ).error;
+  const { error: uploadError } = await supabase.storage
+    .from(AVATAR_BUCKET)
+    .upload(path, file, { upsert: true, contentType: file.type });
 
-  if (uploadError) {
-    const admin = createAdminClient();
-    const retry = await admin.storage
-      .from(AVATAR_BUCKET)
-      .upload(path, file, { upsert: true, contentType: file.type });
-    uploadError = retry.error;
-  }
-
+  // Sin fallback a service_role: subir con el cliente admin saltaria las RLS
+  // del bucket y ocultaria una mala configuracion de policies. Propagar el error.
   if (uploadError) {
     return { ok: false, error: uploadError.message };
   }

@@ -21,7 +21,8 @@ import {
 } from './dto/evidencia-response.dto';
 
 const BUCKET = 'evidencias';
-const UPLOAD_TTL_SECONDS = 60;
+// 5 min: 60s era muy ajustado para 5MB en redes de faena/movil.
+const UPLOAD_TTL_SECONDS = 5 * 60;
 const DOWNLOAD_TTL_SECONDS = 5 * 60;
 
 const MIME_TO_EXT: Record<AllowedMime, string> = {
@@ -91,15 +92,35 @@ export class EvidenciasService {
     }
 
     const admin = this.supabase.getAdminClient();
+    const fileName = dto.storagePath.split('/').pop() ?? '';
     const { data: head, error: headError } = await admin.storage
       .from(BUCKET)
       .list(`${tenantId}/${ticketId}`, {
-        search: dto.storagePath.split('/').pop() ?? '',
+        search: fileName,
       });
-    if (headError || !head || head.length === 0) {
+    // `search` es substring → exigir match EXACTO del nombre para no confirmar
+    // un archivo equivocado (ej. "foto.png" matcheando "foto.png.bak").
+    const item = head?.find((i) => i.name === fileName);
+    if (headError || !item) {
       throw new NotFoundException(
         'Archivo no encontrado en storage; subida no completada',
       );
+    }
+
+    // Validar tamaño y mime REALES del objeto subido (no confiar solo en lo que
+    // el cliente declaró al pedir la signed URL). Si no cumplen, borrar y rechazar.
+    const meta = item.metadata as
+      | { size?: number; mimetype?: string }
+      | undefined;
+    if (typeof meta?.size === 'number' && meta.size > MAX_BYTES) {
+      await admin.storage.from(BUCKET).remove([dto.storagePath]);
+      throw new PayloadTooLargeException(
+        `Tamaño excede el máximo permitido (${MAX_BYTES} bytes)`,
+      );
+    }
+    if (meta?.mimetype && !ALLOWED_MIME.includes(meta.mimetype as AllowedMime)) {
+      await admin.storage.from(BUCKET).remove([dto.storagePath]);
+      throw new ForbiddenException('MIME type no permitido');
     }
 
     const row = await this.prisma.evidencia.create({
@@ -145,6 +166,27 @@ export class EvidenciasService {
         downloadUrl: await this.signDownload(row.storagePath),
       })),
     );
+  }
+
+  /**
+   * Descarta (borra) un objeto subido a storage que no llegó a confirmarse,
+   * evitando archivos huérfanos cuando el confirm falla tras el PUT. Valida
+   * acceso al ticket y que el path pertenezca a tenant/ticket. Idempotente.
+   */
+  async descartarUpload(
+    tenantId: string,
+    user: AuthUser,
+    ticketId: string,
+    storagePath: string,
+  ): Promise<void> {
+    await this.ensureTicketAccess(tenantId, user, ticketId);
+    if (!storagePath.startsWith(`${tenantId}/${ticketId}/`)) {
+      throw new ForbiddenException(
+        'storagePath no coincide con tenant/ticket actual',
+      );
+    }
+    const admin = this.supabase.getAdminClient();
+    await admin.storage.from(BUCKET).remove([storagePath]);
   }
 
   // ---------- Helpers ----------

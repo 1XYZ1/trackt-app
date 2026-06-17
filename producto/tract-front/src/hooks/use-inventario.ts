@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ajusteStock,
+  aprobarReserva,
   consumirReserva,
   createRepuesto,
   createReserva,
@@ -12,9 +13,11 @@ import {
   getRepuestoById,
   getRepuestos,
   getReservasByTicket,
+  getReservasPendientes,
   liberarReserva,
   updateRepuesto,
   type AjusteStockPayload,
+  type AprobarReservaPayload,
   type CreateRepuestoPayload,
   type CreateReservaPayload,
   type EntradaStockPayload,
@@ -168,5 +171,35 @@ export function useConsumirReserva(ticketId?: string) {
       payload?: ReservaActionPayload;
     }) => consumirReserva(id, payload ?? {}),
     onSuccess: () => invalidateReservas(qc, ticketId),
+  });
+}
+
+export function useAprobarReserva(ticketId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload?: AprobarReservaPayload;
+    }) => aprobarReserva(id, payload ?? {}),
+    onSuccess: () =>
+      Promise.all([
+        invalidateReservas(qc, ticketId),
+        qc.invalidateQueries({
+          queryKey: ["inventario", "reservas", "pendientes"],
+        }),
+      ]),
+  });
+}
+
+/**
+ * Listado global de reservas SOLICITADA del tenant. Solo admin/jefe.
+ */
+export function useReservasPendientes() {
+  return useQuery({
+    queryFn: getReservasPendientes,
+    queryKey: ["inventario", "reservas", "pendientes"],
   });
 }

@@ -18,14 +18,17 @@ export class RolesGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    if (!required || required.length === 0) {
-      return true;
-    }
-
     const req = context.switchToHttp().getRequest<{ user?: AuthUser }>();
     const user = req.user;
+
+    // Fail-safe: aunque no se declaren @Roles, exigir usuario autenticado.
+    // Evita acceso anonimo si el guard se montara sin AuthGuard delante.
     if (!user) {
       throw new ForbiddenException('No authenticated user');
+    }
+
+    if (!required || required.length === 0) {
+      return true;
     }
 
     if (!required.includes(user.role)) {

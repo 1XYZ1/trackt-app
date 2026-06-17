@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/auth-context";
 import { useCreateReserva, useRepuestos } from "@/hooks/use-inventario";
 
 interface Props {
@@ -39,8 +40,13 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
     { uid: newUid(), repuestoId: "", cantidad: 1 },
   ]);
   const [observacion, setObservacion] = useState("");
+  const [solicitar, setSolicitar] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const auth = useAuth();
+  // Solo mechanic puede crear reservas como solicitud pendiente — admin/jefe
+  // crean directamente RESERVADA y aplican stockReservado al instante.
+  const puedeSolicitar = auth.role === "mechanic";
   const repuestos = useRepuestos();
   const createReserva = useCreateReserva(ticketId);
 
@@ -59,6 +65,7 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
   const reset = () => {
     setItems([{ uid: newUid(), repuestoId: "", cantidad: 1 }]);
     setObservacion("");
+    setSolicitar(false);
     setError(null);
   };
 
@@ -128,10 +135,15 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
           repuestoId,
           cantidad,
         })),
+        solicitar: puedeSolicitar && solicitar ? true : undefined,
       },
       {
         onSuccess: () => {
-          toast.success("Reserva creada");
+          toast.success(
+            puedeSolicitar && solicitar
+              ? "Solicitud enviada para aprobacion"
+              : "Reserva creada",
+          );
           reset();
           onOpenChange(false);
         },
@@ -275,6 +287,26 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
                 />
               </div>
 
+              {puedeSolicitar && (
+                <label className="flex items-start gap-2 rounded-lg border border-border/60 bg-secondary/15 p-3 text-sm">
+                  <input
+                    checked={solicitar}
+                    className="mt-1 size-4"
+                    onChange={(e) => setSolicitar(e.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <span className="font-medium">
+                      Crear como solicitud pendiente de aprobacion
+                    </span>
+                    <span className="mt-1 block text-muted-foreground text-xs">
+                      El stock no se reserva hasta que un admin o jefe apruebe.
+                      Util cuando aun no es seguro consumir los repuestos.
+                    </span>
+                  </span>
+                </label>
+              )}
+
               {error && <p className="text-destructive text-xs">{error}</p>}
             </div>
           )}
@@ -290,7 +322,7 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
             onClick={handleSubmit}
           >
             <PackagePlus />
-            Crear reserva
+            {puedeSolicitar && solicitar ? "Crear solicitud" : "Crear reserva"}
           </Button>
         </DialogFooter>
       </DialogPopup>

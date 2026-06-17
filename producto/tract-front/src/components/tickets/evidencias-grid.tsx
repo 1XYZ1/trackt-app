@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ImageOff, Loader2 } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import { EmptyState } from "@/components/core";
 import {
   Dialog,
@@ -33,7 +33,7 @@ export function EvidenciasGrid({ ticketId }: Props) {
   if (error) {
     return (
       <div className="flex items-center gap-2 text-destructive text-sm">
-        <Loader2 className="size-4 animate-spin" />
+        <ImageOff className="size-4" />
         No se pudieron cargar las evidencias.
       </div>
     );

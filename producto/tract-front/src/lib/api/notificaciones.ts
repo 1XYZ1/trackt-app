@@ -68,7 +68,11 @@ export async function getCountNoLeidas(): Promise<number> {
   const response = await authFetch(
     `${API_BASE_URL}/notificaciones/count-no-leidas`,
   );
-  if (!response.ok) return 0;
+  // Lanzar ante error (como el resto de fns): devolver 0 enmascaraba fallos
+  // reales (401 de sesion expirada, 500) haciendo desaparecer el badge.
+  if (!response.ok) {
+    throw new Error("No se pudo obtener el conteo de notificaciones");
+  }
   const data = (await response.json()) as { count: number };
   return data.count;
 }

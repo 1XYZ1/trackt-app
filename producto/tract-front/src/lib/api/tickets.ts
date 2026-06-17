@@ -63,15 +63,66 @@ export function getTicketEquipoLabel(ticket: TicketTrabajo): string {
   return ticket.equipoNombre ?? "Equipo sin informacion";
 }
 
-export async function getTickets(): Promise<TicketTrabajo[]> {
-  assertApiBaseUrl();
+/** Firma común de authFetch (cliente) y del fetcher con token del servidor. */
+export type TicketFetcher = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
 
-  const response = await authFetch(`${API_BASE_URL}/tickets`);
-  const result = await parseJsonResponse<{ data: TicketTrabajo[] }>(
+type PaginatedTickets = {
+  data: TicketTrabajo[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+};
+
+const TICKETS_PAGE_SIZE = 100; // máximo permitido por el backend (PaginationQueryDto)
+
+async function fetchTicketsPage(
+  fetcher: TicketFetcher,
+  page: number,
+): Promise<PaginatedTickets> {
+  const response = await fetcher(
+    `${API_BASE_URL}/tickets?page=${page}&limit=${TICKETS_PAGE_SIZE}`,
+  );
+  return parseJsonResponse<PaginatedTickets>(
     response,
     "No se pudieron cargar los tickets",
   );
-  return result.data;
+}
+
+/**
+ * Trae TODOS los tickets del tenant iterando las páginas del backend.
+ *
+ * El listado pagina con limit por defecto 10; consumirlo sin params mostraba
+ * solo los primeros 10 (bug). El kanban y la vista lista necesitan el conjunto
+ * completo de tickets abiertos, así que paginamos hasta totalPages: la primera
+ * página secuencial (para conocer totalPages) y el resto en paralelo.
+ */
+export async function getAllTickets(
+  fetcher: TicketFetcher = authFetch,
+): Promise<TicketTrabajo[]> {
+  assertApiBaseUrl();
+
+  const first = await fetchTicketsPage(fetcher, 1);
+  if (first.meta.totalPages > 10 || first.meta.total > 1000) {
+    // Señal para migrar a filtrado server-side si un tenant crece mucho.
+    console.warn(
+      `[tickets] ${first.meta.total} tickets — considerar filtrado server-side`,
+    );
+  }
+  if (first.meta.totalPages <= 1) return first.data;
+
+  const restPages = Array.from(
+    { length: first.meta.totalPages - 1 },
+    (_, i) => i + 2,
+  );
+  const rest = await Promise.all(
+    restPages.map((page) => fetchTicketsPage(fetcher, page)),
+  );
+  return [first.data, ...rest.map((r) => r.data)].flat();
+}
+
+export async function getTickets(): Promise<TicketTrabajo[]> {
+  return getAllTickets();
 }
 
 export async function getTicketById(id: string): Promise<TicketTrabajo> {
@@ -126,6 +177,10 @@ export type CargaMecanico = {
   totalAbiertos: number;
 };
 
+export type FinalizarTicketRawPayload = {
+  observacion?: string;
+};
+
 export type ValidarTicketPayload = {
   aprobado: boolean;
   observacion?: string;
@@ -162,6 +217,33 @@ export function asignarTicket(
     "asignar",
     payload,
     "No se pudo asignar el ticket",
+  );
+}
+
+/**
+ * Iniciar ejecución desde el kanban (ASIGNADO → EN_EJECUCION). Devuelve el
+ * TicketTrabajo crudo para actualizar la cache ["tickets"]. La versión adaptada
+ * a MisTicket vive en lib/api/mis-tickets.ts (vista del mecánico).
+ */
+export function iniciarTicket(ticketId: string): Promise<TicketTrabajo> {
+  return postTicketTransition(
+    ticketId,
+    "iniciar",
+    {},
+    "No se pudo iniciar el ticket",
+  );
+}
+
+/** Finalizar ejecución desde el kanban (EN_EJECUCION → EJECUTADO). */
+export function finalizarTicket(
+  ticketId: string,
+  payload: FinalizarTicketRawPayload,
+): Promise<TicketTrabajo> {
+  return postTicketTransition(
+    ticketId,
+    "finalizar",
+    payload,
+    "No se pudo finalizar el ticket",
   );
 }
 

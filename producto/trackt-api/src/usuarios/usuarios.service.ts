@@ -66,9 +66,7 @@ export class UsuariosService {
     const offset = (page - 1) * limit;
 
     // Condiciones dinámicas
-    const conditions: Prisma.Sql[] = [
-      Prisma.sql`p.tenant_id = ${tenantId}`,
-    ];
+    const conditions: Prisma.Sql[] = [Prisma.sql`p.tenant_id = ${tenantId}`];
 
     if (rolNormalizado) {
       // Cast a user_role enum: la columna `role` en Supabase está tipada

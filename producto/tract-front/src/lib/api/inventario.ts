@@ -118,9 +118,16 @@ export type AjusteStockPayload = {
 export type CreateReservaPayload = {
   observacion?: string;
   items: { repuestoId: string; cantidad: number }[];
+  // Solo aplicable a mechanic. Si true, la reserva queda en estado SOLICITADA
+  // y requiere aprobacion de admin/jefe.
+  solicitar?: boolean;
 };
 
 export type ReservaActionPayload = {
+  observacion?: string;
+};
+
+export type AprobarReservaPayload = {
   observacion?: string;
 };
 
@@ -136,6 +143,8 @@ export type MovimientosFilters = {
   ticketId?: string;
   reservaId?: string;
   tipo?: MovimientoTipo;
+  desde?: string; // ISO date (YYYY-MM-DD o full ISO)
+  hasta?: string;
 };
 
 type Paginated<T> = {
@@ -153,7 +162,26 @@ function assertApiBaseUrl() {
 
 async function extractError(response: Response, fallback: string) {
   try {
-    const body = (await response.json()) as { message?: string | string[] };
+    const body = (await response.json()) as {
+      message?: string | string[];
+      // 409 de stock insuficiente: el backend detalla cada repuesto faltante.
+      faltantes?: Array<{
+        codigo: string;
+        nombre: string;
+        requerido: number;
+        disponible: number;
+      }>;
+    };
+    if (
+      typeof body.message === "string" &&
+      body.message &&
+      body.faltantes?.length
+    ) {
+      const detalle = body.faltantes
+        .map((f) => `${f.codigo} (disponible ${f.disponible}, requerido ${f.requerido})`)
+        .join(", ");
+      return `${body.message}: ${detalle}`;
+    }
     if (Array.isArray(body.message)) return body.message.join(", ");
     if (typeof body.message === "string" && body.message) return body.message;
   } catch {
@@ -296,6 +324,8 @@ export async function getMovimientos(
   if (filters.ticketId) qs.set("ticketId", filters.ticketId);
   if (filters.reservaId) qs.set("reservaId", filters.reservaId);
   if (filters.tipo) qs.set("tipo", filters.tipo);
+  if (filters.desde) qs.set("desde", filters.desde);
+  if (filters.hasta) qs.set("hasta", filters.hasta);
   qs.set("limit", "100");
 
   const response = await authFetch(
@@ -382,4 +412,39 @@ export async function consumirReserva(
     );
   }
   return (await response.json()) as ReservaRepuesto;
+}
+
+export async function aprobarReserva(
+  id: string,
+  payload: AprobarReservaPayload = {},
+): Promise<ReservaRepuesto> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/reservas-repuestos/${id}/aprobar`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo aprobar la reserva"),
+    );
+  }
+  return (await response.json()) as ReservaRepuesto;
+}
+
+/**
+ * Listado global de reservas pendientes (SOLICITADA). Solo admin/jefe_taller.
+ */
+export async function getReservasPendientes(): Promise<ReservaRepuesto[]> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/reservas-repuestos`,
+  );
+  if (!response.ok) {
+    throw new Error("No se pudieron cargar las reservas pendientes");
+  }
+  return (await response.json()) as ReservaRepuesto[];
 }
