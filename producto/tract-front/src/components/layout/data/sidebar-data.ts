@@ -13,6 +13,7 @@ import {
   History,
   ClipboardCheck,
   Tag,
+  ListChecks,
 } from 'lucide-react';
 import type { SidebarData } from '../types';
 
@@ -57,6 +58,12 @@ export const sidebarData: SidebarData = {
           title: 'Mantenciones',
           url: '/mantenciones',
           icon: Wrench,
+          roles: ['admin', 'jefe_taller'],
+        },
+        {
+          title: 'Plantillas',
+          url: '/plantillas',
+          icon: ListChecks,
           roles: ['admin', 'jefe_taller'],
         },
         {
