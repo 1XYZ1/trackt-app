@@ -17,6 +17,7 @@ import {
   EquipoFormSheet,
   EquipoHistorial,
   EquipoPlantillas,
+  EquipoProgramaciones,
   EquipoRepuestos,
   EstadoOperativoBadge,
   QrDialog,
@@ -68,20 +69,6 @@ const ALERTA_STYLE: Record<EquipoAlerta["tipo"], string> = {
   OT_PRIORIDAD_ALTA:
     "border-destructive/40 bg-destructive/8 text-destructive-foreground",
 };
-
-function PanelPlaceholder({ titulo }: { titulo: string }) {
-  return (
-    <Card className="rounded-lg border-border/70">
-      <CardContent className="p-5">
-        <EmptyState
-          icon="wrench"
-          message={`La vista de ${titulo} se conecta en la siguiente fase del plan.`}
-          title={`${titulo}: disponible próximamente`}
-        />
-      </CardContent>
-    </Card>
-  );
-}
 
 export type EquipoDetalleClientProps = {
   id: string;
@@ -365,7 +352,7 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
           <EquipoPlantillas equipoId={id} />
         </TabsPanel>
         <TabsPanel className="mt-4" value="programaciones">
-          <PanelPlaceholder titulo="Programaciones" />
+          <EquipoProgramaciones equipoId={id} />
         </TabsPanel>
       </Tabs>
 
