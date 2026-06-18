@@ -36,22 +36,25 @@ export function TicketsLista({ tickets }: { tickets: TicketTrabajo[] }) {
   if (grupos.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3">
-      {grupos.map(({ estado, items }) => (
+    <div className="overflow-hidden rounded-lg border border-border/70 bg-card">
+      {grupos.map(({ estado, items }, index) => (
         <Collapsible
+          className={cn(index > 0 && "border-border/60 border-t")}
           defaultOpen={!COLAPSADOS_POR_DEFECTO.includes(estado)}
           key={estado}
         >
-          <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/40">
+          <CollapsibleTrigger className="group sticky top-0 z-10 flex w-full items-center gap-2 bg-muted/40 px-3 py-2 text-left outline-none backdrop-blur-sm transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
             <ChevronRight className="size-4 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
             <span className={cn("size-2 rounded-full", ESTADO_DOT[estado])} />
-            <span className="font-semibold text-sm">
+            <span className="font-semibold text-foreground text-sm">
               {ticketEstadoLabel(estado)}
             </span>
-            <span className="text-muted-foreground text-xs">{items.length}</span>
+            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background px-1.5 font-medium text-muted-foreground text-xs tabular-nums">
+              {items.length}
+            </span>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="divide-y divide-border/50 border-border/50 border-t">
+            <div className="flex flex-col gap-px p-1">
               {items.map((ticket) => (
                 <TicketsListaRow
                   key={ticket.id}

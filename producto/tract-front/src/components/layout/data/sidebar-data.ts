@@ -78,28 +78,34 @@ export const sidebarData: SidebarData = {
           roles: ['admin', 'jefe_taller'],
         },
         {
+          title: 'Reportes',
+          url: '/reportes',
+          icon: BarChart3,
+          roles: ['admin', 'jefe_taller'],
+        },
+      ],
+    },
+    {
+      title: 'Inventario',
+      roles: ['admin', 'jefe_taller', 'jefe_inventario'],
+      items: [
+        {
           title: 'Inventario',
           url: '/inventario',
           icon: Package,
-          roles: ['admin', 'jefe_taller'],
+          roles: ['admin', 'jefe_taller', 'jefe_inventario'],
         },
         {
           title: 'Movimientos',
           url: '/inventario/movimientos',
           icon: History,
-          roles: ['admin', 'jefe_taller'],
+          roles: ['admin', 'jefe_taller', 'jefe_inventario'],
         },
         {
           title: 'Solicitudes pendientes',
           url: '/inventario/reservas-pendientes',
           icon: ClipboardCheck,
-          roles: ['admin', 'jefe_taller'],
-        },
-        {
-          title: 'Reportes',
-          url: '/reportes',
-          icon: BarChart3,
-          roles: ['admin', 'jefe_taller'],
+          roles: ['admin', 'jefe_taller', 'jefe_inventario'],
         },
       ],
     },

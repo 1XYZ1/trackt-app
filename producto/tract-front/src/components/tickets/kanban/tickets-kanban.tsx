@@ -133,11 +133,20 @@ export function TicketsKanban({ tickets }: { tickets: TicketTrabajo[] }) {
                 !validTargets?.includes(estado),
             );
 
+            // Destino válido de la card en arrastre (resalta columnas soltables).
+            const isDroppable = Boolean(
+              activeTicket &&
+                estado !== activeTicket.estado &&
+                validTargets?.includes(estado),
+            );
+
             return (
               <KanbanColumn
                 count={items.length}
                 dimmed={isDimmed}
                 disabled={isDimmed}
+                droppable={isDroppable}
+                empty={items.length === 0}
                 estado={estado}
                 key={estado}
               >
@@ -162,7 +171,8 @@ export function TicketsKanban({ tickets }: { tickets: TicketTrabajo[] }) {
           {activeTicket && (
             <div className="rotate-2 cursor-grabbing">
               <KanbanCardContent
-                className="border-brand-primary/40 shadow-lg"
+                className="border-brand-primary/50 shadow-lg ring-1 ring-brand-primary/20"
+                draggable
                 ticket={activeTicket}
               />
             </div>

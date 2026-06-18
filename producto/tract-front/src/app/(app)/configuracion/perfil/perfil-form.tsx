@@ -11,7 +11,7 @@ import {
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Camera, Loader2, Upload } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle2, Upload } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -159,25 +159,11 @@ export function PerfilForm({
             <p className="text-destructive text-xs">{errors.fullName.message}</p>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <Button type="submit" disabled={namePending}>
-            {namePending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              'Guardar nombre'
-            )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" loading={namePending}>
+            Guardar nombre
           </Button>
-          {nameFeedback && (
-            <p
-              className={
-                nameFeedback.type === 'ok'
-                  ? 'text-emerald-500 text-sm'
-                  : 'text-destructive text-sm'
-              }
-            >
-              {nameFeedback.msg}
-            </p>
-          )}
+          <FeedbackText feedback={nameFeedback} />
         </div>
       </form>
 
@@ -214,9 +200,9 @@ export function PerfilForm({
               />
               <label
                 htmlFor="avatar-file"
-                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-xs hover:bg-accent hover:text-accent-foreground"
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-input bg-popover px-3 text-sm shadow-xs/5 transition-colors hover:bg-accent/50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-background"
               >
-                <Camera className="size-4" />
+                <Camera className="size-4 opacity-80" />
                 {selectedFile ? 'Cambiar archivo' : 'Seleccionar imagen'}
               </label>
               {selectedFile && (
@@ -231,35 +217,40 @@ export function PerfilForm({
             <p className="text-destructive text-xs">{localError}</p>
           )}
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button
               type="submit"
-              disabled={!selectedFile || avatarPending}
+              disabled={!selectedFile}
+              loading={avatarPending}
               variant="default"
             >
-              {avatarPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <>
-                  <Upload className="mr-2 size-4" />
-                  Subir avatar
-                </>
-              )}
+              <Upload />
+              Subir avatar
             </Button>
-            {avatarFeedback && (
-              <p
-                className={
-                  avatarFeedback.type === 'ok'
-                    ? 'text-emerald-500 text-sm'
-                    : 'text-destructive text-sm'
-                }
-              >
-                {avatarFeedback.msg}
-              </p>
-            )}
+            <FeedbackText feedback={avatarFeedback} />
           </div>
         </form>
       </div>
     </div>
+  );
+}
+
+function FeedbackText({ feedback }: { feedback: Feedback }) {
+  if (!feedback) return null;
+  return (
+    <p
+      className={
+        feedback.type === 'ok'
+          ? 'flex items-center gap-1.5 text-sm text-success-foreground'
+          : 'flex items-center gap-1.5 text-destructive text-sm'
+      }
+    >
+      {feedback.type === 'ok' ? (
+        <CheckCircle2 className="size-4 shrink-0" />
+      ) : (
+        <AlertCircle className="size-4 shrink-0" />
+      )}
+      {feedback.msg}
+    </p>
   );
 }

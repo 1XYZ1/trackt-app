@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2, Play } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Play, User, Wrench } from "lucide-react";
 import {
   Sheet,
   SheetDescription,
@@ -12,9 +12,11 @@ import {
   SheetPopup,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { StatusBadge } from "@/components/core";
+import type { TicketEstado } from "@/components/core";
 import { useAuth } from "@/contexts/auth-context";
 import {
   useFinalizarTicket,
@@ -29,29 +31,12 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-function ticketEstadoVariant(
-  estado: string,
-): "default" | "secondary" | "outline" | "error" | "warning" {
-  switch (estado) {
-    case "EN_EJECUCION":
-      return "warning";
-    case "EJECUTADO":
-      return "secondary";
-    case "CERRADO":
-      return "outline";
-    case "CANCELADO":
-      return "error";
-    default:
-      return "default";
-  }
-}
-
 // Bottom sheet con el detalle del ticket del equipo: el mecánico dueño puede
 // iniciar/finalizar y cualquier rol con permiso reserva repuestos (ReservasSection).
 export function TicketQrSheet({ onOpenChange, ticketId }: Props) {
   return (
     <Sheet onOpenChange={onOpenChange} open={Boolean(ticketId)}>
-      <SheetPopup className="max-h-[90vh] rounded-t-2xl" side="bottom">
+      <SheetPopup className="max-h-[90dvh] rounded-t-2xl" side="bottom">
         {ticketId ? <TicketSheetBody ticketId={ticketId} /> : null}
       </SheetPopup>
     </Sheet>
@@ -111,17 +96,30 @@ function TicketSheetBody({ ticketId }: { ticketId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center gap-2 p-8 text-muted-foreground text-sm">
-        <Loader2 className="size-4 animate-spin" />
-        Cargando ticket...
-      </div>
+      <>
+        <SheetHeader>
+          <Skeleton className="h-6 w-40 rounded-md" />
+          <Skeleton className="h-4 w-56 rounded-md" />
+        </SheetHeader>
+        <SheetPanel className="space-y-3">
+          <Skeleton className="h-4 w-full rounded-md" />
+          <Skeleton className="h-4 w-2/3 rounded-md" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+        </SheetPanel>
+      </>
     );
   }
 
   if (error || !ticket) {
     return (
-      <div className="p-8 text-center text-destructive text-sm">
-        No se pudo cargar el ticket.
+      <div className="flex flex-col items-center gap-3 p-10 text-center">
+        <div className="flex size-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20">
+          <AlertTriangle className="size-5" />
+        </div>
+        <p className="font-medium text-sm">No se pudo cargar el ticket</p>
+        <p className="max-w-xs text-muted-foreground text-sm">
+          Vuelve a intentarlo en unos segundos.
+        </p>
       </div>
     );
   }
@@ -129,27 +127,45 @@ function TicketSheetBody({ ticketId }: { ticketId: string }) {
   return (
     <>
       <SheetHeader>
-        <SheetTitle className="flex items-center gap-2 text-lg">
-          <span className="font-mono">{ticket.codigo}</span>
-          <Badge variant={ticketEstadoVariant(ticket.estado)}>
-            {ticket.estado}
-          </Badge>
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-mono text-muted-foreground text-sm">
+            {ticket.codigo}
+          </span>
+          <StatusBadge estado={ticket.estado as TicketEstado} />
+        </div>
+        <SheetTitle className="text-balance text-lg leading-tight">
+          {ticket.titulo}
         </SheetTitle>
-        <SheetDescription>{ticket.titulo}</SheetDescription>
+        <SheetDescription className="sr-only">
+          Detalle del ticket {ticket.codigo}
+        </SheetDescription>
       </SheetHeader>
 
-      <SheetPanel className="space-y-4">
-        <p className="text-muted-foreground text-sm">{ticket.descripcion}</p>
-        <p className="text-muted-foreground text-xs">
-          Equipo: {getTicketEquipoLabel(ticket)}
-          {ticket.mecanico?.nombre
-            ? ` · Mecánico: ${ticket.mecanico.nombre}`
-            : ""}
-        </p>
+      <SheetPanel className="space-y-5">
+        {ticket.descripcion && (
+          <p className="text-foreground/90 text-sm leading-relaxed">
+            {ticket.descripcion}
+          </p>
+        )}
+
+        <dl className="space-y-2.5 rounded-xl border bg-muted/40 p-3.5">
+          <div className="flex items-center gap-2.5 text-sm">
+            <Wrench className="size-4 shrink-0 text-muted-foreground" />
+            <dt className="sr-only">Equipo</dt>
+            <dd className="min-w-0 truncate">{getTicketEquipoLabel(ticket)}</dd>
+          </div>
+          {ticket.mecanico?.nombre && (
+            <div className="flex items-center gap-2.5 text-sm">
+              <User className="size-4 shrink-0 text-muted-foreground" />
+              <dt className="sr-only">Mecánico</dt>
+              <dd className="min-w-0 truncate">{ticket.mecanico.nombre}</dd>
+            </div>
+          )}
+        </dl>
 
         {isOwnerMechanic && ticket.estado === "ASIGNADO" && (
           <Button
-            className="w-full"
+            className="h-11 w-full"
             loading={iniciar.isPending}
             onClick={handleIniciar}
           >
@@ -159,7 +175,7 @@ function TicketSheetBody({ ticketId }: { ticketId: string }) {
         )}
 
         {isOwnerMechanic && ticket.estado === "EN_EJECUCION" && (
-          <div className="space-y-2 rounded-lg border border-border/60 bg-secondary/15 p-3">
+          <div className="space-y-2.5 rounded-xl border bg-card p-3.5">
             <label className="font-medium text-sm" htmlFor="cierre-obs">
               Observación de cierre
             </label>
@@ -167,11 +183,11 @@ function TicketSheetBody({ ticketId }: { ticketId: string }) {
               id="cierre-obs"
               onChange={(e) => setObservacion(e.target.value)}
               placeholder="Resumen del trabajo realizado"
-              rows={2}
+              rows={3}
               value={observacion}
             />
             <Button
-              className="w-full"
+              className="h-11 w-full"
               loading={finalizar.isPending}
               onClick={handleFinalizar}
             >

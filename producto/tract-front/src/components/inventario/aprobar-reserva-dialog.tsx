@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Package } from "lucide-react";
 import {
   Dialog,
   DialogClose,
@@ -69,26 +69,65 @@ export function AprobarReservaDialog({
         <DialogHeader>
           <DialogTitle>Aprobar reserva de repuestos</DialogTitle>
           <DialogDescription>
-            {reserva
-              ? `Al aprobar, se reservaran ${totalItems} unidades distribuidas en ${reserva.items.length} item(s). El stock disponible se ajustara.`
-              : "Confirma la aprobacion de la solicitud."}
+            Al aprobar se aparta el stock disponible de cada repuesto. Esta
+            acción afecta el inventario del taller.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
-          <div className="space-y-2">
-            <label
-              className="font-medium text-sm"
-              htmlFor="aprobar-observacion"
-            >
-              Observacion (opcional)
-            </label>
-            <Textarea
-              id="aprobar-observacion"
-              onChange={(e) => setObservacion(e.target.value)}
-              placeholder="Notas para el registro del movimiento."
-              rows={3}
-              value={observacion}
-            />
+          <div className="space-y-4">
+            {reserva && (
+              <div className="rounded-lg border border-border/60 bg-secondary/15 p-3">
+                <p className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Package className="size-3.5" />
+                    {reserva.items.length} repuesto
+                    {reserva.items.length === 1 ? "" : "s"}
+                  </span>
+                  <span className="text-muted-foreground">
+                    <span className="font-mono font-medium text-foreground tabular-nums">
+                      {totalItems}
+                    </span>{" "}
+                    unidad{totalItems === 1 ? "" : "es"}
+                  </span>
+                </p>
+                <ul className="mt-3 space-y-1.5">
+                  {reserva.items.map((item) => (
+                    <li
+                      className="flex items-center justify-between gap-3 text-sm"
+                      key={item.id}
+                    >
+                      <span className="min-w-0 truncate">
+                        <span className="font-mono text-xs">
+                          {item.repuesto.codigo}
+                        </span>{" "}
+                        <span className="text-muted-foreground">
+                          {item.repuesto.nombre}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono text-xs tabular-nums">
+                        {item.cantidad} {item.repuesto.unidad}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label
+                className="font-medium text-sm"
+                htmlFor="aprobar-observacion"
+              >
+                Observación (opcional)
+              </label>
+              <Textarea
+                id="aprobar-observacion"
+                onChange={(e) => setObservacion(e.target.value)}
+                placeholder="Notas para el registro del movimiento."
+                rows={3}
+                value={observacion}
+              />
+            </div>
           </div>
         </DialogPanel>
         <DialogFooter>

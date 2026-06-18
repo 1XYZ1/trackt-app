@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { FileDown, Loader2 } from "lucide-react";
+import { FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/contexts/auth-context";
 import { useEquipoHistorial } from "@/hooks/use-equipos";
 import type { EquipoHistorial } from "@/lib/api/equipos";
@@ -35,7 +36,7 @@ function Seccion({
   title: string;
 }) {
   return (
-    <Card className="rounded-lg border-border/70">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
           {title}
@@ -46,7 +47,9 @@ function Seccion({
         {count === 0 ? (
           <p className="text-muted-foreground text-xs">Sin registros.</p>
         ) : (
-          <div className="max-h-72 space-y-1.5 overflow-auto">{children}</div>
+          <div className="max-h-72 space-y-1.5 overflow-auto pr-1">
+            {children}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -55,7 +58,7 @@ function Seccion({
 
 function Fila({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-border/60 p-2 text-sm">
+    <div className="rounded-md border border-border/60 p-2 text-sm transition-colors hover:bg-accent/40">
       {children}
     </div>
   );
@@ -97,7 +100,7 @@ export function EquipoHistorial({ equipoId }: EquipoHistorialProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="rounded-lg border-border/70">
+      <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
           <div className="space-y-1">
             <label className="text-[11px] text-muted-foreground uppercase" htmlFor="hist-desde">
@@ -152,14 +155,15 @@ export function EquipoHistorial({ equipoId }: EquipoHistorialProps) {
       </Card>
 
       {isLoading && (
-        <div className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
-          <Loader2 className="size-4 animate-spin" />
-          Cargando historial...
+        <div className="grid gap-4 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <Skeleton className="h-44 rounded-2xl" key={idx} />
+          ))}
         </div>
       )}
 
       {error && (
-        <Card className="rounded-lg border-border/70">
+        <Card>
           <CardContent className="p-5">
             <EmptyState
               icon="wrench"

@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
-import { Search, Ticket } from "lucide-react";
+import { ClipboardList, Search, Ticket, Wrench, X } from "lucide-react";
 import {
   EmptyState,
   ListSkeleton,
@@ -16,7 +16,9 @@ import {
   TicketsViewToggle,
   type TicketsView,
 } from "@/components/tickets/tickets-view-toggle";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ESTADO_DOT } from "@/lib/tickets/format";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { useTickets } from "@/hooks/use-tickets";
 import { type TicketTrabajo } from "@/lib/api/tickets";
@@ -136,10 +138,31 @@ export function TicketsClient({
     [estado, textFiltered],
   );
 
+  // Conteo por estado (sobre el set filtrado por texto) para los chips de la
+  // vista lista — da contexto de cuántos tickets caen en cada estado.
+  const conteoPorEstado = useMemo(() => {
+    const counts = new Map<TicketEstado | "TODOS", number>();
+    counts.set("TODOS", textFiltered.length);
+    for (const t of textFiltered) {
+      counts.set(t.estado, (counts.get(t.estado) ?? 0) + 1);
+    }
+    return counts;
+  }, [textFiltered]);
+
+  const hasTextFilters = Boolean(mecanico || ot || q);
   const hasResults =
     vista === "lista" ? listaTickets.length > 0 : textFiltered.length > 0;
 
   const isKanban = vista === "kanban";
+
+  function clearTextFilters() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("mecanico");
+    params.delete("ot");
+    params.delete("q");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
 
   return (
     <div
@@ -160,7 +183,7 @@ export function TicketsClient({
               Tickets
             </h1>
           </div>
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-xs tabular-nums">
             {textFiltered.length} resultado{textFiltered.length === 1 ? "" : "s"}
           </span>
         </div>
@@ -169,27 +192,51 @@ export function TicketsClient({
           <div className="relative w-full sm:w-56">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              aria-label="Buscar tickets por código o título"
               className="h-8 pl-7 text-xs"
               defaultValue={filters.q}
+              key={`q-${filters.q}`}
               onChange={(event) => debouncedUpdateFilter("q", event.target.value)}
               placeholder="Buscar codigo o titulo"
               type="search"
             />
           </div>
-          <Input
-            className="h-8 w-full text-xs sm:w-40"
-            defaultValue={filters.mecanico}
-            onChange={(event) =>
-              debouncedUpdateFilter("mecanico", event.target.value)
-            }
-            placeholder="Mecanico"
-          />
-          <Input
-            className="h-8 w-full text-xs sm:w-32"
-            defaultValue={filters.ot}
-            onChange={(event) => debouncedUpdateFilter("ot", event.target.value)}
-            placeholder="OT"
-          />
+          <div className="relative w-full sm:w-40">
+            <Wrench className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Filtrar por mecánico"
+              className="h-8 pl-7 text-xs"
+              defaultValue={filters.mecanico}
+              key={`mecanico-${filters.mecanico}`}
+              onChange={(event) =>
+                debouncedUpdateFilter("mecanico", event.target.value)
+              }
+              placeholder="Mecanico"
+            />
+          </div>
+          <div className="relative w-full sm:w-32">
+            <ClipboardList className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Filtrar por orden de trabajo"
+              className="h-8 pl-7 text-xs"
+              defaultValue={filters.ot}
+              key={`ot-${filters.ot}`}
+              onChange={(event) => debouncedUpdateFilter("ot", event.target.value)}
+              placeholder="OT"
+            />
+          </div>
+          {hasTextFilters && (
+            <Button
+              aria-label="Limpiar filtros"
+              className="h-8"
+              onClick={clearTextFilters}
+              size="sm"
+              variant="ghost"
+            >
+              <X />
+              Limpiar
+            </Button>
+          )}
           <TicketsViewToggle onChange={handleViewChange} value={vista} />
         </div>
       </div>
@@ -200,19 +247,37 @@ export function TicketsClient({
         <div className="flex flex-wrap gap-1.5">
           {estadosFiltro.map((estadoOption) => {
             const active = (filters.estado || "TODOS") === estadoOption;
+            const count = conteoPorEstado.get(estadoOption) ?? 0;
             return (
               <button
+                aria-pressed={active}
                 className={cn(
-                  "rounded-md px-2.5 py-1 font-medium text-xs transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
                   active
-                    ? "bg-brand-primary text-brand-primary-foreground"
-                    : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground",
+                    ? "border-brand-primary bg-brand-primary text-brand-primary-foreground"
+                    : "border-transparent bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground",
                 )}
                 key={estadoOption}
                 onClick={() => updateFilter("estado", estadoOption)}
                 type="button"
               >
+                {estadoOption !== "TODOS" && (
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      active ? "bg-current opacity-70" : ESTADO_DOT[estadoOption],
+                    )}
+                  />
+                )}
                 {ticketEstadoLabel(estadoOption)}
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    active ? "opacity-80" : "opacity-60",
+                  )}
+                >
+                  {count}
+                </span>
               </button>
             );
           })}
@@ -238,11 +303,27 @@ export function TicketsClient({
       )}
 
       {!isLoading && !error && tickets.length > 0 && !hasResults && (
-        <EmptyState
-          icon="search"
-          message="Ajusta busqueda, estado, mecanico u OT para ver otros tickets."
-          title="Sin resultados"
-        />
+        <div className="flex flex-col items-center gap-4">
+          <EmptyState
+            className="w-full"
+            icon="search"
+            message="Ajusta busqueda, estado, mecanico u OT para ver otros tickets."
+            title="Sin resultados"
+          />
+          {(hasTextFilters || (estado && estado !== "TODOS")) && (
+            <Button
+              onClick={() => {
+                clearTextFilters();
+                if (estado && estado !== "TODOS") updateFilter("estado", "TODOS");
+              }}
+              size="sm"
+              variant="outline"
+            >
+              <X />
+              Limpiar filtros
+            </Button>
+          )}
+        </div>
       )}
 
       {!isLoading && !error && hasResults && isKanban && (

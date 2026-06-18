@@ -5,19 +5,23 @@ import { useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
-  Loader2,
   Package,
+  PackageCheck,
   Pencil,
   PlusCircle,
   PowerOff,
   Sliders,
+  Warehouse,
 } from "lucide-react";
 import { EmptyState } from "@/components/core";
 import {
   AjusteStockDialog,
   DesactivarRepuestoDialog,
   EntradaStockDialog,
+  MovimientoBadge,
+  MovimientoCantidad,
   RepuestoFormSheet,
+  StockBar,
 } from "@/components/inventario";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,25 +31,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/contexts/auth-context";
 import { useRepuesto } from "@/hooks/use-inventario";
-import type { MovimientoTipo } from "@/lib/api/inventario";
-
-function tipoBadgeVariant(
-  tipo: MovimientoTipo,
-): "default" | "secondary" | "outline" | "error" | "warning" {
-  switch (tipo) {
-    case "ENTRADA":
-      return "default";
-    case "CONSUMO":
-    case "SALIDA":
-      return "secondary";
-    case "AJUSTE":
-      return "warning";
-    default:
-      return "outline";
-  }
-}
+import { cn } from "@/lib/utils";
 
 export function RepuestoDetalleClient({ id }: { id: string }) {
   const isAdmin = useHasRole("admin");
@@ -56,21 +45,24 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
   const [desactivarOpen, setDesactivarOpen] = useState(false);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-        <Loader2 className="size-4 animate-spin" />
-        Cargando repuesto...
-      </div>
-    );
+    return <DetalleSkeleton />;
   }
 
   if (error || !repuesto) {
     return (
-      <EmptyState
-        icon="wrench"
-        message="No se pudo cargar el detalle del repuesto."
-        title="Error al cargar"
-      />
+      <div className="flex flex-col gap-4">
+        <Link href="/inventario">
+          <Button size="sm" variant="outline">
+            <ArrowLeft />
+            Volver a inventario
+          </Button>
+        </Link>
+        <EmptyState
+          icon="wrench"
+          message="No se pudo cargar el detalle del repuesto. Verifica el enlace o reintenta."
+          title="Error al cargar"
+        />
+      </div>
     );
   }
 
@@ -78,13 +70,16 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-            <Package className="size-3.5" />
-            Detalle de repuesto
-          </div>
-          <h1 className="flex items-center gap-3 font-semibold text-2xl tracking-tight">
+          <Link
+            className="mb-2 inline-flex items-center gap-1.5 rounded-sm text-muted-foreground text-xs outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            href="/inventario"
+          >
+            <ArrowLeft className="size-3.5" />
+            Inventario
+          </Link>
+          <h1 className="flex flex-wrap items-center gap-x-3 gap-y-2 font-semibold text-2xl tracking-tight">
             <span className="font-mono">{repuesto.codigo}</span>
-            <Badge variant={repuesto.activo ? "default" : "outline"}>
+            <Badge variant={repuesto.activo ? "success" : "outline"}>
               {repuesto.activo ? "Activo" : "Inactivo"}
             </Badge>
             {repuesto.bajoStock && (
@@ -97,191 +92,180 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
           <p className="mt-1 text-muted-foreground text-sm">{repuesto.nombre}</p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Link href="/inventario">
-            <Button size="sm" variant="outline">
-              <ArrowLeft />
-              Volver
+        {isAdmin && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => setEntradaOpen(true)}
+              size="sm"
+              variant="outline"
+            >
+              <PlusCircle />
+              Entrada
             </Button>
-          </Link>
-          {isAdmin && (
-            <>
-              <Button
-                onClick={() => setEntradaOpen(true)}
-                size="sm"
-                variant="ghost"
-              >
-                <PlusCircle />
-                Entrada
-              </Button>
-              <Button
-                onClick={() => setAjusteOpen(true)}
-                size="sm"
-                variant="ghost"
-              >
-                <Sliders />
-                Ajustar
-              </Button>
-              <Button
-                onClick={() => setEditOpen(true)}
-                size="sm"
-                variant="ghost"
-              >
-                <Pencil />
-                Editar
-              </Button>
-              <Button
-                disabled={!repuesto.activo}
-                onClick={() => setDesactivarOpen(true)}
-                size="sm"
-                variant="destructive-outline"
-              >
-                <PowerOff />
-                Desactivar
-              </Button>
-            </>
-          )}
-        </div>
+            <Button
+              onClick={() => setAjusteOpen(true)}
+              size="sm"
+              variant="outline"
+            >
+              <Sliders />
+              Ajustar
+            </Button>
+            <Button onClick={() => setEditOpen(true)} size="sm" variant="outline">
+              <Pencil />
+              Editar
+            </Button>
+            <Button
+              disabled={!repuesto.activo}
+              onClick={() => setDesactivarOpen(true)}
+              size="sm"
+              variant="destructive-outline"
+            >
+              <PowerOff />
+              Desactivar
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="rounded-lg border-border/70">
-          <CardContent className="p-4">
-            <p className="font-medium text-[11px] text-muted-foreground uppercase">
-              Stock actual
-            </p>
-            <p className="mt-2 font-mono font-semibold text-2xl">
-              {repuesto.stockActual}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-lg border-border/70">
-          <CardContent className="p-4">
-            <p className="font-medium text-[11px] text-muted-foreground uppercase">
-              Reservado
-            </p>
-            <p className="mt-2 font-mono font-semibold text-2xl">
-              {repuesto.stockReservado}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-lg border-border/70">
-          <CardContent className="p-4">
-            <p className="font-medium text-[11px] text-muted-foreground uppercase">
-              Disponible
-            </p>
-            <p
-              className={`mt-2 font-mono font-semibold text-2xl ${
-                repuesto.bajoStock ? "text-destructive" : ""
-              }`}
-            >
-              {repuesto.stockDisponible}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-lg border-border/70">
-          <CardContent className="p-4">
-            <p className="font-medium text-[11px] text-muted-foreground uppercase">
-              Stock minimo
-            </p>
-            <p className="mt-2 font-mono font-semibold text-2xl">
-              {repuesto.stockMinimo}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={<Warehouse className="size-4" />}
+          label="Stock actual"
+          value={repuesto.stockActual}
+        />
+        <StatCard
+          icon={<PackageCheck className="size-4" />}
+          label="Reservado"
+          value={repuesto.stockReservado}
+        />
+        <StatCard
+          highlight={repuesto.bajoStock}
+          icon={<Package className="size-4" />}
+          label="Disponible"
+          value={repuesto.stockDisponible}
+        />
+        <StatCard
+          icon={<AlertTriangle className="size-4" />}
+          label="Stock mínimo"
+          value={repuesto.stockMinimo}
+        />
       </div>
+
+      <Card className="rounded-lg border-border/70">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Composición del stock</CardTitle>
+          <p className="text-muted-foreground text-xs">
+            Distribución del stock actual entre unidades reservadas y
+            disponibles.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <StockBar
+            actual={repuesto.stockActual}
+            disponible={repuesto.stockDisponible}
+            reservado={repuesto.stockReservado}
+          />
+        </CardContent>
+      </Card>
 
       <Card className="rounded-lg border-border/70">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Ficha</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 text-sm md:grid-cols-2">
-            <Field label="Categoria" value={repuesto.categoria ?? "—"} />
+          <div className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+            <Field label="Categoría" value={repuesto.categoria ?? "—"} />
             <Field label="Unidad" value={repuesto.unidad} />
             <Field label="Marca" value={repuesto.marca?.nombre ?? "—"} />
             <Field
-              label="Codigo fabricante"
+              label="Código fabricante"
               value={repuesto.codigoFabricante ?? "—"}
             />
             <Field
-              label="Ubicacion bodega"
+              label="Ubicación bodega"
               value={repuesto.ubicacionBodega ?? "—"}
             />
             <Field label="Proveedor" value={repuesto.proveedor ?? "—"} />
             <Field
-              label="Descripcion"
-              value={repuesto.descripcion ?? "—"}
               colSpan
+              label="Descripción"
+              value={repuesto.descripcion ?? "—"}
             />
             <Field
               label="Creado"
               value={new Date(repuesto.createdAt).toLocaleString("es-CL")}
             />
             <Field
-              label="Ultima modificacion"
+              label="Última modificación"
               value={new Date(repuesto.updatedAt).toLocaleString("es-CL")}
             />
           </div>
         </CardContent>
       </Card>
 
-      {repuesto.movimientosRecientes &&
-        repuesto.movimientosRecientes.length > 0 && (
-          <Card className="rounded-lg border-border/70">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Movimientos recientes</CardTitle>
-              <p className="text-muted-foreground text-xs">
-                Ultimos 10 cambios de stock para este repuesto.
-              </p>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
-                      <th className="px-5 py-3 font-semibold">Fecha</th>
-                      <th className="px-5 py-3 font-semibold">Tipo</th>
-                      <th className="px-5 py-3 text-right font-semibold">
-                        Cantidad
-                      </th>
-                      <th className="px-5 py-3 text-right font-semibold">
-                        Stock resultante
-                      </th>
-                      <th className="px-5 py-3 font-semibold">Observacion</th>
+      <Card className="rounded-lg border-border/70">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Movimientos recientes</CardTitle>
+          <p className="text-muted-foreground text-xs">
+            Últimos 10 cambios de stock para este repuesto.
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {repuesto.movimientosRecientes &&
+          repuesto.movimientosRecientes.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
+                    <th className="px-5 py-3 font-semibold">Fecha</th>
+                    <th className="px-5 py-3 font-semibold">Tipo</th>
+                    <th className="px-5 py-3 text-right font-semibold">
+                      Cantidad
+                    </th>
+                    <th className="px-5 py-3 text-right font-semibold">
+                      Stock resultante
+                    </th>
+                    <th className="px-5 py-3 font-semibold">Observación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {repuesto.movimientosRecientes.map((m) => (
+                    <tr
+                      className="border-border/60 border-b transition-colors last:border-0 hover:bg-secondary/25"
+                      key={m.id}
+                    >
+                      <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs tabular-nums">
+                        {new Date(m.createdAt).toLocaleString("es-CL")}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3">
+                        <MovimientoBadge tipo={m.tipo} />
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <MovimientoCantidad cantidad={m.cantidad} />
+                      </td>
+                      <td className="px-5 py-3 text-right font-mono text-xs tabular-nums">
+                        {m.stockResultante}
+                      </td>
+                      <td className="max-w-xs px-5 py-3 text-muted-foreground text-xs">
+                        {m.observacion ?? "—"}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {repuesto.movimientosRecientes.map((m) => (
-                      <tr
-                        className="border-border/60 border-b last:border-0"
-                        key={m.id}
-                      >
-                        <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs">
-                          {new Date(m.createdAt).toLocaleString("es-CL")}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3">
-                          <Badge variant={tipoBadgeVariant(m.tipo)}>
-                            {m.tipo}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-3 text-right font-mono text-xs">
-                          {m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}
-                        </td>
-                        <td className="px-5 py-3 text-right font-mono text-xs">
-                          {m.stockResultante}
-                        </td>
-                        <td className="px-5 py-3 text-muted-foreground text-xs">
-                          {m.observacion ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-5">
+              <EmptyState
+                className="min-h-44"
+                icon="search"
+                message="Este repuesto todavía no tiene movimientos de stock."
+                title="Sin movimientos"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {isAdmin && (
         <>
@@ -311,6 +295,81 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
   );
 }
 
+function StatCard({
+  highlight = false,
+  icon,
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  highlight?: boolean;
+}) {
+  return (
+    <Card
+      className={cn(
+        "rounded-lg border-border/70",
+        highlight && "border-warning/30 bg-warning/4",
+      )}
+    >
+      <CardContent className="p-4">
+        <p className="flex items-center gap-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+          <span
+            className={cn(
+              "text-muted-foreground",
+              highlight && "text-warning-foreground",
+            )}
+          >
+            {icon}
+          </span>
+          {label}
+        </p>
+        <p
+          className={cn(
+            "mt-2 font-mono font-semibold text-2xl tabular-nums",
+            highlight && "text-warning-foreground",
+          )}
+        >
+          {value}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DetalleSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, idx) => (
+          <Card className="rounded-lg border-border/70" key={idx}>
+            <CardContent className="space-y-2 p-4">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-7 w-12" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Card className="rounded-lg border-border/70">
+        <CardContent className="space-y-4 p-6">
+          <Skeleton className="h-4 w-40" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <Skeleton className="h-10 w-full" key={idx} />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function Field({
   label,
   value,
@@ -321,11 +380,11 @@ function Field({
   colSpan?: boolean;
 }) {
   return (
-    <div className={colSpan ? "md:col-span-2" : undefined}>
-      <p className="font-medium text-[11px] text-muted-foreground uppercase">
+    <div className={colSpan ? "sm:col-span-2" : undefined}>
+      <p className="font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
         {label}
       </p>
-      <p className="mt-1">{value}</p>
+      <p className="mt-1 text-foreground">{value}</p>
     </div>
   );
 }

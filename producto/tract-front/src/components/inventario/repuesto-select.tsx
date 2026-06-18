@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/popover";
 import { useRepuestos } from "@/hooks/use-inventario";
 import { cn } from "@/lib/utils";
+import { StockDisponibleBadge } from "./inventario-ui";
 
 export type RepuestoSelectProps = {
   value?: string;
@@ -52,13 +53,19 @@ export function RepuestoSelect({
       <PopoverTrigger
         render={
           <Button
-            className="w-full justify-between"
+            aria-label={placeholder}
+            className="w-full justify-between font-normal"
             disabled={disabled}
             variant="outline"
           />
         }
       >
-        <span className="min-w-0 truncate text-left">
+        <span
+          className={cn(
+            "min-w-0 truncate text-left",
+            !selected && "text-muted-foreground",
+          )}
+        >
           {selected ? `${selected.codigo} - ${selected.nombre}` : placeholder}
         </span>
         {isLoading ? (
@@ -72,9 +79,10 @@ export function RepuestoSelect({
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-7"
+              aria-label="Buscar repuesto"
+              className="pl-9"
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar por codigo o nombre"
+              placeholder="Buscar por código o nombre"
               value={query}
             />
           </div>
@@ -99,7 +107,11 @@ export function RepuestoSelect({
               <EmptyState
                 className="min-h-40 p-4"
                 icon="search"
-                message="No hay repuestos disponibles para seleccionar."
+                message={
+                  query
+                    ? "Ningún repuesto coincide con la búsqueda."
+                    : "No hay repuestos disponibles para seleccionar."
+                }
                 title="Sin repuestos"
               />
             </div>
@@ -107,33 +119,44 @@ export function RepuestoSelect({
 
           {!isLoading &&
             !error &&
-            filtered.map((repuesto) => (
-              <button
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-secondary"
-                key={repuesto.id}
-                onClick={() => {
-                  onChange(repuesto.id);
-                  setOpen(false);
-                  setQuery("");
-                }}
-                type="button"
-              >
-                <Check
+            filtered.map((repuesto) => {
+              const isSelected = value === repuesto.id;
+              return (
+                <button
                   className={cn(
-                    "size-4 text-brand-primary",
-                    value === repuesto.id ? "opacity-100" : "opacity-0",
+                    "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary focus-visible:ring-2 focus-visible:ring-ring",
+                    isSelected && "bg-secondary/60",
                   )}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">
-                    {repuesto.codigo} - {repuesto.nombre}
+                  key={repuesto.id}
+                  onClick={() => {
+                    onChange(repuesto.id);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  type="button"
+                >
+                  <Check
+                    className={cn(
+                      "size-4 shrink-0 text-brand-primary",
+                      isSelected ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">
+                      {repuesto.codigo} - {repuesto.nombre}
+                    </span>
+                    <span className="block truncate text-muted-foreground text-xs">
+                      Disponible: {repuesto.stockDisponible} {repuesto.unidad}
+                    </span>
                   </span>
-                  <span className="block truncate text-muted-foreground text-xs">
-                    Disponible: {repuesto.stockDisponible} {repuesto.unidad}
-                  </span>
-                </span>
-              </button>
-            ))}
+                  <StockDisponibleBadge
+                    bajoStock={repuesto.bajoStock}
+                    className="shrink-0"
+                    disponible={repuesto.stockDisponible}
+                  />
+                </button>
+              );
+            })}
         </div>
       </PopoverContent>
     </Popover>

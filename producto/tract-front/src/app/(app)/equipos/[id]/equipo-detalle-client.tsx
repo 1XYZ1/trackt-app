@@ -5,11 +5,14 @@ import { useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
+  Boxes,
+  ClipboardCheck,
   ClipboardList,
-  Loader2,
+  Package,
   Pencil,
   QrCode,
   Ticket,
+  TicketCheck,
   Wrench,
 } from "lucide-react";
 import { EmptyState } from "@/components/core";
@@ -25,6 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { useHasRole } from "@/contexts/auth-context";
 import { useEquipo, useEquipoResumen } from "@/hooks/use-equipos";
@@ -52,11 +56,31 @@ function Dato({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-function Estadistica({ label, value }: { label: string; value: number }) {
+const ESTADISTICA_ICONS = {
+  ordenesAbiertas: ClipboardList,
+  ordenesCerradas: ClipboardCheck,
+  ticketsActivos: Ticket,
+  ticketsCerrados: TicketCheck,
+  reservasActivas: Boxes,
+  repuestosConsumidos: Package,
+} as const;
+
+function Estadistica({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: (typeof ESTADISTICA_ICONS)[keyof typeof ESTADISTICA_ICONS];
+  label: string;
+  value: number;
+}) {
   return (
-    <div className="rounded-lg border border-border/70 bg-secondary/15 p-3">
-      <p className="font-semibold text-2xl tabular-nums">{value}</p>
-      <p className="text-muted-foreground text-xs">{label}</p>
+    <div className="rounded-lg border border-border/70 bg-secondary/15 p-3 transition-colors hover:bg-secondary/25">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold text-2xl tabular-nums">{value}</p>
+        <Icon className="size-4 text-muted-foreground" />
+      </div>
+      <p className="mt-0.5 text-muted-foreground text-xs">{label}</p>
     </div>
   );
 }
@@ -88,9 +112,14 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
 
   if (equipoQuery.isLoading) {
     return (
-      <div className="flex items-center gap-2 py-16 text-muted-foreground text-sm">
-        <Loader2 className="size-4 animate-spin" />
-        Cargando equipo...
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-4 w-32" />
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-8 w-64" />
+        </div>
+        <Skeleton className="h-10 w-full max-w-md rounded-lg" />
+        <Skeleton className="h-40 rounded-2xl" />
       </div>
     );
   }
@@ -99,13 +128,13 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
     return (
       <div className="flex flex-col gap-4">
         <Link
-          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground"
           href="/equipos"
         >
           <ArrowLeft className="size-4" />
           Volver a equipos
         </Link>
-        <Card className="rounded-lg border-border/70">
+        <Card>
           <CardContent className="p-5">
             <EmptyState
               icon="wrench"
@@ -122,15 +151,15 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <Link
-          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
           href="/equipos"
         >
           <ArrowLeft className="size-4" />
           Volver a equipos
         </Link>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-secondary px-2 py-0.5 font-mono font-semibold text-xs">
                 {equipo.codigo}
               </span>
@@ -142,8 +171,13 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
             <h1 className="font-semibold text-2xl tracking-tight">
               {equipo.nombre}
             </h1>
+            {(equipo.marca || equipo.modelo) && (
+              <p className="text-muted-foreground text-sm">
+                {[equipo.marca, equipo.modelo].filter(Boolean).join(" · ")}
+              </p>
+            )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Button onClick={() => setQrOpen(true)} size="sm" variant="outline">
               <QrCode />
               QR
@@ -163,7 +197,7 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
       </div>
 
       <Tabs onValueChange={(value) => setTab(value as string)} value={tab}>
-        <TabsList className="w-full justify-start overflow-x-auto">
+        <TabsList className="w-full max-w-full justify-start overflow-x-auto">
           <TabsTab value="resumen">Resumen</TabsTab>
           <TabsTab value="historial">Historial</TabsTab>
           <TabsTab value="repuestos">Repuestos</TabsTab>
@@ -173,7 +207,21 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
 
         <TabsPanel className="mt-4" value="resumen">
           <div className="flex flex-col gap-5">
-            <Card className="rounded-lg border-border/70">
+            {resumen && resumen.alertas.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {resumen.alertas.map((alerta, idx) => (
+                  <div
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 font-medium text-sm ${ALERTA_STYLE[alerta.tipo]}`}
+                    key={`${alerta.tipo}-${idx}`}
+                  >
+                    <AlertTriangle className="size-4 shrink-0" />
+                    {alerta.mensaje}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Datos del equipo</CardTitle>
               </CardHeader>
@@ -191,24 +239,11 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
               </CardContent>
             </Card>
 
-            {resumen && resumen.alertas.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {resumen.alertas.map((alerta, idx) => (
-                  <div
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${ALERTA_STYLE[alerta.tipo]}`}
-                    key={`${alerta.tipo}-${idx}`}
-                  >
-                    <AlertTriangle className="size-4 shrink-0" />
-                    {alerta.mensaje}
-                  </div>
-                ))}
-              </div>
-            )}
-
             {resumenQuery.isLoading && (
-              <div className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
-                <Loader2 className="size-4 animate-spin" />
-                Cargando resumen...
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <Skeleton className="h-20 rounded-lg" key={idx} />
+                ))}
               </div>
             )}
 
@@ -216,36 +251,42 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
               <>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   <Estadistica
+                    icon={ESTADISTICA_ICONS.ordenesAbiertas}
                     label="OT abiertas"
                     value={resumen.estadisticas.ordenesAbiertas}
                   />
                   <Estadistica
+                    icon={ESTADISTICA_ICONS.ordenesCerradas}
                     label="OT cerradas"
                     value={resumen.estadisticas.ordenesCerradas}
                   />
                   <Estadistica
+                    icon={ESTADISTICA_ICONS.ticketsActivos}
                     label="Tickets activos"
                     value={resumen.estadisticas.ticketsActivos}
                   />
                   <Estadistica
+                    icon={ESTADISTICA_ICONS.ticketsCerrados}
                     label="Tickets cerrados"
                     value={resumen.estadisticas.ticketsCerrados}
                   />
                   <Estadistica
+                    icon={ESTADISTICA_ICONS.reservasActivas}
                     label="Reservas activas"
                     value={resumen.estadisticas.reservasActivas}
                   />
                   <Estadistica
+                    icon={ESTADISTICA_ICONS.repuestosConsumidos}
                     label="Repuestos consumidos"
                     value={resumen.estadisticas.repuestosConsumidos}
                   />
                 </div>
 
                 <div className="grid gap-5 lg:grid-cols-3">
-                  <Card className="rounded-lg border-border/70">
+                  <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-sm">
-                        <ClipboardList className="size-4" />
+                        <ClipboardList className="size-4 text-brand-primary" />
                         Últimas OT
                       </CardTitle>
                     </CardHeader>
@@ -257,12 +298,14 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
                       )}
                       {resumen.ultimasOrdenes.map((ot) => (
                         <Link
-                          className="block rounded-md border border-border/60 p-2 text-sm transition-colors hover:bg-secondary/30"
+                          className="block rounded-md border border-border/60 p-2 text-sm transition-colors hover:border-brand-primary/40 hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
                           href={`/ordenes/${ot.id}`}
                           key={ot.id}
                         >
                           <span className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-xs">{ot.codigo}</span>
+                            <span className="font-mono text-xs">
+                              {ot.codigo}
+                            </span>
                             <Badge variant="secondary">{ot.estado}</Badge>
                           </span>
                           <span className="mt-0.5 line-clamp-1 text-muted-foreground text-xs">
@@ -273,10 +316,10 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
                     </CardContent>
                   </Card>
 
-                  <Card className="rounded-lg border-border/70">
+                  <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-sm">
-                        <Ticket className="size-4" />
+                        <Ticket className="size-4 text-brand-primary" />
                         Últimos tickets
                       </CardTitle>
                     </CardHeader>
@@ -288,7 +331,7 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
                       )}
                       {resumen.ultimosTickets.map((t) => (
                         <Link
-                          className="block rounded-md border border-border/60 p-2 text-sm transition-colors hover:bg-secondary/30"
+                          className="block rounded-md border border-border/60 p-2 text-sm transition-colors hover:border-brand-primary/40 hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
                           href={`/tickets/${t.id}`}
                           key={t.id}
                         >
@@ -304,10 +347,10 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
                     </CardContent>
                   </Card>
 
-                  <Card className="rounded-lg border-border/70">
+                  <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-sm">
-                        <Wrench className="size-4" />
+                        <Wrench className="size-4 text-brand-primary" />
                         Próximas programaciones
                       </CardTitle>
                     </CardHeader>
@@ -338,6 +381,15 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
                   </Card>
                 </div>
               </>
+            )}
+
+            {!resumen && !resumenQuery.isLoading && (
+              <Card className="border-warning/40 bg-warning/5">
+                <CardContent className="flex items-center gap-2 p-4 text-sm text-warning-foreground">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  No se pudo cargar el resumen operativo del equipo.
+                </CardContent>
+              </Card>
             )}
           </div>
         </TabsPanel>

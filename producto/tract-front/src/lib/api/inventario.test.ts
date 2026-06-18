@@ -27,7 +27,7 @@ describe("inventario api helpers", () => {
     vi.mocked(authFetch).mockResolvedValue(
       jsonResponse({
         data: [{ codigo: "REP-001", id: "rep-1", nombre: "Filtro" }],
-        meta: { limit: 200, page: 1, total: 1, totalPages: 1 },
+        meta: { limit: 100, page: 1, total: 1, totalPages: 1 },
       }),
     );
     const { getRepuestos } = await import("./inventario");
@@ -43,7 +43,7 @@ describe("inventario api helpers", () => {
       { codigo: "REP-001", id: "rep-1", nombre: "Filtro" },
     ]);
     expect(authFetch).toHaveBeenCalledWith(
-      "https://api.trackt.test/inventario/repuestos?search=filtro&categoria=Filtros&bajoStock=true&includeInactive=true&limit=200",
+      "https://api.trackt.test/inventario/repuestos?search=filtro&categoria=Filtros&bajoStock=true&includeInactive=true&page=1&limit=100",
     );
   });
 

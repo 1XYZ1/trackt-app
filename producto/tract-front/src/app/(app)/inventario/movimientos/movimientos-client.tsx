@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { History, Loader2 } from "lucide-react";
+import { ArrowLeft, FilterX, History } from "lucide-react";
 import { EmptyState } from "@/components/core";
-import { Badge } from "@/components/ui/badge";
+import { MovimientoBadge, MovimientoCantidad } from "@/components/inventario";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -12,6 +13,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useMovimientos, useRepuestos } from "@/hooks/use-inventario";
 import type {
   MovimientosFilters,
@@ -27,28 +36,14 @@ const TIPOS: MovimientoTipo[] = [
   "CONSUMO",
 ];
 
-const filterSelectClassName =
-  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24 dark:bg-input/32 dark:text-foreground dark:[color-scheme:dark] dark:[&_option]:bg-popover dark:[&_option]:text-foreground dark:[&_option:checked]:bg-accent dark:[&_option:checked]:text-accent-foreground dark:[&_option:hover]:bg-accent dark:[&_option:hover]:text-accent-foreground";
-
-function tipoBadgeVariant(
-  tipo: MovimientoTipo,
-): "default" | "secondary" | "outline" | "error" | "warning" {
-  switch (tipo) {
-    case "ENTRADA":
-      return "default";
-    case "CONSUMO":
-    case "SALIDA":
-      return "secondary";
-    case "AJUSTE":
-      return "warning";
-    case "RESERVA":
-      return "outline";
-    case "LIBERACION":
-      return "outline";
-    default:
-      return "secondary";
-  }
-}
+const TIPO_LABEL: Record<MovimientoTipo, string> = {
+  ENTRADA: "Entrada",
+  SALIDA: "Salida",
+  AJUSTE: "Ajuste",
+  RESERVA: "Reserva",
+  LIBERACION: "Liberación",
+  CONSUMO: "Consumo",
+};
 
 export function MovimientosClient() {
   const [repuestoId, setRepuestoId] = useState("");
@@ -79,105 +74,175 @@ export function MovimientosClient() {
     hasta: hasta || undefined,
   };
 
+  const hasFilters = Boolean(
+    repuestoId || ticketId || reservaId || tipo || desde || hasta,
+  );
+
+  const clearFilters = () => {
+    setRepuestoId("");
+    setTipo("");
+    setTicketId("");
+    setReservaId("");
+    setDesde("");
+    setHasta("");
+  };
+
   const { data: movimientos = [], error, isLoading } = useMovimientos(filters);
   const repuestos = useRepuestos();
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-          <History className="size-3.5" />
-          Trazabilidad de inventario
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
+            <History className="size-3.5" />
+            Trazabilidad de inventario
+          </div>
+          <h1 className="font-semibold text-2xl tracking-tight">Movimientos</h1>
+          <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
+            Historial inmutable de cada cambio de stock: entradas, ajustes,
+            reservas, liberaciones y consumos.
+          </p>
         </div>
-        <h1 className="font-semibold text-2xl tracking-tight">
-          Movimientos
-        </h1>
-        <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-          Historial inmutable de cada cambio de stock: entradas, ajustes,
-          reservas, liberaciones y consumos.
-        </p>
+        <Link href="/inventario">
+          <Button size="sm" variant="outline">
+            <ArrowLeft />
+            Volver a inventario
+          </Button>
+        </Link>
       </div>
 
       <Card className="rounded-lg border-border/70">
-        <CardHeader className="pb-3">
+        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0 pb-3">
           <CardTitle className="text-base">Filtros</CardTitle>
+          {hasFilters && (
+            <Button onClick={clearFilters} size="sm" variant="ghost">
+              <FilterX />
+              Limpiar
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <div className="space-y-1">
-              <label className="font-medium text-xs text-muted-foreground">
+            <div className="space-y-1.5">
+              <label
+                className="font-medium text-muted-foreground text-xs"
+                htmlFor="mov-repuesto"
+              >
                 Repuesto
               </label>
-              <select
-                className={filterSelectClassName}
-                onChange={(e) => setRepuestoId(e.target.value)}
-                value={repuestoId}
+              <Select
+                items={[
+                  { label: "Todos", value: null },
+                  ...(repuestos.data ?? []).map((r) => ({
+                    label: `${r.codigo} - ${r.nombre}`,
+                    value: r.id,
+                  })),
+                ]}
+                onValueChange={(value) =>
+                  setRepuestoId((value as string | null) ?? "")
+                }
+                value={repuestoId || null}
               >
-                <option value="">Todos</option>
-                {(repuestos.data ?? []).map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.codigo} - {r.nombre}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="mov-repuesto">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={null}>Todos</SelectItem>
+                  {(repuestos.data ?? []).map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.codigo} - {r.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="space-y-1">
-              <label className="font-medium text-xs text-muted-foreground">
+            <div className="space-y-1.5">
+              <label
+                className="font-medium text-muted-foreground text-xs"
+                htmlFor="mov-tipo"
+              >
                 Tipo
               </label>
-              <select
-                className={filterSelectClassName}
-                onChange={(e) => setTipo(e.target.value as MovimientoTipo | "")}
-                value={tipo}
+              <Select
+                items={[
+                  { label: "Todos", value: null },
+                  ...TIPOS.map((t) => ({ label: TIPO_LABEL[t], value: t })),
+                ]}
+                onValueChange={(value) =>
+                  setTipo((value as MovimientoTipo | null) ?? "")
+                }
+                value={tipo || null}
               >
-                <option value="">Todos</option>
-                {TIPOS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="mov-tipo">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={null}>Todos</SelectItem>
+                  {TIPOS.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {TIPO_LABEL[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="space-y-1">
-              <label className="font-medium text-xs text-muted-foreground">
+            <div className="space-y-1.5">
+              <label
+                className="font-medium text-muted-foreground text-xs"
+                htmlFor="mov-ticket"
+              >
                 Ticket ID
               </label>
               <Input
+                id="mov-ticket"
                 onChange={(e) => setTicketId(e.target.value)}
                 placeholder="tk-..."
                 value={ticketId}
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="font-medium text-xs text-muted-foreground">
+            <div className="space-y-1.5">
+              <label
+                className="font-medium text-muted-foreground text-xs"
+                htmlFor="mov-reserva"
+              >
                 Reserva ID
               </label>
               <Input
+                id="mov-reserva"
                 onChange={(e) => setReservaId(e.target.value)}
                 placeholder="res-..."
                 value={reservaId}
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="font-medium text-xs text-muted-foreground">
+            <div className="space-y-1.5">
+              <label
+                className="font-medium text-muted-foreground text-xs"
+                htmlFor="mov-desde"
+              >
                 Desde
               </label>
               <Input
+                id="mov-desde"
                 onChange={(e) => setDesde(e.target.value)}
                 type="date"
                 value={desde}
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="font-medium text-xs text-muted-foreground">
+            <div className="space-y-1.5">
+              <label
+                className="font-medium text-muted-foreground text-xs"
+                htmlFor="mov-hasta"
+              >
                 Hasta
               </label>
               <Input
+                id="mov-hasta"
                 onChange={(e) => setHasta(e.target.value)}
                 type="date"
                 value={hasta}
@@ -192,14 +257,20 @@ export function MovimientosClient() {
           <CardTitle className="text-base">Historial</CardTitle>
           <p className="text-muted-foreground text-xs">
             {movimientos.length} movimiento
-            {movimientos.length === 1 ? "" : "s"} (ultimos 100).
+            {movimientos.length === 1 ? "" : "s"} (últimos 100).
           </p>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading && (
-            <div className="flex items-center gap-2 px-5 py-12 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando movimientos...
+            <div className="space-y-px p-5">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div className="flex items-center gap-4 py-2" key={idx}>
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="ml-auto h-4 w-16" />
+                </div>
+              ))}
             </div>
           )}
 
@@ -207,7 +278,7 @@ export function MovimientosClient() {
             <div className="p-5">
               <EmptyState
                 icon="wrench"
-                message="No se pudieron cargar los movimientos."
+                message="No se pudieron cargar los movimientos. Reintenta en unos segundos."
                 title="Error al cargar"
               />
             </div>
@@ -217,7 +288,11 @@ export function MovimientosClient() {
             <div className="p-5">
               <EmptyState
                 icon="search"
-                message="Ajusta los filtros o registra movimientos de stock."
+                message={
+                  hasFilters
+                    ? "Ningún movimiento coincide con los filtros aplicados."
+                    : "Aún no se han registrado movimientos de stock."
+                }
                 title="Sin movimientos"
               />
             </div>
@@ -239,46 +314,44 @@ export function MovimientosClient() {
                     </th>
                     <th className="px-5 py-3 font-semibold">Ticket</th>
                     <th className="px-5 py-3 font-semibold">Reserva</th>
-                    <th className="px-5 py-3 font-semibold">Observacion</th>
+                    <th className="px-5 py-3 font-semibold">Observación</th>
                   </tr>
                 </thead>
                 <tbody>
                   {movimientos.map((m) => (
                     <tr
-                      className="border-border/60 border-b last:border-0 hover:bg-secondary/25"
+                      className="border-border/60 border-b transition-colors last:border-0 hover:bg-secondary/25"
                       key={m.id}
                     >
-                      <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs">
+                      <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs tabular-nums">
                         {new Date(m.createdAt).toLocaleString("es-CL")}
                       </td>
                       <td className="whitespace-nowrap px-5 py-3">
                         {m.repuesto ? (
                           <Link
-                            className="font-mono font-semibold text-xs hover:underline"
+                            className="rounded-sm font-mono font-semibold text-xs outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                             href={`/inventario/repuestos/${m.repuestoId}`}
                           >
                             {m.repuesto.codigo}
                           </Link>
                         ) : (
-                          <span className="font-mono text-xs text-muted-foreground">
+                          <span className="font-mono text-muted-foreground text-xs">
                             {m.repuestoId}
                           </span>
                         )}
                         {m.repuesto && (
-                          <div className="text-muted-foreground text-[11px]">
+                          <div className="text-[11px] text-muted-foreground">
                             {m.repuesto.nombre}
                           </div>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-5 py-3">
-                        <Badge variant={tipoBadgeVariant(m.tipo)}>
-                          {m.tipo}
-                        </Badge>
+                        <MovimientoBadge tipo={m.tipo} />
                       </td>
-                      <td className="px-5 py-3 text-right font-mono text-xs">
-                        {m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}
+                      <td className="px-5 py-3 text-right">
+                        <MovimientoCantidad cantidad={m.cantidad} />
                       </td>
-                      <td className="px-5 py-3 text-right font-mono text-xs">
+                      <td className="px-5 py-3 text-right font-mono text-xs tabular-nums">
                         {m.stockResultante}
                       </td>
                       <td className="whitespace-nowrap px-5 py-3 font-mono text-[11px] text-muted-foreground">
@@ -287,7 +360,7 @@ export function MovimientosClient() {
                       <td className="whitespace-nowrap px-5 py-3 font-mono text-[11px] text-muted-foreground">
                         {m.reservaId ?? "—"}
                       </td>
-                      <td className="px-5 py-3 text-muted-foreground text-xs">
+                      <td className="max-w-xs px-5 py-3 text-muted-foreground text-xs">
                         {m.observacion ?? "—"}
                       </td>
                     </tr>

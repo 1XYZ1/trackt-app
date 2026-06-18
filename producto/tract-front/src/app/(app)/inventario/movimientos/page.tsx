@@ -11,6 +11,6 @@ export const metadata: Metadata = {
 export default async function MovimientosPage() {
   // Solo admin y jefe_taller pueden ver el historial global (mechanic no
   // accede a movimientos para no exponer trazabilidad cruzada de tenant).
-  await requireRole("admin", "jefe_taller");
+  await requireRole("admin", "jefe_taller", "jefe_inventario");
   return <MovimientosClient />;
 }

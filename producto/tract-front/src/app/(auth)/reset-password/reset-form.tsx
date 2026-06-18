@@ -4,12 +4,13 @@ import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AlertCircle, Eye, EyeOff, Lock } from 'lucide-react';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Lock } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { resetPassword } from '@/app/actions/auth';
+import { cn } from '@/lib/utils';
 
 const schema = z
   .object({
@@ -43,8 +44,8 @@ export function ResetForm() {
   };
 
   return (
-    <form className="space-y-4" noValidate onSubmit={handleSubmit(onSubmit)}>
-      <div className="space-y-2">
+    <form className="space-y-5" noValidate onSubmit={handleSubmit(onSubmit)}>
+      <div className="space-y-2.5">
         <Label
           htmlFor="password"
           className="font-semibold text-[11px] text-neutral-400 uppercase tracking-[0.16em]"
@@ -52,18 +53,28 @@ export function ResetForm() {
           Nueva contraseña
         </Label>
         <div className="relative">
-          <Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+          <Lock
+            className={cn(
+              'pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 transition-colors',
+              errors.password && 'text-destructive',
+            )}
+          />
           <Input
+            aria-invalid={Boolean(errors.password)}
             autoComplete="new-password"
-            className="h-11 rounded-lg border-white/10 bg-neutral-950/70 pr-10 pl-10 text-sm text-neutral-100 transition-colors placeholder:text-neutral-600 focus-visible:border-brand-primary/70 focus-visible:ring-brand-primary/25"
+            className={cn(
+              'h-12 rounded-lg border-white/10 bg-[#111827]/72 pr-10 pl-10 text-sm text-neutral-100 transition-colors placeholder:text-slate-500 focus-visible:border-brand-primary/70 focus-visible:ring-brand-primary/25',
+              errors.password &&
+                'border-destructive/60 focus-visible:border-destructive focus-visible:ring-destructive/20',
+            )}
             id="password"
-            placeholder="********"
+            placeholder="••••••••"
             type={showPassword ? 'text' : 'password'}
             {...register('password')}
           />
           <button
             aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            className="absolute top-1/2 right-3 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-neutral-500 transition hover:bg-white/5 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+            className="absolute top-1/2 right-3 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/5 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
             onClick={() => setShowPassword((value) => !value)}
             type="button"
           >
@@ -82,7 +93,7 @@ export function ResetForm() {
         )}
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         <Label
           htmlFor="passwordConfirm"
           className="font-semibold text-[11px] text-neutral-400 uppercase tracking-[0.16em]"
@@ -90,18 +101,28 @@ export function ResetForm() {
           Confirmar contraseña
         </Label>
         <div className="relative">
-          <Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+          <Lock
+            className={cn(
+              'pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 transition-colors',
+              errors.passwordConfirm && 'text-destructive',
+            )}
+          />
           <Input
+            aria-invalid={Boolean(errors.passwordConfirm)}
             autoComplete="new-password"
-            className="h-11 rounded-lg border-white/10 bg-neutral-950/70 pr-10 pl-10 text-sm text-neutral-100 transition-colors placeholder:text-neutral-600 focus-visible:border-brand-primary/70 focus-visible:ring-brand-primary/25"
+            className={cn(
+              'h-12 rounded-lg border-white/10 bg-[#111827]/72 pr-10 pl-10 text-sm text-neutral-100 transition-colors placeholder:text-slate-500 focus-visible:border-brand-primary/70 focus-visible:ring-brand-primary/25',
+              errors.passwordConfirm &&
+                'border-destructive/60 focus-visible:border-destructive focus-visible:ring-destructive/20',
+            )}
             id="passwordConfirm"
-            placeholder="********"
+            placeholder="••••••••"
             type={showConfirm ? 'text' : 'password'}
             {...register('passwordConfirm')}
           />
           <button
             aria-label={showConfirm ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            className="absolute top-1/2 right-3 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-neutral-500 transition hover:bg-white/5 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+            className="absolute top-1/2 right-3 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/5 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
             onClick={() => setShowConfirm((value) => !value)}
             type="button"
           >
@@ -121,12 +142,12 @@ export function ResetForm() {
       </div>
 
       <Button
-        className="h-11 w-full rounded-lg border-brand-primary/40 bg-brand-primary font-semibold text-sm text-white shadow-[0_16px_34px_rgba(97,82,232,0.26)] transition hover:bg-brand-400 disabled:shadow-none"
-        disabled={pending}
+        className="mt-3 h-12 w-full rounded-lg border-brand-primary/40 bg-brand-primary font-semibold text-sm text-white shadow-[0_18px_36px_rgba(97,82,232,0.32)] transition hover:bg-brand-400 disabled:shadow-none"
         loading={pending}
         type="submit"
       >
-        Actualizar contraseña
+        <span>Actualizar contraseña</span>
+        <ArrowRight className="absolute right-5 size-4" />
       </Button>
     </form>
   );

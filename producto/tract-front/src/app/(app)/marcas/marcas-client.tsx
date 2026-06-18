@@ -8,7 +8,9 @@ import { DesactivarMarcaDialog, MarcaFormSheet } from "@/components/marcas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useHasRole } from "@/contexts/auth-context";
 import { useMarcas, useReactivarMarca } from "@/hooks/use-marcas";
 import type { Marca, MarcaTipo } from "@/lib/api/marcas";
@@ -98,7 +100,7 @@ export function MarcasClient() {
           <div className="relative w-full sm:w-80">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-7"
+              className="pl-9"
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Buscar marca"
               type="search"
@@ -124,32 +126,40 @@ export function MarcasClient() {
               </p>
             </div>
             {isAdmin && (
-              <label className="flex items-center gap-2 text-muted-foreground text-xs">
-                <input
+              <Label
+                className="flex items-center gap-2 text-muted-foreground text-xs"
+                htmlFor="incluir-inactivas"
+              >
+                <Checkbox
                   checked={includeInactive}
-                  className="size-3.5"
-                  onChange={(event) => setIncludeInactive(event.target.checked)}
-                  type="checkbox"
+                  id="incluir-inactivas"
+                  onCheckedChange={(checked) =>
+                    setIncludeInactive(checked === true)
+                  }
                 />
                 Incluir inactivas
-              </label>
+              </Label>
             )}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {TIPO_FILTERS.map((filter) => (
-              <button
-                className={cn(
-                  "rounded-full border border-border px-3 py-1 text-xs transition-colors hover:bg-secondary/60",
-                  tipoFilter === filter.value &&
-                    "border-brand-primary/50 bg-brand-primary/10 text-foreground",
-                )}
-                key={filter.value}
-                onClick={() => setTipoFilter(filter.value)}
-                type="button"
-              >
-                {filter.label}
-              </button>
-            ))}
+            {TIPO_FILTERS.map((filter) => {
+              const active = tipoFilter === filter.value;
+              return (
+                <button
+                  aria-pressed={active}
+                  className={cn(
+                    "rounded-full border border-border px-3 py-1 text-muted-foreground text-xs transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                    active &&
+                      "border-brand-primary/50 bg-brand-primary/10 text-foreground",
+                  )}
+                  key={filter.value}
+                  onClick={() => setTipoFilter(filter.value)}
+                  type="button"
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
           </div>
         </CardHeader>
         <CardContent className="p-0">

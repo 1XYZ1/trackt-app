@@ -31,6 +31,7 @@ describe("ordenes api helpers", () => {
           { codigo: "OT-002", estado: "CERRADA", id: "ot-2" },
           { codigo: "OT-003", estado: "CANCELADA", id: "ot-3" },
         ],
+        meta: { limit: 100, page: 1, total: 3, totalPages: 1 },
       }),
     );
     const { getOrdenes } = await import("./ordenes");
@@ -42,7 +43,9 @@ describe("ordenes api helpers", () => {
       "CERRADO",
       "CANCELADO",
     ]);
-    expect(authFetch).toHaveBeenCalledWith("https://api.trackt.test/ordenes");
+    expect(authFetch).toHaveBeenCalledWith(
+      "https://api.trackt.test/ordenes?page=1&limit=100",
+    );
   });
 
   it("envia payload JSON al crear una orden", async () => {

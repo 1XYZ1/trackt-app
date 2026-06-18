@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ClipboardList, Plus, SlidersHorizontal } from "lucide-react";
+import { CheckCircle2, ClipboardList, Layers, Plus, PlayCircle } from "lucide-react";
 import {
   EmptyState,
   ListSkeleton,
@@ -11,7 +11,6 @@ import {
 } from "@/components/core";
 import { EquipoSelect } from "@/components/equipos";
 import { NuevaOrdenSheet } from "@/components/ordenes";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOrdenes } from "@/hooks/use-ordenes";
@@ -31,7 +30,7 @@ const estados: ("TODOS" | OrdenEstado)[] = [
 
 function estadoLabel(estado: "TODOS" | OrdenEstado) {
   if (estado === "TODOS") return "Todos";
-  if (estado === "EN_EJECUCION") return "En ejecucion";
+  if (estado === "EN_EJECUCION") return "En ejecución";
   return estado.charAt(0) + estado.slice(1).toLowerCase();
 }
 
@@ -67,7 +66,11 @@ export function OrdenesClient() {
     // TODO(api): mover filtros a backend cuando GET /ordenes soporte query params.
     return ordenes.filter((orden) => {
       if (estado !== "TODOS" && orden.estado !== estado) return false;
-      if (equipoId && orden.equipoId !== equipoId && orden.equipo?.id !== equipoId) {
+      if (
+        equipoId &&
+        orden.equipoId !== equipoId &&
+        orden.equipo?.id !== equipoId
+      ) {
         return false;
       }
       return true;
@@ -75,6 +78,7 @@ export function OrdenesClient() {
   }, [equipoId, estado, ordenes]);
 
   const summary = getSummary(ordenes);
+  const hasActiveFilters = estado !== "TODOS" || Boolean(equipoId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -85,79 +89,66 @@ export function OrdenesClient() {
             Flujo principal de mantenimiento
           </div>
           <h1 className="font-semibold text-2xl tracking-tight">
-            Ordenes de Trabajo
+            Órdenes de Trabajo
           </h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Gestion de ordenes de mantenimiento asociadas a equipos
+            Gestión de órdenes de mantenimiento asociadas a equipos
             operacionales.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} size="sm">
+        <Button className="shrink-0" onClick={() => setCreateOpen(true)} size="sm">
           <Plus />
           Nueva OT
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-lg border-border/70">
-          <CardContent className="p-4">
-            <p className="font-medium text-[11px] text-muted-foreground uppercase">
-              Total OT
-            </p>
-            <p className="mt-2 font-mono font-semibold text-2xl">
-              {summary.total}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-lg border-border/70">
-          <CardContent className="p-4">
-            <p className="font-medium text-[11px] text-muted-foreground uppercase">
-              Abiertas
-            </p>
-            <p className="mt-2 font-mono font-semibold text-2xl text-brand-primary">
-              {summary.abiertas}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-lg border-border/70">
-          <CardContent className="p-4">
-            <p className="font-medium text-[11px] text-muted-foreground uppercase">
-              Cerradas
-            </p>
-            <p className="mt-2 font-mono font-semibold text-2xl text-success">
-              {summary.cerradas}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SummaryCard
+          icon={<Layers className="size-4" />}
+          label="Total OT"
+          tone="muted"
+          value={summary.total}
+        />
+        <SummaryCard
+          icon={<PlayCircle className="size-4" />}
+          label="Abiertas"
+          tone="brand"
+          value={summary.abiertas}
+        />
+        <SummaryCard
+          icon={<CheckCircle2 className="size-4" />}
+          label="Cerradas"
+          tone="success"
+          value={summary.cerradas}
+        />
       </div>
 
-      <Card className="rounded-lg border-border/70">
-        <CardHeader className="gap-4 pb-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle className="text-base">Listado de OT</CardTitle>
-              <p className="text-muted-foreground text-xs">
-                {filteredOrdenes.length} resultado
-                {filteredOrdenes.length === 1 ? "" : "s"} segun filtros.
-              </p>
-            </div>
-            <Badge className="w-fit" variant="outline">
-              <SlidersHorizontal />
-              Filtros frontend temporales
-            </Badge>
+      <Card>
+        <CardHeader className="gap-3 pb-3">
+          <div>
+            <CardTitle className="text-base">Listado de OT</CardTitle>
+            <p className="text-muted-foreground text-xs">
+              {filteredOrdenes.length} resultado
+              {filteredOrdenes.length === 1 ? "" : "s"}
+              {hasActiveFilters ? " según filtros." : "."}
+            </p>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
-            <div className="flex flex-wrap gap-1.5">
+          <div className="grid gap-3 lg:grid-cols-[1fr_minmax(0,18rem)]">
+            <div
+              aria-label="Filtrar por estado"
+              className="flex flex-wrap gap-1.5"
+              role="group"
+            >
               {estados.map((item) => {
                 const active = estado === item;
-
                 return (
                   <button
+                    aria-pressed={active}
                     className={cn(
-                      "rounded-md px-2.5 py-1 font-medium text-xs transition-colors",
+                      "rounded-md px-2.5 py-1 font-medium text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
                       active
-                        ? "bg-brand-primary text-brand-primary-foreground"
+                        ? "bg-brand-primary text-brand-primary-foreground shadow-glow-sm"
                         : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground",
                     )}
                     key={item}
@@ -183,8 +174,8 @@ export function OrdenesClient() {
           {!isLoading && error && (
             <EmptyState
               icon="clipboard"
-              message="No se pudieron cargar las ordenes de trabajo desde la API."
-              title="Error al cargar ordenes"
+              message="No se pudieron cargar las órdenes de trabajo desde la API."
+              title="Error al cargar órdenes"
             />
           )}
 
@@ -193,7 +184,7 @@ export function OrdenesClient() {
               <EmptyState
                 icon="clipboard"
                 message="Crea una OT para iniciar el flujo de mantenimiento sobre un equipo operacional."
-                title="No hay ordenes de trabajo"
+                title="No hay órdenes de trabajo"
               />
               <div className="flex justify-center">
                 <Button onClick={() => setCreateOpen(true)}>
@@ -204,19 +195,29 @@ export function OrdenesClient() {
             </div>
           )}
 
-          {!isLoading && !error && ordenes.length > 0 && filteredOrdenes.length === 0 && (
-            <EmptyState
-              icon="search"
-              message="Ajusta el estado o equipo seleccionado para ver otras ordenes."
-              title="Sin resultados"
-            />
-          )}
+          {!isLoading &&
+            !error &&
+            ordenes.length > 0 &&
+            filteredOrdenes.length === 0 && (
+              <EmptyState
+                icon="search"
+                message="Ajusta el estado o equipo seleccionado para ver otras órdenes."
+                title="Sin resultados"
+              />
+            )}
 
           {!isLoading && !error && filteredOrdenes.length > 0 && (
             <div className="grid gap-4 xl:grid-cols-2">
               {filteredOrdenes.map((orden) => (
-                <Link href={`/ordenes/${orden.id}`} key={orden.id}>
-                  <OtCard className="h-full transition-colors hover:border-brand-primary/40" ot={toOtResumen(orden)} />
+                <Link
+                  className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  href={`/ordenes/${orden.id}`}
+                  key={orden.id}
+                >
+                  <OtCard
+                    className="h-full transition-colors hover:border-brand-primary/40"
+                    ot={toOtResumen(orden)}
+                  />
                 </Link>
               ))}
             </div>
@@ -226,5 +227,43 @@ export function OrdenesClient() {
 
       <NuevaOrdenSheet onOpenChange={setCreateOpen} open={createOpen} />
     </div>
+  );
+}
+
+function SummaryCard({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone: "brand" | "success" | "muted";
+}) {
+  const toneClass =
+    tone === "brand"
+      ? "bg-brand-primary/10 text-brand-primary ring-brand-primary/20"
+      : tone === "success"
+        ? "bg-success/10 text-success-foreground ring-success/20"
+        : "bg-muted text-muted-foreground ring-border";
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-4">
+        <span
+          className={`flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${toneClass}`}
+        >
+          {icon}
+        </span>
+        <div>
+          <p className="font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+            {label}
+          </p>
+          <p className="font-mono font-semibold text-2xl tabular-nums leading-tight">
+            {value}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

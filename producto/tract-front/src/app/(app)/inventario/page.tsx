@@ -10,6 +10,6 @@ export const metadata: Metadata = {
 export default async function InventarioPage() {
   // Mechanic reserva desde el detalle del ticket — la pantalla de inventario
   // es informativa/administrativa para admin y jefe_taller.
-  await requireRole("admin", "jefe_taller");
+  await requireRole("admin", "jefe_taller", "jefe_inventario");
   return <InventarioClient />;
 }

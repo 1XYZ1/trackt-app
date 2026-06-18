@@ -49,8 +49,8 @@ export function DesactivarRepuestoDialog({
           <AlertDialogTitle>Desactivar repuesto</AlertDialogTitle>
           <AlertDialogDescription>
             {repuesto
-              ? `"${repuesto.codigo} - ${repuesto.nombre}" dejara de aparecer para nuevas reservas. Si tiene stock reservado, primero hay que liberarlo. No se elimina la informacion historica.`
-              : "El repuesto dejara de aparecer para nuevas reservas."}
+              ? `"${repuesto.codigo} - ${repuesto.nombre}" dejará de aparecer para nuevas reservas. Si tiene stock reservado, primero hay que liberarlo. No se elimina la información histórica.`
+              : "El repuesto dejará de aparecer para nuevas reservas."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

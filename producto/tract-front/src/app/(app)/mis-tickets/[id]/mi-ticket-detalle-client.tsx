@@ -7,7 +7,7 @@ import {
   ArrowLeft,
   Camera,
   CheckCircle2,
-  Loader2,
+  ImageOff,
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useFinalizarEjecucion,
@@ -32,6 +33,8 @@ import {
   useSubirEvidencia,
 } from "@/hooks/use-mis-tickets";
 import type { TicketEvidence } from "@/lib/api/mis-tickets";
+import { PRIORIDAD_DOT, PRIORIDAD_LABEL } from "@/lib/tickets/format";
+import { cn } from "@/lib/utils";
 import { ReservasSection } from "@/components/inventario/reservas-section";
 
 function getPriorityVariant(priority: "BAJA" | "MEDIA" | "ALTA") {
@@ -40,41 +43,63 @@ function getPriorityVariant(priority: "BAJA" | "MEDIA" | "ALTA") {
   return "secondary";
 }
 
-function EvidenceGrid({ evidencias }: { evidencias: TicketEvidence[] }) {
+function EvidenceGrid({
+  evidencias,
+  onOpen,
+}: {
+  evidencias: TicketEvidence[];
+  onOpen: (evidencia: TicketEvidence) => void;
+}) {
   if (evidencias.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border p-6 text-center text-muted-foreground text-sm">
-        Aun no hay fotos cargadas.
+      <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-secondary/20 px-4 py-8 text-center">
+        <span className="flex size-10 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary ring-1 ring-inset ring-brand-primary/20">
+          <Camera className="size-5" />
+        </span>
+        <p className="font-medium text-foreground text-sm">Aún no hay fotos</p>
+        <p className="max-w-xs text-muted-foreground text-xs">
+          Toma fotos del avance o resultado del trabajo para respaldar el cierre.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {evidencias.map((evidencia) => (
-        <div
-          className="overflow-hidden rounded-xl border border-border bg-secondary/20"
+        <button
+          className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-secondary/20 outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
           key={evidencia.id}
+          onClick={() => onOpen(evidencia)}
+          type="button"
         >
           {evidencia.url ? (
             <Image
               alt={evidencia.fileName}
-              className="aspect-square w-full object-cover"
+              className="size-full object-cover transition group-hover:scale-105"
               height={280}
               src={evidencia.url}
               unoptimized
               width={280}
             />
           ) : (
-            <div className="flex aspect-square w-full items-center justify-center bg-secondary/30 text-muted-foreground text-xs">
-              Sin vista previa
+            <div className="flex size-full items-center justify-center text-muted-foreground">
+              <ImageOff className="size-6" />
             </div>
           )}
-          <div className="p-2">
-            <p className="truncate text-xs">{evidencia.fileName}</p>
-          </div>
-        </div>
+        </button>
       ))}
+    </div>
+  );
+}
+
+function MiTicketSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      <Skeleton className="h-8 w-24" />
+      <Skeleton className="h-40 rounded-xl" />
+      <Skeleton className="h-20 rounded-xl" />
+      <Skeleton className="h-56 rounded-xl" />
     </div>
   );
 }
@@ -83,6 +108,7 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [observacion, setObservacion] = useState("");
+  const [preview, setPreview] = useState<TicketEvidence | null>(null);
   const { data: ticket, error, isLoading } = useMiTicket(id);
   const uploadEvidence = useSubirEvidencia(id);
   const finishTicket = useFinalizarEjecucion(id);
@@ -147,26 +173,34 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-        <Loader2 className="size-4 animate-spin" />
-        Cargando ticket...
-      </div>
-    );
+    return <MiTicketSkeleton />;
   }
 
   if (error || !ticket) {
     return (
-      <EmptyState
-        icon="ticket"
-        message="No se pudo cargar el ticket asignado."
-        title="Error al cargar ticket"
-      />
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+        <Button
+          className="w-fit"
+          render={<Link href="/mis-tickets" />}
+          size="sm"
+          variant="ghost"
+        >
+          <ArrowLeft />
+          Volver
+        </Button>
+        <EmptyState
+          icon="ticket"
+          message="No se pudo cargar el ticket asignado."
+          title="Error al cargar ticket"
+        />
+      </div>
     );
   }
 
+  const canFinish = evidencias.length > 0;
+
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-24">
       <Button
         className="w-fit"
         render={<Link href="/mis-tickets" />}
@@ -180,45 +214,64 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
       <Card className="rounded-xl border-border/70">
         <CardContent className="space-y-4 p-4">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-mono font-semibold text-muted-foreground text-xs">
+            <div className="min-w-0">
+              <p className="font-mono font-semibold text-muted-foreground text-xs tracking-tight">
                 {ticket.codigo}
               </p>
-              <h1 className="mt-1 font-semibold text-2xl leading-tight">
+              <h1 className="mt-1 text-balance font-semibold text-2xl leading-tight">
                 {ticket.titulo}
               </h1>
             </div>
-            <Badge variant={getPriorityVariant(ticket.prioridad)}>
-              {ticket.prioridad}
+            <Badge className="gap-1.5" variant={getPriorityVariant(ticket.prioridad)}>
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  PRIORIDAD_DOT[ticket.prioridad],
+                )}
+              />
+              {PRIORIDAD_LABEL[ticket.prioridad]}
             </Badge>
           </div>
           <div className="flex flex-wrap gap-2">
             <StatusBadge estado={ticket.estado} />
             <Badge variant="outline">{ticket.ordenCodigo}</Badge>
           </div>
-          <p className="text-muted-foreground text-sm">{ticket.descripcion}</p>
+          <p className="text-pretty text-muted-foreground text-sm">
+            {ticket.descripcion}
+          </p>
         </CardContent>
       </Card>
 
       <Card className="rounded-xl border-border/70">
         <CardContent className="flex items-start gap-3 p-4">
-          <Wrench className="mt-1 size-5 shrink-0 text-muted-foreground" />
-          <div>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+            <Wrench className="size-4.5" />
+          </span>
+          <div className="min-w-0">
             <p className="font-medium text-sm">Equipo</p>
-            <p className="mt-1 text-muted-foreground text-sm">{ticket.equipo}</p>
+            <p className="mt-0.5 text-pretty text-muted-foreground text-sm">
+              {ticket.equipo}
+            </p>
           </div>
         </CardContent>
       </Card>
 
       <Card className="rounded-xl border-border/70">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Evidencias</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            Evidencias
+            {evidencias.length > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary px-1.5 font-medium text-secondary-foreground text-xs tabular-nums">
+                {evidencias.length}
+              </span>
+            )}
+          </CardTitle>
           <p className="text-muted-foreground text-xs">
             Sube fotos del avance o resultado antes de finalizar.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <EvidenceGrid evidencias={evidencias} />
+          <EvidenceGrid evidencias={evidencias} onOpen={setPreview} />
 
           <input
             accept="image/*"
@@ -231,12 +284,14 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
           />
 
           <Button
-            className="h-14 w-full text-base"
+            className="h-12 w-full"
             disabled={uploadEvidence.isPending}
+            loading={uploadEvidence.isPending}
             onClick={() => inputRef.current?.click()}
+            variant="outline"
           >
             <Camera />
-            Camara / Galeria
+            {evidencias.length > 0 ? "Agregar más fotos" : "Cámara / Galería"}
           </Button>
         </CardContent>
       </Card>
@@ -247,21 +302,56 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
         ticketMecanicoId={ticket.mecanico?.id ?? null}
       />
 
-      <div className="sticky bottom-3 z-10">
-        <Button
-          className="h-14 w-full rounded-xl text-base shadow-lg"
-          disabled={evidencias.length === 0}
-          onClick={() => setFinishOpen(true)}
-        >
-          <CheckCircle2 />
-          Finalizar trabajo
-        </Button>
-        {evidencias.length === 0 && (
-          <p className="mt-2 text-center text-muted-foreground text-xs">
-            Debes subir al menos una foto para finalizar.
-          </p>
-        )}
+      {/* Barra de acción fija: finalizar siempre accesible en mobile. */}
+      <div className="-mx-4 fixed inset-x-0 bottom-0 z-20 border-border/70 border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:mx-auto sm:max-w-3xl sm:rounded-t-xl">
+        <div className="mx-auto w-full max-w-3xl">
+          <Button
+            className="h-12 w-full"
+            disabled={!canFinish}
+            onClick={() => setFinishOpen(true)}
+          >
+            <CheckCircle2 />
+            Finalizar trabajo
+          </Button>
+          {!canFinish && (
+            <p className="mt-2 text-center text-muted-foreground text-xs">
+              Debes subir al menos una foto para finalizar.
+            </p>
+          )}
+        </div>
       </div>
+
+      {preview && (
+        <Dialog
+          onOpenChange={(open) => {
+            if (!open) setPreview(null);
+          }}
+          open={Boolean(preview)}
+        >
+          <DialogPopup className="max-w-3xl">
+            <DialogTitle className="sr-only">{preview.fileName}</DialogTitle>
+            <div className="flex flex-col gap-3">
+              {preview.url ? (
+                <Image
+                  alt={preview.fileName}
+                  className="max-h-[70vh] w-full rounded-lg object-contain"
+                  height={1200}
+                  src={preview.url}
+                  unoptimized
+                  width={1200}
+                />
+              ) : (
+                <div className="flex aspect-video items-center justify-center text-muted-foreground">
+                  <ImageOff className="size-12" />
+                </div>
+              )}
+              <p className="truncate px-1 pb-1 text-muted-foreground text-xs">
+                {preview.fileName}
+              </p>
+            </div>
+          </DialogPopup>
+        </Dialog>
+      )}
 
       <Dialog onOpenChange={setFinishOpen} open={finishOpen}>
         <DialogPopup>

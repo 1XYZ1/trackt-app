@@ -10,7 +10,7 @@ const inviteSchema = z.object({
   fullName: z.string().min(1).max(120),
   // Solo admin invita (verificado por requireRole abajo). admin puede crear
   // cualquier rol; jefe_taller no llega a este flujo.
-  role: z.enum(['admin', 'jefe_taller', 'mechanic']),
+  role: z.enum(['admin', 'jefe_taller', 'jefe_inventario', 'mechanic']),
 });
 
 export type InviteUserResult =

@@ -87,9 +87,12 @@ export function QrDialog({
           <div className="flex flex-col items-center gap-4">
             {token ? (
               <>
-                <div className="rounded-xl bg-white p-4">
+                <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-border">
                   <QRCodeSVG level="M" size={220} value={qrValue} />
                 </div>
+                <p className="text-center text-muted-foreground text-xs">
+                  Escanéalo con la cámara para abrir la ficha del equipo.
+                </p>
                 <div className="w-full space-y-1">
                   <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
                     Enlace del QR
@@ -98,15 +101,25 @@ export function QrDialog({
                     <code className="min-w-0 flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs">
                       {qrValue}
                     </code>
-                    <Button onClick={handleCopy} size="icon" variant="outline">
+                    <Button
+                      aria-label="Copiar enlace del QR"
+                      onClick={handleCopy}
+                      size="icon"
+                      variant="outline"
+                    >
                       <Copy />
                     </Button>
                   </div>
                 </div>
               </>
             ) : (
-              <div className="py-6 text-center text-muted-foreground text-sm">
-                Este equipo aún no tiene un código QR generado.
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <div className="flex size-12 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/20 ring-inset">
+                  <QrCode className="size-6" />
+                </div>
+                <p className="max-w-xs text-muted-foreground text-sm">
+                  Este equipo aún no tiene un código QR generado.
+                </p>
               </div>
             )}
 

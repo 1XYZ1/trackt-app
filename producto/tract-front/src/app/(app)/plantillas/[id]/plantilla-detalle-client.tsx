@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, CheckSquare, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, CheckSquare, Pencil } from "lucide-react";
 import { EmptyState } from "@/components/core";
 import {
   PlantillaFormSheet,
@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/contexts/auth-context";
 import { usePlantilla } from "@/hooks/use-plantillas";
 import { getChecklist } from "@/lib/api/plantillas";
@@ -29,9 +30,14 @@ export function PlantillaDetalleClient({ id }: PlantillaDetalleClientProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-16 text-muted-foreground text-sm">
-        <Loader2 className="size-4 animate-spin" />
-        Cargando plantilla...
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-4 w-36" />
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+        <Skeleton className="h-48 rounded-2xl" />
+        <Skeleton className="h-40 rounded-2xl" />
       </div>
     );
   }
@@ -40,13 +46,13 @@ export function PlantillaDetalleClient({ id }: PlantillaDetalleClientProps) {
     return (
       <div className="flex flex-col gap-4">
         <Link
-          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground"
           href="/plantillas"
         >
           <ArrowLeft className="size-4" />
           Volver a plantillas
         </Link>
-        <Card className="rounded-lg border-border/70">
+        <Card>
           <CardContent className="p-5">
             <EmptyState
               icon="wrench"
@@ -65,7 +71,7 @@ export function PlantillaDetalleClient({ id }: PlantillaDetalleClientProps) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <Link
-          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
           href="/plantillas"
         >
           <ArrowLeft className="size-4" />
@@ -108,26 +114,28 @@ export function PlantillaDetalleClient({ id }: PlantillaDetalleClientProps) {
         plantillaId={id}
       />
 
-      <Card className="rounded-lg border-border/70">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <CheckSquare className="size-4" />
-            Checklist ({checklist.length})
+            <CheckSquare className="size-4 text-brand-primary" />
+            Checklist
+            <Badge variant="secondary">{checklist.length}</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {checklist.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              Sin pasos de checklist. {canManage ? "Edita la plantilla para agregarlos." : ""}
+              Sin pasos de checklist.{" "}
+              {canManage ? "Edita la plantilla para agregarlos." : ""}
             </p>
           ) : (
-            <ol className="space-y-1.5">
+            <ol className="space-y-2">
               {checklist.map((paso, idx) => (
-                <li className="flex items-start gap-2 text-sm" key={idx}>
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary font-mono text-xs">
+                <li className="flex items-start gap-3 text-sm" key={idx}>
+                  <span className="mt-px flex size-5.5 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 font-mono font-semibold text-brand-primary text-xs ring-1 ring-brand-primary/20 ring-inset">
                     {idx + 1}
                   </span>
-                  {paso}
+                  <span className="pt-0.5">{paso}</span>
                 </li>
               ))}
             </ol>

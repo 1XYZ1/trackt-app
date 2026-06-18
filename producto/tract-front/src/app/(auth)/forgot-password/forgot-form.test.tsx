@@ -32,7 +32,7 @@ describe("ForgotForm", () => {
     await user.tab();
 
     expect(
-      await screen.findByText(/ingresa un correo valido/i),
+      await screen.findByText(/ingresa un correo v[aá]lido/i),
     ).toBeInTheDocument();
   });
 

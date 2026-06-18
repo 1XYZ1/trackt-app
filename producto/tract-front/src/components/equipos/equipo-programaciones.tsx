@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { EmptyState } from "@/components/core";
 // Import directo (no barrel) para evitar ciclo equipos <-> programaciones.
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/components/programaciones/programacion-badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useProgramaciones } from "@/hooks/use-programaciones";
 
 function fmtFecha(iso: string): string {
@@ -34,7 +35,7 @@ export function EquipoProgramaciones({ equipoId }: EquipoProgramacionesProps) {
   });
 
   return (
-    <Card className="rounded-lg border-border/70">
+    <Card>
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0 pb-3">
         <CardTitle className="text-base">Programaciones del equipo</CardTitle>
         <Button render={<Link href="/mantenciones" />} size="sm" variant="outline">
@@ -44,9 +45,10 @@ export function EquipoProgramaciones({ equipoId }: EquipoProgramacionesProps) {
       </CardHeader>
       <CardContent className="p-0">
         {isLoading && (
-          <div className="flex items-center gap-2 px-5 py-10 text-muted-foreground text-sm">
-            <Loader2 className="size-4 animate-spin" />
-            Cargando programaciones...
+          <div className="space-y-2.5 p-5">
+            {Array.from({ length: 3 }).map((_, idx) => (
+              <Skeleton className="h-10 w-full" key={idx} />
+            ))}
           </div>
         )}
 
@@ -74,7 +76,7 @@ export function EquipoProgramaciones({ equipoId }: EquipoProgramacionesProps) {
           <div className="divide-y divide-border/60">
             {programaciones.map((p) => (
               <div
-                className="flex items-center justify-between gap-3 px-5 py-3"
+                className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-accent/40"
                 key={p.id}
               >
                 <div className="min-w-0">

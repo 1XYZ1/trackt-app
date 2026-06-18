@@ -19,9 +19,11 @@ describe("LoginForm", () => {
     render(<LoginForm />);
 
     expect(screen.getByLabelText(/correo/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/contrase/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /iniciar sesion/i }),
+      screen.getByLabelText("Contraseña", { exact: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /iniciar sesi[oó]n/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /olvidaste/i })).toHaveAttribute(
       "href",
@@ -37,7 +39,7 @@ describe("LoginForm", () => {
     await user.tab();
 
     expect(
-      await screen.findByText(/ingresa un correo valido/i),
+      await screen.findByText(/ingresa un correo v[aá]lido/i),
     ).toBeInTheDocument();
   });
 
@@ -46,8 +48,11 @@ describe("LoginForm", () => {
     render(<LoginForm />);
 
     await user.type(screen.getByLabelText(/correo/i), "demo@trackt.cl");
-    await user.type(screen.getByLabelText(/contrase/i), "secret123");
-    await user.click(screen.getByRole("button", { name: /iniciar sesion/i }));
+    await user.type(
+      screen.getByLabelText("Contraseña", { exact: true }),
+      "secret123",
+    );
+    await user.click(screen.getByRole("button", { name: /iniciar sesi[oó]n/i }));
 
     await waitFor(() => expect(loginMock).toHaveBeenCalledTimes(1));
     const formData = loginMock.mock.calls[0][0] as FormData;

@@ -1,25 +1,37 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertCircle, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { roleLabel } from '@/lib/auth/role-labels';
 import { inviteUser } from '@/app/actions/users';
 
 const schema = z.object({
   email: z.string().email('Correo invalido'),
   fullName: z.string().min(1, 'Requerido').max(120),
-  role: z.enum(['admin', 'jefe_taller', 'mechanic']),
+  role: z.enum(['admin', 'jefe_taller', 'jefe_inventario', 'mechanic']),
 });
 
 type FormValues = z.infer<typeof schema>;
 
-const roleSelectClassName =
-  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24 dark:bg-input/32 dark:text-foreground dark:[color-scheme:dark] dark:[&_option]:bg-popover dark:[&_option]:text-foreground dark:[&_option:checked]:bg-accent dark:[&_option:checked]:text-accent-foreground dark:[&_option:hover]:bg-accent dark:[&_option:hover]:text-accent-foreground";
+const ROLE_OPTIONS: FormValues['role'][] = [
+  'mechanic',
+  'jefe_taller',
+  'jefe_inventario',
+  'admin',
+];
 
 export function InviteForm() {
   const [pending, startTransition] = useTransition();
@@ -31,6 +43,7 @@ export function InviteForm() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -71,30 +84,52 @@ export function InviteForm() {
 
         <div className="space-y-1.5">
           <Label htmlFor="role">Rol</Label>
-          <select
-            id="role"
-            className={roleSelectClassName}
-            {...register('role')}
-          >
-            <option value="mechanic">Mecánico</option>
-            <option value="jefe_taller">Jefe de taller</option>
-            <option value="admin">Admin</option>
-          </select>
+          <Controller
+            control={control}
+            name="role"
+            render={({ field }) => (
+              <Select
+                items={ROLE_OPTIONS.map((role) => ({
+                  label: roleLabel(role),
+                  value: role,
+                }))}
+                onValueChange={(value) => field.onChange(value)}
+                value={field.value}
+              >
+                <SelectTrigger id="role" onBlur={field.onBlur}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_OPTIONS.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {roleLabel(role)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={pending}>
-          {pending ? <Loader2 className="size-4 animate-spin" /> : 'Invitar usuario'}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" loading={pending}>
+          <UserPlus />
+          Invitar usuario
         </Button>
         {feedback && (
           <p
             className={
               feedback.type === 'ok'
-                ? 'text-emerald-500 text-sm'
-                : 'text-destructive text-sm'
+                ? 'flex items-center gap-1.5 text-sm text-success-foreground'
+                : 'flex items-center gap-1.5 text-destructive text-sm'
             }
           >
+            {feedback.type === 'ok' ? (
+              <CheckCircle2 className="size-4 shrink-0" />
+            ) : (
+              <AlertCircle className="size-4 shrink-0" />
+            )}
             {feedback.msg}
           </p>
         )}

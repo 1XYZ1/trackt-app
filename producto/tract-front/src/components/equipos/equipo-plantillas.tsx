@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { PlantillaSelect } from "@/components/plantillas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/contexts/auth-context";
 import {
   useAddEquipoPlantilla,
@@ -65,7 +66,7 @@ export function EquipoPlantillas({ equipoId }: EquipoPlantillasProps) {
   return (
     <div className="flex flex-col gap-4">
       {canManage && (
-        <Card className="rounded-lg border-border/70">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Asociar plantilla</CardTitle>
           </CardHeader>
@@ -89,15 +90,16 @@ export function EquipoPlantillas({ equipoId }: EquipoPlantillasProps) {
         </Card>
       )}
 
-      <Card className="rounded-lg border-border/70">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Plantillas aplicables</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading && (
-            <div className="flex items-center gap-2 px-5 py-10 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando plantillas...
+            <div className="space-y-2.5 p-5">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <Skeleton className="h-12 w-full" key={idx} />
+              ))}
             </div>
           )}
 
@@ -125,7 +127,7 @@ export function EquipoPlantillas({ equipoId }: EquipoPlantillasProps) {
             <div className="divide-y divide-border/60">
               {asociadas.map((a) => (
                 <div
-                  className="flex items-center justify-between gap-3 px-5 py-3"
+                  className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-accent/40"
                   key={a.id}
                 >
                   <div className="min-w-0">

@@ -14,6 +14,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useMecanicos } from "@/hooks/use-usuarios";
 import { useAsignarTicket } from "@/hooks/use-tickets";
 
@@ -76,29 +83,32 @@ export function AsignarMecanicoDialog({ ticketId, open, onOpenChange }: Props) {
             </p>
           ) : (
             <div className="space-y-2">
-              <label
-                className="font-medium text-sm"
-                htmlFor="mecanico-select"
-              >
+              <label className="font-medium text-sm" htmlFor="mecanico-select">
                 Mecánico
               </label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
-                id="mecanico-select"
-                onChange={(event) => {
-                  setMecanicoId(event.target.value);
+              <Select
+                items={mecanicos.data.map((m) => ({
+                  label: `${m.fullName || m.email || m.id}${m.email ? ` (${m.email})` : ""}`,
+                  value: m.id,
+                }))}
+                onValueChange={(value) => {
+                  setMecanicoId((value as string | null) ?? "");
                   if (error) setError(null);
                 }}
-                value={mecanicoId}
+                value={mecanicoId || null}
               >
-                <option value="">— Selecciona —</option>
-                {mecanicos.data.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.fullName || m.email || m.id}
-                    {m.email ? ` (${m.email})` : ""}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="mecanico-select">
+                  <SelectValue placeholder="— Selecciona —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mecanicos.data.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.fullName || m.email || m.id}
+                      {m.email ? ` (${m.email})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {error && <p className="text-destructive text-xs">{error}</p>}
             </div>
           )}

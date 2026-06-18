@@ -1,8 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, Power, PowerOff, Search, Truck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CheckCircle2,
+  Pencil,
+  Plus,
+  Power,
+  PowerOff,
+  Search,
+  Truck,
+  Wrench,
+} from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import {
@@ -14,9 +23,38 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipPopup,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useHasRole } from "@/contexts/auth-context";
 import { useEquipos, useReactivarEquipo } from "@/hooks/use-equipos";
 import { EQUIPOS_PAGE_LIMIT, type Equipo } from "@/lib/api/equipos";
+
+function TableSkeleton({ rows = 6, cols = 6 }: { rows?: number; cols?: number }) {
+  return (
+    <div className="divide-y divide-border/60">
+      {Array.from({ length: rows }).map((_, rowIdx) => (
+        <div
+          className="flex items-center gap-4 px-5 py-3.5"
+          key={rowIdx}
+        >
+          {Array.from({ length: cols }).map((__, colIdx) => (
+            <Skeleton
+              className="h-4"
+              key={colIdx}
+              style={{ width: `${colIdx === 0 ? 64 : 80 + ((colIdx * 13) % 60)}px` }}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function EquiposClient() {
   const [query, setQuery] = useState("");
@@ -56,6 +94,18 @@ export function EquiposClient() {
 
   const filteredEquipos = equipos;
 
+  const summary = useMemo(() => {
+    let operativos = 0;
+    let conAlerta = 0;
+    let inactivos = 0;
+    for (const e of equipos) {
+      if (e.activo === false) inactivos += 1;
+      if (e.estadoOperativo === "OPERATIVO") operativos += 1;
+      else if (e.activo !== false) conAlerta += 1;
+    }
+    return { conAlerta, inactivos, operativos };
+  }, [equipos]);
+
   const openCreate = () => {
     setEditing(null);
     setFormOpen(true);
@@ -71,254 +121,405 @@ export function EquiposClient() {
     if (!open) setEditing(null);
   };
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-            <Truck className="size-3.5" />
-            Flota operacional
-          </div>
-          <h1 className="font-semibold text-2xl tracking-tight">Equipos</h1>
-          <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-            Listado de equipos operacionales registrados para mantenimiento.
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative w-full sm:w-80">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-7"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar codigo, nombre o ubicacion"
-              type="search"
-              value={query}
-            />
-          </div>
-          {isAdmin && (
-            <Button onClick={openCreate} size="sm">
-              <Plus />
-              Agregar equipo
-            </Button>
-          )}
-        </div>
-      </div>
+  const colSpan = 6 + (includeInactive ? 1 : 0) + (isAdmin ? 1 : 0);
 
-      <Card className="rounded-lg border-border/70">
-        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0 pb-3">
+  return (
+    <TooltipProvider>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <CardTitle className="text-base">Equipos registrados</CardTitle>
-            <p className="text-muted-foreground text-xs">
-              {filteredEquipos.length} resultado
-              {filteredEquipos.length === 1 ? "" : "s"} disponibles.
-              {equipos.length >= EQUIPOS_PAGE_LIMIT && (
-                <span className="text-warning-foreground">
-                  {" "}
-                  Mostrando los primeros {EQUIPOS_PAGE_LIMIT}; refina la busqueda
-                  para ver el resto.
-                </span>
-              )}
+            <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
+              <Truck className="size-3.5" />
+              Flota operacional
+            </div>
+            <h1 className="font-semibold text-2xl tracking-tight">Equipos</h1>
+            <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
+              Listado de equipos operacionales registrados para mantenimiento.
             </p>
           </div>
-          {isAdmin && (
-            <label className="flex items-center gap-2 text-muted-foreground text-xs">
-              <input
-                checked={includeInactive}
-                className="size-3.5"
-                onChange={(event) => setIncludeInactive(event.target.checked)}
-                type="checkbox"
-              />
-              Incluir inactivos
-            </label>
-          )}
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading && (
-            <div className="flex items-center gap-2 px-5 py-16 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando equipos...
-            </div>
-          )}
-
-          {!isLoading && error && (
-            <div className="p-5">
-              <EmptyState
-                icon="wrench"
-                message="No se pudieron cargar los equipos desde la API. Revisa la conexion o el endpoint GET /equipos."
-                title="Error al cargar equipos"
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:w-80">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="Buscar equipos"
+                className="pl-9"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar código, nombre o ubicación"
+                type="search"
+                value={query}
               />
             </div>
-          )}
+            {isAdmin && (
+              <Button className="shrink-0" onClick={openCreate} size="sm">
+                <Plus />
+                Agregar equipo
+              </Button>
+            )}
+          </div>
+        </div>
 
-          {!isLoading && !error && equipos.length === 0 && (
-            <div className="p-5">
-              <EmptyState
-                icon="wrench"
-                message="Crea el primer equipo para iniciar el registro de la flota operacional."
-                title="No hay equipos registrados"
-              />
-              {isAdmin && (
-                <div className="mt-4 flex justify-center">
-                  <Button onClick={openCreate}>
-                    <Plus />
-                    Agregar equipo
-                  </Button>
+        {!error && (equipos.length > 0 || isLoading) && (
+          <div className="grid grid-cols-3 gap-3">
+            <StatChip
+              icon={<CheckCircle2 className="size-4" />}
+              label="Operativos"
+              loading={isLoading}
+              tone="success"
+              value={summary.operativos}
+            />
+            <StatChip
+              icon={<Wrench className="size-4" />}
+              label="Con alerta"
+              loading={isLoading}
+              tone="warning"
+              value={summary.conAlerta}
+            />
+            <StatChip
+              icon={<PowerOff className="size-4" />}
+              label="Inactivos"
+              loading={isLoading}
+              tone="muted"
+              value={summary.inactivos}
+            />
+          </div>
+        )}
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-4 space-y-0 pb-3">
+            <div>
+              <CardTitle className="text-base">Equipos registrados</CardTitle>
+              <p className="text-muted-foreground text-xs">
+                {filteredEquipos.length} resultado
+                {filteredEquipos.length === 1 ? "" : "s"} disponibles.
+                {equipos.length >= EQUIPOS_PAGE_LIMIT && (
+                  <span className="text-warning-foreground">
+                    {" "}
+                    Mostrando los primeros {EQUIPOS_PAGE_LIMIT}; refina la
+                    búsqueda para ver el resto.
+                  </span>
+                )}
+              </p>
+            </div>
+            {isAdmin && (
+              <label className="flex cursor-pointer items-center gap-2 text-muted-foreground text-xs">
+                <Switch
+                  checked={includeInactive}
+                  onCheckedChange={setIncludeInactive}
+                />
+                Incluir inactivos
+              </label>
+            )}
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading && <TableSkeleton cols={colSpan} />}
+
+            {!isLoading && error && (
+              <div className="p-5">
+                <EmptyState
+                  icon="wrench"
+                  message="No se pudieron cargar los equipos desde la API. Revisa la conexión o el endpoint GET /equipos."
+                  title="Error al cargar equipos"
+                />
+              </div>
+            )}
+
+            {!isLoading && !error && equipos.length === 0 && (
+              <div className="p-5">
+                <EmptyState
+                  icon="wrench"
+                  message={
+                    debouncedQuery
+                      ? "Ajusta la búsqueda para encontrar otro equipo."
+                      : "Crea el primer equipo para iniciar el registro de la flota operacional."
+                  }
+                  title={debouncedQuery ? "Sin resultados" : "No hay equipos registrados"}
+                />
+                {isAdmin && !debouncedQuery && (
+                  <div className="mt-4 flex justify-center">
+                    <Button onClick={openCreate}>
+                      <Plus />
+                      Agregar equipo
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isLoading && !error && equipos.length > 0 && (
+              <>
+                {/* Vista de tabla (desktop) */}
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
+                        <th className="px-5 py-3 font-semibold">Código</th>
+                        <th className="px-5 py-3 font-semibold">Nombre</th>
+                        <th className="px-5 py-3 font-semibold">Marca</th>
+                        <th className="px-5 py-3 font-semibold">Modelo</th>
+                        <th className="px-5 py-3 font-semibold">Ubicación</th>
+                        <th className="px-5 py-3 font-semibold">Estado op.</th>
+                        {includeInactive && (
+                          <th className="px-5 py-3 font-semibold">Estado</th>
+                        )}
+                        {isAdmin && (
+                          <th className="px-5 py-3 text-right font-semibold">
+                            Acciones
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredEquipos.map((equipo) => {
+                        const inactive = equipo.activo === false;
+                        return (
+                          <tr
+                            className="border-border/60 border-b transition-colors last:border-0 hover:bg-accent/40"
+                            key={equipo.id}
+                          >
+                            <td className="whitespace-nowrap px-5 py-3.5 font-mono font-semibold text-xs">
+                              <Link
+                                className="text-brand-primary hover:underline focus-visible:underline focus-visible:outline-none"
+                                href={`/equipos/${equipo.id}`}
+                              >
+                                {equipo.codigo}
+                              </Link>
+                            </td>
+                            <td className="px-5 py-3.5 font-medium">
+                              <Link
+                                className="hover:underline focus-visible:underline focus-visible:outline-none"
+                                href={`/equipos/${equipo.id}`}
+                              >
+                                {equipo.nombre}
+                              </Link>
+                            </td>
+                            <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
+                              {equipo.marca ?? "—"}
+                            </td>
+                            <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
+                              {equipo.modelo ?? "—"}
+                            </td>
+                            <td className="whitespace-nowrap px-5 py-3.5">
+                              {equipo.ubicacion ? (
+                                <Badge variant="secondary">
+                                  {equipo.ubicacion}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">
+                                  —
+                                </span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap px-5 py-3.5">
+                              <EstadoOperativoBadge
+                                estado={equipo.estadoOperativo}
+                              />
+                            </td>
+                            {includeInactive && (
+                              <td className="whitespace-nowrap px-5 py-3.5">
+                                <Badge variant={inactive ? "outline" : "success"}>
+                                  {inactive ? "Inactivo" : "Activo"}
+                                </Badge>
+                              </td>
+                            )}
+                            {isAdmin && (
+                              <td className="whitespace-nowrap px-5 py-3.5 text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger
+                                      render={
+                                        <Button
+                                          aria-label={`Editar ${equipo.codigo}`}
+                                          onClick={() => openEdit(equipo)}
+                                          size="icon-sm"
+                                          variant="ghost"
+                                        >
+                                          <Pencil />
+                                        </Button>
+                                      }
+                                    />
+                                    <TooltipPopup>Editar</TooltipPopup>
+                                  </Tooltip>
+                                  {inactive ? (
+                                    <Tooltip>
+                                      <TooltipTrigger
+                                        render={
+                                          <Button
+                                            aria-label={`Reactivar ${equipo.codigo}`}
+                                            loading={
+                                              reactivar.isPending &&
+                                              reactivarId === equipo.id
+                                            }
+                                            onClick={() => handleReactivar(equipo)}
+                                            size="icon-sm"
+                                            variant="outline"
+                                          >
+                                            <Power />
+                                          </Button>
+                                        }
+                                      />
+                                      <TooltipPopup>Reactivar</TooltipPopup>
+                                    </Tooltip>
+                                  ) : (
+                                    <Tooltip>
+                                      <TooltipTrigger
+                                        render={
+                                          <Button
+                                            aria-label={`Desactivar ${equipo.codigo}`}
+                                            onClick={() => setToDeactivate(equipo)}
+                                            size="icon-sm"
+                                            variant="destructive-outline"
+                                          >
+                                            <PowerOff />
+                                          </Button>
+                                        }
+                                      />
+                                      <TooltipPopup>Desactivar</TooltipPopup>
+                                    </Tooltip>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </div>
-          )}
 
-          {!isLoading && !error && equipos.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
-                    <th className="px-5 py-3 font-semibold">Codigo</th>
-                    <th className="px-5 py-3 font-semibold">Nombre</th>
-                    <th className="px-5 py-3 font-semibold">Marca</th>
-                    <th className="px-5 py-3 font-semibold">Modelo</th>
-                    <th className="px-5 py-3 font-semibold">Ubicacion</th>
-                    <th className="px-5 py-3 font-semibold">Estado op.</th>
-                    {includeInactive && (
-                      <th className="px-5 py-3 font-semibold">Estado</th>
-                    )}
-                    {isAdmin && (
-                      <th className="px-5 py-3 text-right font-semibold">
-                        Acciones
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEquipos.length === 0 && (
-                    <tr>
-                      <td
-                        className="px-5 py-14 text-center"
-                        colSpan={
-                          6 + (includeInactive ? 1 : 0) + (isAdmin ? 1 : 0)
-                        }
-                      >
-                        <EmptyState
-                          className="border-0 bg-transparent"
-                          icon="search"
-                          message="Ajusta la busqueda para encontrar otro equipo."
-                          title="Sin resultados"
-                        />
-                      </td>
-                    </tr>
-                  )}
-
+                {/* Vista de tarjetas (móvil) */}
+                <div className="divide-y divide-border/60 md:hidden">
                   {filteredEquipos.map((equipo) => {
                     const inactive = equipo.activo === false;
                     return (
-                      <tr
-                        className="border-border/60 border-b transition-colors last:border-0 hover:bg-secondary/25"
-                        key={equipo.id}
-                      >
-                        <td className="whitespace-nowrap px-5 py-3.5 font-mono font-semibold text-xs">
+                      <div className="p-4" key={equipo.id}>
+                        <div className="flex items-start justify-between gap-3">
                           <Link
-                            className="text-brand-primary hover:underline"
+                            className="min-w-0"
                             href={`/equipos/${equipo.id}`}
                           >
-                            {equipo.codigo}
+                            <p className="font-mono font-semibold text-brand-primary text-xs">
+                              {equipo.codigo}
+                            </p>
+                            <p className="mt-0.5 truncate font-medium text-sm">
+                              {equipo.nombre}
+                            </p>
                           </Link>
-                        </td>
-                        <td className="px-5 py-3.5 font-medium">
-                          <Link
-                            className="hover:underline"
-                            href={`/equipos/${equipo.id}`}
-                          >
-                            {equipo.nombre}
-                          </Link>
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.marca ?? "—"}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.modelo ?? "—"}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5">
-                          {equipo.ubicacion ? (
-                            <Badge variant="secondary">{equipo.ubicacion}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5">
                           <EstadoOperativoBadge estado={equipo.estadoOperativo} />
-                        </td>
-                        {includeInactive && (
-                          <td className="whitespace-nowrap px-5 py-3.5">
-                            <Badge variant={inactive ? "outline" : "default"}>
-                              {inactive ? "Inactivo" : "Activo"}
-                            </Badge>
-                          </td>
-                        )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
+                          {equipo.marca && <span>{equipo.marca}</span>}
+                          {equipo.modelo && <span>· {equipo.modelo}</span>}
+                          {equipo.ubicacion && (
+                            <Badge variant="secondary">{equipo.ubicacion}</Badge>
+                          )}
+                          {inactive && <Badge variant="outline">Inactivo</Badge>}
+                        </div>
                         {isAdmin && (
-                          <td className="whitespace-nowrap px-5 py-3.5 text-right">
-                            <div className="flex justify-end gap-2">
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              className="flex-1"
+                              onClick={() => openEdit(equipo)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <Pencil />
+                              Editar
+                            </Button>
+                            {inactive ? (
                               <Button
-                                onClick={() => openEdit(equipo)}
+                                className="flex-1"
+                                loading={
+                                  reactivar.isPending &&
+                                  reactivarId === equipo.id
+                                }
+                                onClick={() => handleReactivar(equipo)}
                                 size="sm"
-                                variant="ghost"
+                                variant="outline"
                               >
-                                <Pencil />
-                                Editar
+                                <Power />
+                                Reactivar
                               </Button>
-                              {inactive ? (
-                                <Button
-                                  loading={
-                                    reactivar.isPending &&
-                                    reactivarId === equipo.id
-                                  }
-                                  onClick={() => handleReactivar(equipo)}
-                                  size="sm"
-                                  variant="outline"
-                                >
-                                  <Power />
-                                  Reactivar
-                                </Button>
-                              ) : (
-                                <Button
-                                  onClick={() => setToDeactivate(equipo)}
-                                  size="sm"
-                                  variant="destructive-outline"
-                                >
-                                  <PowerOff />
-                                  Desactivar
-                                </Button>
-                              )}
-                            </div>
-                          </td>
+                            ) : (
+                              <Button
+                                className="flex-1"
+                                onClick={() => setToDeactivate(equipo)}
+                                size="sm"
+                                variant="destructive-outline"
+                              >
+                                <PowerOff />
+                                Desactivar
+                              </Button>
+                            )}
+                          </div>
                         )}
-                      </tr>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
-      {isAdmin && (
-        <>
-          <EquipoFormSheet
-            equipo={editing}
-            onOpenChange={handleFormOpenChange}
-            open={formOpen}
-          />
-          <DesactivarEquipoDialog
-            equipo={toDeactivate}
-            onOpenChange={(open) => {
-              if (!open) setToDeactivate(null);
-            }}
-            open={Boolean(toDeactivate)}
-          />
-        </>
-      )}
-    </div>
+        {isAdmin && (
+          <>
+            <EquipoFormSheet
+              equipo={editing}
+              onOpenChange={handleFormOpenChange}
+              open={formOpen}
+            />
+            <DesactivarEquipoDialog
+              equipo={toDeactivate}
+              onOpenChange={(open) => {
+                if (!open) setToDeactivate(null);
+              }}
+              open={Boolean(toDeactivate)}
+            />
+          </>
+        )}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function StatChip({
+  icon,
+  label,
+  value,
+  tone,
+  loading,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone: "success" | "warning" | "muted";
+  loading?: boolean;
+}) {
+  const toneClass =
+    tone === "success"
+      ? "bg-success/10 text-success-foreground ring-success/20"
+      : tone === "warning"
+        ? "bg-warning/10 text-warning-foreground ring-warning/20"
+        : "bg-muted text-muted-foreground ring-border";
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-3 sm:p-4">
+        <span
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${toneClass}`}
+        >
+          {icon}
+        </span>
+        <div className="min-w-0">
+          {loading ? (
+            <Skeleton className="h-6 w-8" />
+          ) : (
+            <p className="font-semibold text-xl tabular-nums leading-tight">
+              {value}
+            </p>
+          )}
+          <p className="truncate text-muted-foreground text-xs">{label}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,7 +1,11 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 
-export type UserRole = 'admin' | 'jefe_taller' | 'mechanic';
+export type UserRole =
+  | 'admin'
+  | 'jefe_taller'
+  | 'jefe_inventario'
+  | 'mechanic';
 
 export interface SessionProfile {
   id: string;

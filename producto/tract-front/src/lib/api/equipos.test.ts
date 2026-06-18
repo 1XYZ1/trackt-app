@@ -27,6 +27,7 @@ describe("equipos api helpers", () => {
     vi.mocked(authFetch).mockResolvedValue(
       jsonResponse({
         data: [{ codigo: "EQ-001", id: "eq-1", nombre: "Camion" }],
+        meta: { limit: 100, page: 1, total: 1, totalPages: 1 },
       }),
     );
     const { getEquipos } = await import("./equipos");
@@ -40,7 +41,7 @@ describe("equipos api helpers", () => {
       { codigo: "EQ-001", id: "eq-1", nombre: "Camion" },
     ]);
     expect(authFetch).toHaveBeenCalledWith(
-      "https://api.trackt.test/equipos?includeInactive=true&search=camion&limit=200",
+      "https://api.trackt.test/equipos?includeInactive=true&search=camion&page=1&limit=100",
     );
   });
 

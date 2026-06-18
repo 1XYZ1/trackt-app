@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, PackagePlus, Trash2 } from "lucide-react";
+import { Loader2, PackagePlus, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogClose,
@@ -15,9 +15,17 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useCreateReserva, useRepuestos } from "@/hooks/use-inventario";
+import { cn } from "@/lib/utils";
 
 interface Props {
   ticketId: string;
@@ -98,13 +106,13 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
 
     // Validaciones cliente: items completos, cantidades, stock disponible.
     if (items.length === 0) {
-      setError("Agrega al menos un item");
+      setError("Agrega al menos un ítem");
       return;
     }
     const agg = new Map<string, number>();
     for (const it of items) {
       if (!it.repuestoId) {
-        setError("Selecciona un repuesto para cada item");
+        setError("Selecciona un repuesto para cada ítem");
         return;
       }
       if (!Number.isFinite(it.cantidad) || it.cantidad < 1) {
@@ -116,7 +124,7 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
     for (const [repuestoId, total] of agg) {
       const r = byId.get(repuestoId);
       if (!r) {
-        setError("Alguno de los repuestos no existe o esta inactivo");
+        setError("Alguno de los repuestos no existe o está inactivo");
         return;
       }
       if (total > r.stockDisponible) {
@@ -141,7 +149,7 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
         onSuccess: () => {
           toast.success(
             puedeSolicitar && solicitar
-              ? "Solicitud enviada para aprobacion"
+              ? "Solicitud enviada para aprobación"
               : "Reserva creada",
           );
           reset();
@@ -157,6 +165,10 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
   };
 
   const repuestosActivos = (repuestos.data ?? []).filter((r) => r.activo);
+  const totalUnidades = items.reduce(
+    (acc, it) => acc + (Number.isFinite(it.cantidad) ? it.cantidad : 0),
+    0,
+  );
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -186,7 +198,7 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
           ) : (
             <div className="space-y-4">
               <div className="space-y-3">
-                {items.map((it) => {
+                {items.map((it, index) => {
                   const r = repuestosActivos.find(
                     (rep) => rep.id === it.repuestoId,
                   );
@@ -194,35 +206,54 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
                   const remaining = r
                     ? r.stockDisponible - (drafted_for - it.cantidad)
                     : 0;
+                  const excede =
+                    Boolean(r) && r!.stockDisponible > 0 && it.cantidad > remaining;
 
                   return (
                     <div
-                      className="grid items-end gap-2 sm:grid-cols-[1fr_120px_auto]"
+                      className="grid items-start gap-2 sm:grid-cols-[1fr_120px_auto]"
                       key={it.uid}
                     >
                       <div className="space-y-1">
-                        <label className="font-medium text-xs text-muted-foreground">
-                          Repuesto
-                        </label>
-                        <select
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
-                          onChange={(e) =>
-                            updateItem(it.uid, { repuestoId: e.target.value })
-                          }
-                          value={it.repuestoId}
+                        <label
+                          className="font-medium text-muted-foreground text-xs"
+                          htmlFor={`reserva-repuesto-${it.uid}`}
                         >
-                          <option value="">— Selecciona —</option>
-                          {repuestosActivos.map((rep) => (
-                            <option key={rep.id} value={rep.id}>
-                              {rep.codigo} - {rep.nombre} (disp: {rep.stockDisponible})
-                            </option>
-                          ))}
-                        </select>
+                          Repuesto {items.length > 1 ? index + 1 : ""}
+                        </label>
+                        <Select
+                          items={repuestosActivos.map((rep) => ({
+                            label: `${rep.codigo} - ${rep.nombre} (disp: ${rep.stockDisponible})`,
+                            value: rep.id,
+                          }))}
+                          onValueChange={(value) =>
+                            updateItem(it.uid, {
+                              repuestoId: (value as string | null) ?? "",
+                            })
+                          }
+                          value={it.repuestoId || null}
+                        >
+                          <SelectTrigger id={`reserva-repuesto-${it.uid}`}>
+                            <SelectValue placeholder="— Selecciona —" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {repuestosActivos.map((rep) => (
+                              <SelectItem key={rep.id} value={rep.id}>
+                                {rep.codigo} - {rep.nombre} (disp:{" "}
+                                {rep.stockDisponible})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         {r && (
                           <p className="text-[11px] text-muted-foreground">
-                            Disponible: {r.stockDisponible} {r.unidad}
-                            {r.stockDisponible > 0 && it.cantidad > remaining && (
-                              <span className="ml-1 text-destructive">
+                            Disponible:{" "}
+                            <span className="font-mono tabular-nums">
+                              {r.stockDisponible}
+                            </span>{" "}
+                            {r.unidad}
+                            {excede && (
+                              <span className="ml-1 font-medium text-destructive">
                                 — excede disponible
                               </span>
                             )}
@@ -231,10 +262,16 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="font-medium text-xs text-muted-foreground">
+                        <label
+                          className="font-medium text-muted-foreground text-xs"
+                          htmlFor={`reserva-cantidad-${it.uid}`}
+                        >
                           Cantidad
                         </label>
                         <Input
+                          aria-invalid={excede || undefined}
+                          className={cn(excede && "border-destructive/60")}
+                          id={`reserva-cantidad-${it.uid}`}
                           min={1}
                           onChange={(e) =>
                             updateItem(it.uid, {
@@ -248,10 +285,12 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
                       </div>
 
                       <Button
+                        aria-label="Quitar repuesto"
+                        className="mt-0 sm:mt-[1.625rem]"
                         disabled={items.length <= 1}
                         onClick={() => removeItem(it.uid)}
-                        size="sm"
-                        title="Quitar item"
+                        size="icon"
+                        title="Quitar repuesto"
                         type="button"
                         variant="ghost"
                       >
@@ -262,52 +301,69 @@ export function NuevaReservaDialog({ onOpenChange, open, ticketId }: Props) {
                 })}
               </div>
 
-              <Button
-                onClick={addRow}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Agregar otro repuesto
-              </Button>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button
+                  onClick={addRow}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <Plus />
+                  Agregar otro repuesto
+                </Button>
+                <p className="text-muted-foreground text-xs">
+                  {items.length} ítem{items.length === 1 ? "" : "s"} ·{" "}
+                  <span className="font-mono font-medium text-foreground tabular-nums">
+                    {totalUnidades}
+                  </span>{" "}
+                  unidad{totalUnidades === 1 ? "" : "es"}
+                </p>
+              </div>
 
               <div className="space-y-2">
                 <label
                   className="font-medium text-sm"
                   htmlFor="reserva-observacion"
                 >
-                  Observacion (opcional)
+                  Observación (opcional)
                 </label>
                 <Textarea
                   id="reserva-observacion"
                   onChange={(e) => setObservacion(e.target.value)}
-                  placeholder="Repuestos necesarios para la reparacion del equipo..."
+                  placeholder="Repuestos necesarios para la reparación del equipo..."
                   rows={2}
                   value={observacion}
                 />
               </div>
 
               {puedeSolicitar && (
-                <label className="flex items-start gap-2 rounded-lg border border-border/60 bg-secondary/15 p-3 text-sm">
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/60 bg-secondary/15 p-3 text-sm transition-colors hover:border-border">
                   <input
                     checked={solicitar}
-                    className="mt-1 size-4"
+                    className="mt-0.5 size-4 accent-brand-primary"
                     onChange={(e) => setSolicitar(e.target.checked)}
                     type="checkbox"
                   />
                   <span>
                     <span className="font-medium">
-                      Crear como solicitud pendiente de aprobacion
+                      Crear como solicitud pendiente de aprobación
                     </span>
                     <span className="mt-1 block text-muted-foreground text-xs">
                       El stock no se reserva hasta que un admin o jefe apruebe.
-                      Util cuando aun no es seguro consumir los repuestos.
+                      Útil cuando aún no es seguro consumir los repuestos.
                     </span>
                   </span>
                 </label>
               )}
 
-              {error && <p className="text-destructive text-xs">{error}</p>}
+              {error && (
+                <p
+                  className="rounded-md bg-destructive/8 px-3 py-2 text-destructive-foreground text-xs"
+                  role="alert"
+                >
+                  {error}
+                </p>
+              )}
             </div>
           )}
         </DialogPanel>

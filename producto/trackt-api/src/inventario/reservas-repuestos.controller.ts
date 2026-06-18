@@ -69,7 +69,7 @@ export class ReservasRepuestosController {
     );
   }
 
-  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'jefe_inventario', 'mechanic')
   @HttpCode(HttpStatus.OK)
   @Post('reservas-repuestos/:id/liberar')
   async liberar(
@@ -97,7 +97,7 @@ export class ReservasRepuestosController {
    * Aprobar reserva SOLICITADA → RESERVADA. Aplica stockReservado y emite
    * movimiento RESERVA por item. Solo admin/jefe_taller.
    */
-  @Roles('admin', 'jefe_taller')
+  @Roles('admin', 'jefe_taller', 'jefe_inventario')
   @HttpCode(HttpStatus.OK)
   @Post('reservas-repuestos/:id/aprobar')
   async aprobar(
@@ -114,7 +114,7 @@ export class ReservasRepuestosController {
    * Solo admin/jefe_taller. Mechanic accede a sus reservas via el endpoint
    * anidado /tickets/:ticketId/reservas-repuestos.
    */
-  @Roles('admin', 'jefe_taller')
+  @Roles('admin', 'jefe_taller', 'jefe_inventario')
   @Get('reservas-repuestos')
   async findPendientes(@Req() req: RequestWithUser) {
     const tenantId = this.tenantService.resolveTenantId(req.user);

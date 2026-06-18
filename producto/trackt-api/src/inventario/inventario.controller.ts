@@ -38,7 +38,7 @@ export class InventarioController {
 
   // ---------- Repuestos ----------
 
-  @Roles('admin')
+  @Roles('admin', 'jefe_inventario')
   @Post('repuestos')
   async createRepuesto(
     @Req() req: RequestWithUser,
@@ -48,7 +48,7 @@ export class InventarioController {
     return this.inventarioService.createRepuesto(tenantId, req.user.id, dto);
   }
 
-  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'jefe_inventario', 'mechanic')
   @Get('repuestos')
   async findAllRepuestos(
     @Req() req: RequestWithUser,
@@ -58,14 +58,14 @@ export class InventarioController {
     return this.inventarioService.findAllRepuestos(tenantId, req.user, query);
   }
 
-  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'jefe_inventario', 'mechanic')
   @Get('repuestos/:id')
   async findOneRepuesto(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.inventarioService.findOneRepuesto(tenantId, req.user, id);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'jefe_inventario')
   @Patch('repuestos/:id')
   async updateRepuesto(
     @Req() req: RequestWithUser,
@@ -76,7 +76,7 @@ export class InventarioController {
     return this.inventarioService.updateRepuesto(tenantId, id, dto);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'jefe_inventario')
   @HttpCode(HttpStatus.OK)
   @Patch('repuestos/:id/desactivar')
   async desactivarRepuesto(
@@ -89,7 +89,7 @@ export class InventarioController {
 
   // ---------- Stock ----------
 
-  @Roles('admin')
+  @Roles('admin', 'jefe_inventario')
   @HttpCode(HttpStatus.OK)
   @Post('repuestos/:id/entrada')
   async entrada(
@@ -101,7 +101,7 @@ export class InventarioController {
     return this.inventarioService.entradaStock(tenantId, req.user.id, id, dto);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'jefe_inventario')
   @HttpCode(HttpStatus.OK)
   @Post('repuestos/:id/ajuste')
   async ajuste(
@@ -115,7 +115,7 @@ export class InventarioController {
 
   // ---------- Movimientos ----------
 
-  @Roles('admin', 'jefe_taller')
+  @Roles('admin', 'jefe_taller', 'jefe_inventario')
   @Get('movimientos')
   async findAllMovimientos(
     @Req() req: RequestWithUser,

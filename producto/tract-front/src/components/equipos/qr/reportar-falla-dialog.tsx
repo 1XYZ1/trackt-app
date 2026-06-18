@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import {
   Dialog,
   DialogClose,
@@ -14,6 +14,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateOrden } from "@/hooks/use-ordenes";
 import type { OrdenPrioridad } from "@/lib/api/ordenes";
@@ -25,7 +33,15 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+const PRIORIDAD_LABEL: Record<OrdenPrioridad, string> = {
+  ALTA: "Alta",
+  BAJA: "Baja",
+  MEDIA: "Media",
+};
+
 const PRIORIDADES: OrdenPrioridad[] = ["BAJA", "MEDIA", "ALTA"];
+
+const MIN_DESC = 5;
 
 // Crea una OT de falla para el equipo escaneado. Reusa el flujo existente
 // (createOrden / POST /ordenes), permitido a admin/jefe/mecánico.
@@ -53,8 +69,8 @@ export function ReportarFallaDialog({
 
   const handleSubmit = () => {
     const desc = descripcion.trim();
-    if (desc.length < 5) {
-      setError("Describe la falla (mínimo 5 caracteres)");
+    if (desc.length < MIN_DESC) {
+      setError(`Describe la falla (mínimo ${MIN_DESC} caracteres)`);
       return;
     }
     setError(null);
@@ -79,7 +95,9 @@ export function ReportarFallaDialog({
       <DialogPopup className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="size-5" />
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20">
+              <AlertTriangle className="size-4" />
+            </span>
             Reportar falla
           </DialogTitle>
           <DialogDescription>{equipoLabel}</DialogDescription>
@@ -88,10 +106,9 @@ export function ReportarFallaDialog({
         <DialogPanel>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="font-medium text-sm" htmlFor="falla-desc">
-                Descripción de la falla
-              </label>
+              <Label htmlFor="falla-desc">Descripción de la falla</Label>
               <Textarea
+                aria-invalid={Boolean(error)}
                 id="falla-desc"
                 onChange={(e) => {
                   setDescripcion(e.target.value);
@@ -101,33 +118,38 @@ export function ReportarFallaDialog({
                 rows={4}
                 value={descripcion}
               />
+              {error && <p className="text-destructive text-xs">{error}</p>}
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-medium text-sm" htmlFor="falla-prioridad">
-                Prioridad
-              </label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
-                id="falla-prioridad"
-                onChange={(e) =>
-                  setPrioridad(e.target.value as OrdenPrioridad)
-                }
+              <Label htmlFor="falla-prioridad">Prioridad</Label>
+              <Select
+                items={PRIORIDADES.map((p) => ({
+                  label: PRIORIDAD_LABEL[p],
+                  value: p,
+                }))}
+                onValueChange={(value) => setPrioridad(value as OrdenPrioridad)}
                 value={prioridad}
               >
-                {PRIORIDADES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="falla-prioridad">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORIDADES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PRIORIDAD_LABEL[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {error && <p className="text-destructive text-xs">{error}</p>}
-
-            <p className="text-muted-foreground text-xs">
-              Se creará una orden de trabajo (OT) pendiente para este equipo.
-            </p>
+            <div className="flex items-start gap-2.5 rounded-lg border bg-muted/40 p-3 text-muted-foreground text-xs leading-relaxed">
+              <Info className="mt-px size-4 shrink-0" />
+              <span>
+                Se creará una orden de trabajo (OT) pendiente para este equipo.
+              </span>
+            </div>
           </div>
         </DialogPanel>
 
@@ -135,7 +157,11 @@ export function ReportarFallaDialog({
           <DialogClose render={<Button variant="outline" />}>
             Cancelar
           </DialogClose>
-          <Button loading={createOrden.isPending} onClick={handleSubmit}>
+          <Button
+            loading={createOrden.isPending}
+            onClick={handleSubmit}
+            variant="destructive"
+          >
             <AlertTriangle />
             Reportar falla
           </Button>

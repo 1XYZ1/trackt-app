@@ -26,10 +26,10 @@ import { slugCodigo } from "@/lib/strings";
 const schema = z.object({
   codigo: z
     .string()
-    .min(1, "Codigo es obligatorio")
+    .min(1, "El código es obligatorio")
     .max(60)
-    .regex(/^[a-zA-Z0-9-]+$/, "Solo letras, numeros y guiones (sin espacios)"),
-  nombre: z.string().min(1, "Nombre es obligatorio").max(120),
+    .regex(/^[a-zA-Z0-9-]+$/, "Solo letras, números y guiones (sin espacios)"),
+  nombre: z.string().min(1, "El nombre es obligatorio").max(120),
   descripcion: z.string().max(500).optional(),
   categoria: z.string().max(60).optional(),
   unidad: z.string().max(20).optional(),
@@ -203,7 +203,7 @@ export function RepuestoFormSheet({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="codigo">
-                  Codigo
+                  Código
                 </label>
                 <Input
                   className="uppercase"
@@ -253,7 +253,7 @@ export function RepuestoFormSheet({
 
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor="descripcion">
-                Descripcion (opcional)
+                Descripción (opcional)
               </label>
               <Textarea
                 id="descripcion"
@@ -266,7 +266,7 @@ export function RepuestoFormSheet({
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="categoria">
-                  Categoria
+                  Categoría
                 </label>
                 <Input
                   id="categoria"
@@ -276,7 +276,7 @@ export function RepuestoFormSheet({
               </div>
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="stockMinimo">
-                  Stock minimo
+                  Stock mínimo
                 </label>
                 <Input
                   id="stockMinimo"
@@ -320,7 +320,7 @@ export function RepuestoFormSheet({
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="codigoFabricante">
-                  Codigo fabricante
+                  Código fabricante
                 </label>
                 <Input
                   id="codigoFabricante"
@@ -330,7 +330,7 @@ export function RepuestoFormSheet({
               </div>
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="ubicacionBodega">
-                  Ubicacion bodega
+                  Ubicación bodega
                 </label>
                 <Input
                   id="ubicacionBodega"

@@ -9,6 +9,6 @@ export const metadata: Metadata = {
 };
 
 export default async function ReservasPendientesPage() {
-  await requireRole("admin", "jefe_taller");
+  await requireRole("admin", "jefe_taller", "jefe_inventario");
   return <ReservasPendientesClient />;
 }

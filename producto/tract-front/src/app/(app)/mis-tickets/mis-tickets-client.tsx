@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Camera, Play, Ticket, Wrench } from "lucide-react";
-import { ListSkeleton } from "@/components/core";
+import { Camera, ChevronRight, Play, Ticket, Wrench } from "lucide-react";
 import { toast } from "sonner";
-import { EmptyState, StatusBadge } from "@/components/core";
+import { EmptyState, ListSkeleton, StatusBadge } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useIniciarEjecucion, useMisTickets } from "@/hooks/use-mis-tickets";
 import type { MisTicket } from "@/lib/api/mis-tickets";
+import { PRIORIDAD_DOT, PRIORIDAD_LABEL } from "@/lib/tickets/format";
+import { cn } from "@/lib/utils";
 
 function getPriorityVariant(priority: MisTicket["prioridad"]) {
   if (priority === "ALTA") return "error";
@@ -67,21 +68,35 @@ function TicketAction({ ticket }: { ticket: MisTicket }) {
 
 function TicketMobileCard({ ticket }: { ticket: MisTicket }) {
   return (
-    <Card className="rounded-xl border-border/70">
+    <Card className="overflow-hidden rounded-xl border-border/70 transition-colors hover:border-border">
       <CardContent className="space-y-4 p-4">
-        <div className="flex items-start justify-between gap-3">
+        <Link
+          aria-label={`Abrir ticket ${ticket.codigo}`}
+          className="group -m-1 flex items-start justify-between gap-3 rounded-lg p-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          href={`/mis-tickets/${ticket.id}`}
+        >
           <div className="min-w-0">
-            <p className="font-mono font-semibold text-muted-foreground text-xs">
+            <p className="flex items-center gap-1.5 font-mono font-semibold text-muted-foreground text-xs tracking-tight">
+              <span
+                aria-label={`Prioridad ${PRIORIDAD_LABEL[ticket.prioridad]}`}
+                className={cn(
+                  "size-1.5 rounded-full",
+                  PRIORIDAD_DOT[ticket.prioridad],
+                )}
+              />
               {ticket.codigo}
             </p>
-            <h2 className="mt-1 font-semibold text-lg leading-tight">
+            <h2 className="mt-1 text-balance font-semibold text-lg leading-tight">
               {ticket.titulo}
             </h2>
           </div>
-          <Badge variant={getPriorityVariant(ticket.prioridad)}>
-            {ticket.prioridad}
-          </Badge>
-        </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Badge variant={getPriorityVariant(ticket.prioridad)}>
+              {PRIORIDAD_LABEL[ticket.prioridad]}
+            </Badge>
+            <ChevronRight className="size-4 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
+          </div>
+        </Link>
 
         <div className="flex flex-wrap gap-2">
           <StatusBadge estado={ticket.estado} />
@@ -90,7 +105,7 @@ function TicketMobileCard({ ticket }: { ticket: MisTicket }) {
 
         <div className="flex items-start gap-2 rounded-lg bg-secondary/30 p-3 text-sm">
           <Wrench className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <span>{ticket.equipo}</span>
+          <span className="text-pretty">{ticket.equipo}</span>
         </div>
 
         <TicketAction ticket={ticket} />
@@ -109,13 +124,20 @@ export function MisTicketsClient() {
           <Ticket className="size-3.5" />
           Vista mecanico
         </div>
-        <h1 className="font-semibold text-2xl tracking-tight">Mis tickets</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="font-semibold text-2xl tracking-tight">Mis tickets</h1>
+          {!isLoading && !error && tickets.length > 0 && (
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-secondary px-2 font-medium text-secondary-foreground text-sm tabular-nums">
+              {tickets.length}
+            </span>
+          )}
+        </div>
         <p className="text-muted-foreground text-sm">
           Trabajos asignados para ejecutar desde el taller o terreno.
         </p>
       </div>
 
-      {isLoading && <ListSkeleton count={3} columns={1} />}
+      {isLoading && <ListSkeleton columns={1} count={3} />}
 
       {!isLoading && error && (
         <EmptyState

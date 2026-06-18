@@ -17,7 +17,7 @@ export default async function RepuestoDetallePage({
   params: Promise<Params>;
 }) {
   // mechanic puede ver detalle (backend devuelve movs vacios para mechanic).
-  await requireRole("admin", "jefe_taller", "mechanic");
+  await requireRole("admin", "jefe_taller", "jefe_inventario", "mechanic");
   const { id } = await params;
   return <RepuestoDetalleClient id={id} />;
 }

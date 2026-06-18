@@ -16,7 +16,7 @@
 import { PrismaClient, Prioridad } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
 
-type UserRole = 'admin' | 'jefe_taller' | 'mechanic';
+type UserRole = 'admin' | 'jefe_taller' | 'jefe_inventario' | 'mechanic';
 
 interface SeedUser {
   id: string;
@@ -112,48 +112,216 @@ function hoursAgo(h: number): Date {
 }
 
 // ============================================================
-// TENANT 1 — demo (mineria, contenido original)
+// Generación programática de usuarios por tenant
+// ------------------------------------------------------------
+// Cada tenant tiene exactamente:
+//   2 admin · 3 jefe_taller · 2 jefe_inventario · 15 mechanic = 22 usuarios.
+//
+// UUIDs deterministas y estables (idempotencia, NADA aleatorio):
+//   - Usuarios "preservados" (credenciales demo que ya usa la gente)
+//     conservan su UUID y email originales — ver PRESERVED_USERS.
+//   - Los demás se generan con un patrón único por tenant + rol + índice:
+//       00000000-0000-0000-0{T}{R}0-0000000000{NN}
+//     donde T = nº de tenant (1..3), R = código de rol (1..4), NN = índice.
+//     El 4º grupo es NO-nulo, por lo que jamás colisiona con los IDs
+//     originales (que tienen el 4º grupo en '0000').
 // ============================================================
-const demoUsers: SeedUser[] = [
-  {
-    id: '00000000-0000-0000-0000-000000000001',
-    email: 'admin@trackt.demo',
-    role: 'admin',
-    fullName: 'Andrés Admin',
-  },
-  {
-    id: '00000000-0000-0000-0000-0000000000a1',
-    email: 'jefe@trackt.demo',
-    role: 'jefe_taller',
-    fullName: 'Javier Jefe',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000002',
-    email: 'mecanico1@trackt.demo',
-    role: 'mechanic',
-    fullName: 'Pablo Pérez',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000003',
-    email: 'mecanico2@trackt.demo',
-    role: 'mechanic',
-    fullName: 'Marta Muñoz',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000004',
-    email: 'mecanico3@trackt.demo',
-    role: 'mechanic',
-    fullName: 'Diego Díaz',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000005',
-    email: 'mecanico4@trackt.demo',
-    role: 'mechanic',
-    fullName: 'Sofía Soto',
-  },
+
+interface TenantUserSpec {
+  /** nº de tenant: 1=demo, 2=forestal, 3=construccion. */
+  tenantNum: number;
+  /** prefijo de email/dominio, ej. 'trackt' → '...@trackt.demo'. */
+  prefix: string;
+  /** apellidos para construir fullName legibles por rol/índice. */
+  surnames: string[];
+}
+
+/** Reparto fijo de roles por tenant (suma = 22). */
+const ROLE_PLAN: { role: UserRole; count: number; code: number }[] = [
+  { role: 'admin', count: 2, code: 1 },
+  { role: 'jefe_taller', count: 3, code: 2 },
+  { role: 'jefe_inventario', count: 2, code: 3 },
+  { role: 'mechanic', count: 15, code: 4 },
 ];
 
-const [DEMO_ADMIN, _DEMO_JEFE, DEMO_MEC1, DEMO_MEC2, DEMO_MEC3, DEMO_MEC4] = demoUsers;
+const ROLE_LABEL: Record<UserRole, string> = {
+  admin: 'Admin',
+  jefe_taller: 'Jefe Taller',
+  jefe_inventario: 'Jefe Inventario',
+  mechanic: 'Mecánico',
+};
+
+const FIRST_NAMES = [
+  'Alejandro',
+  'Beatriz',
+  'Camilo',
+  'Daniela',
+  'Esteban',
+  'Fernanda',
+  'Gonzalo',
+  'Helena',
+  'Ignacio',
+  'Josefa',
+  'Karla',
+  'Lucas',
+  'Matías',
+  'Natalia',
+  'Óscar',
+  'Paula',
+  'Rodrigo',
+  'Sara',
+  'Tomás',
+  'Úrsula',
+  'Valentina',
+  'Wanda',
+  'Ximena',
+  'Yerko',
+  'Zoe',
+];
+
+/**
+ * Usuarios preservados (subconjunto): mismos UUID + email + rol que ya usa
+ * la gente. Las claves son `${prefix}|${role}|${seq}` (seq = índice 1-based
+ * dentro del rol en ese tenant). Si una posición está aquí, se reutiliza tal
+ * cual en vez de generarse.
+ */
+const PRESERVED_USERS: Record<
+  string,
+  { id: string; email: string; fullName: string }
+> = {
+  // Tenant demo — credenciales históricas (NO cambiar id/email).
+  'trackt|admin|1': {
+    id: '00000000-0000-0000-0000-000000000001',
+    email: 'admin@trackt.demo',
+    fullName: 'Andrés Admin',
+  },
+  'trackt|jefe_taller|1': {
+    id: '00000000-0000-0000-0000-0000000000a1',
+    email: 'jefe@trackt.demo',
+    fullName: 'Javier Jefe',
+  },
+  'trackt|mechanic|1': {
+    id: '00000000-0000-0000-0000-000000000002',
+    email: 'mecanico1@trackt.demo',
+    fullName: 'Pablo Pérez',
+  },
+  'trackt|mechanic|2': {
+    id: '00000000-0000-0000-0000-000000000003',
+    email: 'mecanico2@trackt.demo',
+    fullName: 'Marta Muñoz',
+  },
+  'trackt|mechanic|3': {
+    id: '00000000-0000-0000-0000-000000000004',
+    email: 'mecanico3@trackt.demo',
+    fullName: 'Diego Díaz',
+  },
+  'trackt|mechanic|4': {
+    id: '00000000-0000-0000-0000-000000000005',
+    email: 'mecanico4@trackt.demo',
+    fullName: 'Sofía Soto',
+  },
+};
+
+/** UUID determinista para un usuario generado (4º grupo no-nulo → sin colisión). */
+function genUserId(tenantNum: number, roleCode: number, seq: number): string {
+  const t = tenantNum.toString(16);
+  const r = roleCode.toString(16);
+  const nn = seq.toString().padStart(2, '0');
+  return `00000000-0000-0000-0${t}${r}0-0000000000${nn}`;
+}
+
+/** Email para un usuario generado, ej. mecanico5@trackt.demo / inventario1@... */
+function genEmail(role: UserRole, prefix: string, seq: number): string {
+  const local: Record<UserRole, string> = {
+    admin: 'admin',
+    jefe_taller: 'jefe',
+    jefe_inventario: 'inventario',
+    mechanic: 'mecanico',
+  };
+  return `${local[role]}${seq}@${prefix}.demo`;
+}
+
+/** Genera los 22 usuarios de un tenant (preservando el subconjunto demo). */
+function buildTenantUsers(spec: TenantUserSpec): SeedUser[] {
+  const users: SeedUser[] = [];
+  let globalIdx = 0; // para variar nombres entre usuarios del tenant
+
+  for (const plan of ROLE_PLAN) {
+    for (let seq = 1; seq <= plan.count; seq++) {
+      const key = `${spec.prefix}|${plan.role}|${seq}`;
+      const preserved = PRESERVED_USERS[key];
+
+      if (preserved) {
+        users.push({ ...preserved, role: plan.role });
+      } else {
+        const firstName = FIRST_NAMES[globalIdx % FIRST_NAMES.length];
+        const surname = spec.surnames[globalIdx % spec.surnames.length];
+        users.push({
+          id: genUserId(spec.tenantNum, plan.code, seq),
+          email: genEmail(plan.role, spec.prefix, seq),
+          role: plan.role,
+          fullName: `${firstName} ${surname} (${ROLE_LABEL[plan.role]})`,
+        });
+      }
+      globalIdx++;
+    }
+  }
+
+  return users;
+}
+
+/** Helpers de referencia coherente para tickets/eventos de un tenant. */
+function tenantRefs(users: SeedUser[]) {
+  const admins = users.filter((u) => u.role === 'admin');
+  const mechanics = users.filter((u) => u.role === 'mechanic');
+  if (admins.length === 0) throw new Error('Tenant sin admin');
+  if (mechanics.length === 0) throw new Error('Tenant sin mecánicos');
+  return {
+    admin: admins[0],
+    /** mecánico por round-robin (1-based) para repartir mecanicoId. */
+    mech: (n: number): SeedUser => mechanics[(n - 1) % mechanics.length],
+  };
+}
+
+// ============================================================
+// TENANT 1 — demo (mineria, contenido original)
+// ============================================================
+const demoUsers: SeedUser[] = buildTenantUsers({
+  tenantNum: 1,
+  prefix: 'trackt',
+  surnames: [
+    'Pérez',
+    'Muñoz',
+    'Díaz',
+    'Soto',
+    'Rojas',
+    'Vega',
+    'Castro',
+    'Reyes',
+    'Flores',
+    'Cortés',
+    'Herrera',
+    'Núñez',
+    'Araya',
+    'Fuentes',
+    'Vergara',
+    'Riquelme',
+    'Salazar',
+    'Pizarro',
+    'Sandoval',
+    'Maldonado',
+    'Cáceres',
+    'Bustos',
+  ],
+});
+
+const { admin: DEMO_ADMIN, mech: demoMech } = tenantRefs(demoUsers);
+const [DEMO_MEC1, DEMO_MEC2, DEMO_MEC3, DEMO_MEC4] = [
+  demoMech(1),
+  demoMech(2),
+  demoMech(3),
+  demoMech(4),
+];
 
 const demoTenant: SeedTenant = {
   id: 'demo',
@@ -363,61 +531,188 @@ const demoTenant: SeedTenant = {
     },
   ],
   eventos: [
-    { ticketId: 'tk-demo-2003', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: DEMO_ADMIN.id, createdAt: hoursAgo(3) },
-    { ticketId: 'tk-demo-2004', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: DEMO_ADMIN.id, createdAt: hoursAgo(2) },
-    { ticketId: 'tk-demo-2005', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: DEMO_ADMIN.id, createdAt: hoursAgo(5) },
-    { ticketId: 'tk-demo-2005', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: DEMO_MEC3.id, createdAt: hoursAgo(1) },
-    { ticketId: 'tk-demo-2006', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: DEMO_ADMIN.id, createdAt: hoursAgo(4) },
-    { ticketId: 'tk-demo-2006', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: DEMO_MEC4.id, createdAt: hoursAgo(1) },
-    { ticketId: 'tk-demo-2007', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: DEMO_ADMIN.id, createdAt: hoursAgo(24) },
-    { ticketId: 'tk-demo-2007', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: DEMO_MEC1.id, createdAt: hoursAgo(22) },
-    { ticketId: 'tk-demo-2007', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: DEMO_MEC1.id, observacion: 'Inspección completada, sin observaciones.', createdAt: hoursAgo(4) },
-    { ticketId: 'tk-demo-2008', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: DEMO_ADMIN.id, createdAt: hoursAgo(72) },
-    { ticketId: 'tk-demo-2008', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: DEMO_MEC2.id, createdAt: hoursAgo(70) },
-    { ticketId: 'tk-demo-2008', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: DEMO_MEC2.id, observacion: 'Overhaul terminado, listo para validación.', createdAt: hoursAgo(10) },
-    { ticketId: 'tk-demo-2008', estadoAnterior: 'EJECUTADO', estadoNuevo: 'CERRADO', usuarioId: DEMO_ADMIN.id, observacion: 'Validado y entregado a operación.', createdAt: hoursAgo(2) },
+    {
+      ticketId: 'tk-demo-2003',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: DEMO_ADMIN.id,
+      createdAt: hoursAgo(3),
+    },
+    {
+      ticketId: 'tk-demo-2004',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: DEMO_ADMIN.id,
+      createdAt: hoursAgo(2),
+    },
+    {
+      ticketId: 'tk-demo-2005',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: DEMO_ADMIN.id,
+      createdAt: hoursAgo(5),
+    },
+    {
+      ticketId: 'tk-demo-2005',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: DEMO_MEC3.id,
+      createdAt: hoursAgo(1),
+    },
+    {
+      ticketId: 'tk-demo-2006',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: DEMO_ADMIN.id,
+      createdAt: hoursAgo(4),
+    },
+    {
+      ticketId: 'tk-demo-2006',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: DEMO_MEC4.id,
+      createdAt: hoursAgo(1),
+    },
+    {
+      ticketId: 'tk-demo-2007',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: DEMO_ADMIN.id,
+      createdAt: hoursAgo(24),
+    },
+    {
+      ticketId: 'tk-demo-2007',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: DEMO_MEC1.id,
+      createdAt: hoursAgo(22),
+    },
+    {
+      ticketId: 'tk-demo-2007',
+      estadoAnterior: 'EN_EJECUCION',
+      estadoNuevo: 'EJECUTADO',
+      usuarioId: DEMO_MEC1.id,
+      observacion: 'Inspección completada, sin observaciones.',
+      createdAt: hoursAgo(4),
+    },
+    {
+      ticketId: 'tk-demo-2008',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: DEMO_ADMIN.id,
+      createdAt: hoursAgo(72),
+    },
+    {
+      ticketId: 'tk-demo-2008',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: DEMO_MEC2.id,
+      createdAt: hoursAgo(70),
+    },
+    {
+      ticketId: 'tk-demo-2008',
+      estadoAnterior: 'EN_EJECUCION',
+      estadoNuevo: 'EJECUTADO',
+      usuarioId: DEMO_MEC2.id,
+      observacion: 'Overhaul terminado, listo para validación.',
+      createdAt: hoursAgo(10),
+    },
+    {
+      ticketId: 'tk-demo-2008',
+      estadoAnterior: 'EJECUTADO',
+      estadoNuevo: 'CERRADO',
+      usuarioId: DEMO_ADMIN.id,
+      observacion: 'Validado y entregado a operación.',
+      createdAt: hoursAgo(2),
+    },
   ],
   repuestos: [
-    { codigo: 'REP-DEMO-001', nombre: 'Filtro de aceite motor 793F', categoria: 'Filtros', unidad: 'unidad', stockMinimo: 5, stockInicial: 30 },
-    { codigo: 'REP-DEMO-002', nombre: 'Aceite hidráulico ISO 68', descripcion: 'Bidón 20L', categoria: 'Aceites', unidad: 'bidon', stockMinimo: 4, stockInicial: 12 },
-    { codigo: 'REP-DEMO-003', nombre: 'Pastilla de freno camión minero', categoria: 'Frenos', unidad: 'unidad', stockMinimo: 8, stockInicial: 6 },
-    { codigo: 'REP-DEMO-004', nombre: 'Sensor de temperatura motor', categoria: 'Eléctricos', unidad: 'unidad', stockMinimo: 3, stockInicial: 10 },
-    { codigo: 'REP-DEMO-005', nombre: 'Manguera hidráulica 1in x 2m', categoria: 'Hidráulica', unidad: 'metro', stockMinimo: 10, stockInicial: 40 },
-    { codigo: 'REP-DEMO-006', nombre: 'Neumático 40.00R57', categoria: 'Neumáticos', unidad: 'unidad', stockMinimo: 2, stockInicial: 4 },
+    {
+      codigo: 'REP-DEMO-001',
+      nombre: 'Filtro de aceite motor 793F',
+      categoria: 'Filtros',
+      unidad: 'unidad',
+      stockMinimo: 5,
+      stockInicial: 30,
+    },
+    {
+      codigo: 'REP-DEMO-002',
+      nombre: 'Aceite hidráulico ISO 68',
+      descripcion: 'Bidón 20L',
+      categoria: 'Aceites',
+      unidad: 'bidon',
+      stockMinimo: 4,
+      stockInicial: 12,
+    },
+    {
+      codigo: 'REP-DEMO-003',
+      nombre: 'Pastilla de freno camión minero',
+      categoria: 'Frenos',
+      unidad: 'unidad',
+      stockMinimo: 8,
+      stockInicial: 6,
+    },
+    {
+      codigo: 'REP-DEMO-004',
+      nombre: 'Sensor de temperatura motor',
+      categoria: 'Eléctricos',
+      unidad: 'unidad',
+      stockMinimo: 3,
+      stockInicial: 10,
+    },
+    {
+      codigo: 'REP-DEMO-005',
+      nombre: 'Manguera hidráulica 1in x 2m',
+      categoria: 'Hidráulica',
+      unidad: 'metro',
+      stockMinimo: 10,
+      stockInicial: 40,
+    },
+    {
+      codigo: 'REP-DEMO-006',
+      nombre: 'Neumático 40.00R57',
+      categoria: 'Neumáticos',
+      unidad: 'unidad',
+      stockMinimo: 2,
+      stockInicial: 4,
+    },
   ],
 };
 
 // ============================================================
 // TENANT 2 — forestal (industria forestal)
 // ============================================================
-const forestalUsers: SeedUser[] = [
-  {
-    id: '00000000-0000-0000-0000-000000000006',
-    email: 'admin@forestal.demo',
-    role: 'admin',
-    fullName: 'Camila Contreras',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000007',
-    email: 'mecanico1@forestal.demo',
-    role: 'mechanic',
-    fullName: 'Felipe Fuentes',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000008',
-    email: 'mecanico2@forestal.demo',
-    role: 'mechanic',
-    fullName: 'Rocío Rojas',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000009',
-    email: 'mecanico3@forestal.demo',
-    role: 'mechanic',
-    fullName: 'Tomás Tapia',
-  },
-];
+const forestalUsers: SeedUser[] = buildTenantUsers({
+  tenantNum: 2,
+  prefix: 'forestal',
+  surnames: [
+    'Contreras',
+    'Fuentes',
+    'Rojas',
+    'Tapia',
+    'Lagos',
+    'Espinoza',
+    'Cárdenas',
+    'Aguilera',
+    'Henríquez',
+    'Garrido',
+    'Sepúlveda',
+    'Carrasco',
+    'Venegas',
+    'Mella',
+    'Quezada',
+    'Ortega',
+    'Briones',
+    'Toro',
+    'Inostroza',
+    'Parra',
+    'Saavedra',
+    'Bravo',
+  ],
+});
 
-const [FOR_ADMIN, FOR_MEC1, FOR_MEC2, FOR_MEC3] = forestalUsers;
+const { admin: FOR_ADMIN, mech: forMech } = tenantRefs(forestalUsers);
+const [FOR_MEC1, FOR_MEC2, FOR_MEC3] = [forMech(1), forMech(2), forMech(3)];
 
 const forestalTenant: SeedTenant = {
   id: 'forestal',
@@ -586,58 +881,167 @@ const forestalTenant: SeedTenant = {
     },
   ],
   eventos: [
-    { ticketId: 'tk-forestal-4002', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: FOR_ADMIN.id, createdAt: hoursAgo(2) },
-    { ticketId: 'tk-forestal-4004', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: FOR_ADMIN.id, createdAt: hoursAgo(6) },
-    { ticketId: 'tk-forestal-4004', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: FOR_MEC2.id, createdAt: hoursAgo(2) },
-    { ticketId: 'tk-forestal-4005', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: FOR_ADMIN.id, createdAt: hoursAgo(20) },
-    { ticketId: 'tk-forestal-4005', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: FOR_MEC3.id, createdAt: hoursAgo(18) },
-    { ticketId: 'tk-forestal-4005', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: FOR_MEC3.id, observacion: 'Afilado terminado, cadena lista.', createdAt: hoursAgo(8) },
-    { ticketId: 'tk-forestal-4006', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: FOR_ADMIN.id, createdAt: hoursAgo(48) },
-    { ticketId: 'tk-forestal-4006', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: FOR_MEC1.id, createdAt: hoursAgo(46) },
-    { ticketId: 'tk-forestal-4006', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: FOR_MEC1.id, observacion: 'Espada cambiada, sierra operativa.', createdAt: hoursAgo(20) },
-    { ticketId: 'tk-forestal-4006', estadoAnterior: 'EJECUTADO', estadoNuevo: 'CERRADO', usuarioId: FOR_ADMIN.id, observacion: 'Validado, equipo devuelto a operación.', createdAt: hoursAgo(6) },
+    {
+      ticketId: 'tk-forestal-4002',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: FOR_ADMIN.id,
+      createdAt: hoursAgo(2),
+    },
+    {
+      ticketId: 'tk-forestal-4004',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: FOR_ADMIN.id,
+      createdAt: hoursAgo(6),
+    },
+    {
+      ticketId: 'tk-forestal-4004',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: FOR_MEC2.id,
+      createdAt: hoursAgo(2),
+    },
+    {
+      ticketId: 'tk-forestal-4005',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: FOR_ADMIN.id,
+      createdAt: hoursAgo(20),
+    },
+    {
+      ticketId: 'tk-forestal-4005',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: FOR_MEC3.id,
+      createdAt: hoursAgo(18),
+    },
+    {
+      ticketId: 'tk-forestal-4005',
+      estadoAnterior: 'EN_EJECUCION',
+      estadoNuevo: 'EJECUTADO',
+      usuarioId: FOR_MEC3.id,
+      observacion: 'Afilado terminado, cadena lista.',
+      createdAt: hoursAgo(8),
+    },
+    {
+      ticketId: 'tk-forestal-4006',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: FOR_ADMIN.id,
+      createdAt: hoursAgo(48),
+    },
+    {
+      ticketId: 'tk-forestal-4006',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: FOR_MEC1.id,
+      createdAt: hoursAgo(46),
+    },
+    {
+      ticketId: 'tk-forestal-4006',
+      estadoAnterior: 'EN_EJECUCION',
+      estadoNuevo: 'EJECUTADO',
+      usuarioId: FOR_MEC1.id,
+      observacion: 'Espada cambiada, sierra operativa.',
+      createdAt: hoursAgo(20),
+    },
+    {
+      ticketId: 'tk-forestal-4006',
+      estadoAnterior: 'EJECUTADO',
+      estadoNuevo: 'CERRADO',
+      usuarioId: FOR_ADMIN.id,
+      observacion: 'Validado, equipo devuelto a operación.',
+      createdAt: hoursAgo(6),
+    },
   ],
   repuestos: [
-    { codigo: 'REP-FOR-001', nombre: 'Filtro de aire skidder', categoria: 'Filtros', unidad: 'unidad', stockMinimo: 4, stockInicial: 15 },
-    { codigo: 'REP-FOR-002', nombre: 'Aceite cadena motosierra', descripcion: 'Bidón 5L', categoria: 'Aceites', unidad: 'bidon', stockMinimo: 6, stockInicial: 18 },
-    { codigo: 'REP-FOR-003', nombre: 'Cable de winche forestal', categoria: 'Hidráulica', unidad: 'metro', stockMinimo: 20, stockInicial: 50 },
-    { codigo: 'REP-FOR-004', nombre: 'Batería 12V 100Ah', categoria: 'Eléctricos', unidad: 'unidad', stockMinimo: 2, stockInicial: 1 },
-    { codigo: 'REP-FOR-005', nombre: 'Disco de freno feller', categoria: 'Frenos', unidad: 'unidad', stockMinimo: 4, stockInicial: 8 },
-    { codigo: 'REP-FOR-006', nombre: 'Neumático forestal 24R21', categoria: 'Neumáticos', unidad: 'unidad', stockMinimo: 2, stockInicial: 3 },
+    {
+      codigo: 'REP-FOR-001',
+      nombre: 'Filtro de aire skidder',
+      categoria: 'Filtros',
+      unidad: 'unidad',
+      stockMinimo: 4,
+      stockInicial: 15,
+    },
+    {
+      codigo: 'REP-FOR-002',
+      nombre: 'Aceite cadena motosierra',
+      descripcion: 'Bidón 5L',
+      categoria: 'Aceites',
+      unidad: 'bidon',
+      stockMinimo: 6,
+      stockInicial: 18,
+    },
+    {
+      codigo: 'REP-FOR-003',
+      nombre: 'Cable de winche forestal',
+      categoria: 'Hidráulica',
+      unidad: 'metro',
+      stockMinimo: 20,
+      stockInicial: 50,
+    },
+    {
+      codigo: 'REP-FOR-004',
+      nombre: 'Batería 12V 100Ah',
+      categoria: 'Eléctricos',
+      unidad: 'unidad',
+      stockMinimo: 2,
+      stockInicial: 1,
+    },
+    {
+      codigo: 'REP-FOR-005',
+      nombre: 'Disco de freno feller',
+      categoria: 'Frenos',
+      unidad: 'unidad',
+      stockMinimo: 4,
+      stockInicial: 8,
+    },
+    {
+      codigo: 'REP-FOR-006',
+      nombre: 'Neumático forestal 24R21',
+      categoria: 'Neumáticos',
+      unidad: 'unidad',
+      stockMinimo: 2,
+      stockInicial: 3,
+    },
   ],
 };
 
 // ============================================================
 // TENANT 3 — construccion
 // ============================================================
-const construccionUsers: SeedUser[] = [
-  {
-    id: '00000000-0000-0000-0000-000000000010',
-    email: 'admin@constructora.demo',
-    role: 'admin',
-    fullName: 'Beatriz Bravo',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000011',
-    email: 'mecanico1@constructora.demo',
-    role: 'mechanic',
-    fullName: 'Ignacio Ibáñez',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000012',
-    email: 'mecanico2@constructora.demo',
-    role: 'mechanic',
-    fullName: 'Javiera Jara',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000013',
-    email: 'mecanico3@constructora.demo',
-    role: 'mechanic',
-    fullName: 'Cristóbal Castro',
-  },
-];
+const construccionUsers: SeedUser[] = buildTenantUsers({
+  tenantNum: 3,
+  prefix: 'constructora',
+  surnames: [
+    'Bravo',
+    'Ibáñez',
+    'Jara',
+    'Castro',
+    'Morales',
+    'Silva',
+    'Tapia',
+    'Valdés',
+    'Cifuentes',
+    'Donoso',
+    'Escobar',
+    'Gallardo',
+    'Hidalgo',
+    'Lobos',
+    'Miranda',
+    'Norambuena',
+    'Olivares',
+    'Peña',
+    'Quiroz',
+    'Retamal',
+    'Sáez',
+    'Urrutia',
+  ],
+});
 
-const [CON_ADMIN, CON_MEC1, CON_MEC2, CON_MEC3] = construccionUsers;
+const { admin: CON_ADMIN, mech: conMech } = tenantRefs(construccionUsers);
+const [CON_MEC1, CON_MEC2, CON_MEC3] = [conMech(1), conMech(2), conMech(3)];
 
 const construccionTenant: SeedTenant = {
   id: 'construccion',
@@ -806,24 +1210,130 @@ const construccionTenant: SeedTenant = {
     },
   ],
   eventos: [
-    { ticketId: 'tk-construccion-6002', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: CON_ADMIN.id, createdAt: hoursAgo(3) },
-    { ticketId: 'tk-construccion-6004', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: CON_ADMIN.id, createdAt: hoursAgo(5) },
-    { ticketId: 'tk-construccion-6004', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: CON_MEC2.id, createdAt: hoursAgo(2) },
-    { ticketId: 'tk-construccion-6005', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: CON_ADMIN.id, createdAt: hoursAgo(28) },
-    { ticketId: 'tk-construccion-6005', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: CON_MEC3.id, createdAt: hoursAgo(26) },
-    { ticketId: 'tk-construccion-6005', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: CON_MEC3.id, observacion: 'Soldadura completada, refuerzo aplicado.', createdAt: hoursAgo(12) },
-    { ticketId: 'tk-construccion-6006', estadoAnterior: 'PENDIENTE', estadoNuevo: 'ASIGNADO', usuarioId: CON_ADMIN.id, createdAt: hoursAgo(50) },
-    { ticketId: 'tk-construccion-6006', estadoAnterior: 'ASIGNADO', estadoNuevo: 'EN_EJECUCION', usuarioId: CON_MEC1.id, createdAt: hoursAgo(48) },
-    { ticketId: 'tk-construccion-6006', estadoAnterior: 'EN_EJECUCION', estadoNuevo: 'EJECUTADO', usuarioId: CON_MEC1.id, observacion: 'Dientes reemplazados.', createdAt: hoursAgo(24) },
-    { ticketId: 'tk-construccion-6006', estadoAnterior: 'EJECUTADO', estadoNuevo: 'CERRADO', usuarioId: CON_ADMIN.id, observacion: 'Validado y devuelto a obra.', createdAt: hoursAgo(8) },
+    {
+      ticketId: 'tk-construccion-6002',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: CON_ADMIN.id,
+      createdAt: hoursAgo(3),
+    },
+    {
+      ticketId: 'tk-construccion-6004',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: CON_ADMIN.id,
+      createdAt: hoursAgo(5),
+    },
+    {
+      ticketId: 'tk-construccion-6004',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: CON_MEC2.id,
+      createdAt: hoursAgo(2),
+    },
+    {
+      ticketId: 'tk-construccion-6005',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: CON_ADMIN.id,
+      createdAt: hoursAgo(28),
+    },
+    {
+      ticketId: 'tk-construccion-6005',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: CON_MEC3.id,
+      createdAt: hoursAgo(26),
+    },
+    {
+      ticketId: 'tk-construccion-6005',
+      estadoAnterior: 'EN_EJECUCION',
+      estadoNuevo: 'EJECUTADO',
+      usuarioId: CON_MEC3.id,
+      observacion: 'Soldadura completada, refuerzo aplicado.',
+      createdAt: hoursAgo(12),
+    },
+    {
+      ticketId: 'tk-construccion-6006',
+      estadoAnterior: 'PENDIENTE',
+      estadoNuevo: 'ASIGNADO',
+      usuarioId: CON_ADMIN.id,
+      createdAt: hoursAgo(50),
+    },
+    {
+      ticketId: 'tk-construccion-6006',
+      estadoAnterior: 'ASIGNADO',
+      estadoNuevo: 'EN_EJECUCION',
+      usuarioId: CON_MEC1.id,
+      createdAt: hoursAgo(48),
+    },
+    {
+      ticketId: 'tk-construccion-6006',
+      estadoAnterior: 'EN_EJECUCION',
+      estadoNuevo: 'EJECUTADO',
+      usuarioId: CON_MEC1.id,
+      observacion: 'Dientes reemplazados.',
+      createdAt: hoursAgo(24),
+    },
+    {
+      ticketId: 'tk-construccion-6006',
+      estadoAnterior: 'EJECUTADO',
+      estadoNuevo: 'CERRADO',
+      usuarioId: CON_ADMIN.id,
+      observacion: 'Validado y devuelto a obra.',
+      createdAt: hoursAgo(8),
+    },
   ],
   repuestos: [
-    { codigo: 'REP-CON-001', nombre: 'Filtro hidráulico excavadora', categoria: 'Filtros', unidad: 'unidad', stockMinimo: 4, stockInicial: 20 },
-    { codigo: 'REP-CON-002', nombre: 'Aceite motor 15W40', descripcion: 'Bidón 20L', categoria: 'Aceites', unidad: 'bidon', stockMinimo: 5, stockInicial: 14 },
-    { codigo: 'REP-CON-003', nombre: 'Diente de balde excavadora', categoria: 'Hidráulica', unidad: 'unidad', stockMinimo: 6, stockInicial: 22 },
-    { codigo: 'REP-CON-004', nombre: 'Manguera de freno camión', categoria: 'Frenos', unidad: 'metro', stockMinimo: 8, stockInicial: 5 },
-    { codigo: 'REP-CON-005', nombre: 'Alternador 24V', categoria: 'Eléctricos', unidad: 'unidad', stockMinimo: 2, stockInicial: 6 },
-    { codigo: 'REP-CON-006', nombre: 'Neumático 17.5R25', categoria: 'Neumáticos', unidad: 'unidad', stockMinimo: 2, stockInicial: 4 },
+    {
+      codigo: 'REP-CON-001',
+      nombre: 'Filtro hidráulico excavadora',
+      categoria: 'Filtros',
+      unidad: 'unidad',
+      stockMinimo: 4,
+      stockInicial: 20,
+    },
+    {
+      codigo: 'REP-CON-002',
+      nombre: 'Aceite motor 15W40',
+      descripcion: 'Bidón 20L',
+      categoria: 'Aceites',
+      unidad: 'bidon',
+      stockMinimo: 5,
+      stockInicial: 14,
+    },
+    {
+      codigo: 'REP-CON-003',
+      nombre: 'Diente de balde excavadora',
+      categoria: 'Hidráulica',
+      unidad: 'unidad',
+      stockMinimo: 6,
+      stockInicial: 22,
+    },
+    {
+      codigo: 'REP-CON-004',
+      nombre: 'Manguera de freno camión',
+      categoria: 'Frenos',
+      unidad: 'metro',
+      stockMinimo: 8,
+      stockInicial: 5,
+    },
+    {
+      codigo: 'REP-CON-005',
+      nombre: 'Alternador 24V',
+      categoria: 'Eléctricos',
+      unidad: 'unidad',
+      stockMinimo: 2,
+      stockInicial: 6,
+    },
+    {
+      codigo: 'REP-CON-006',
+      nombre: 'Neumático 17.5R25',
+      categoria: 'Neumáticos',
+      unidad: 'unidad',
+      stockMinimo: 2,
+      stockInicial: 4,
+    },
   ],
 };
 
@@ -833,7 +1343,11 @@ const TENANTS: SeedTenant[] = [demoTenant, forestalTenant, construccionTenant];
 // Setup
 // ============================================================
 function validateEnv() {
-  const required = ['DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+  const required = [
+    'DATABASE_URL',
+    'SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY',
+  ];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length) {
     throw new Error(`Faltan variables de entorno: ${missing.join(', ')}`);

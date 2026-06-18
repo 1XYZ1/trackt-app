@@ -22,6 +22,7 @@ describe("filterByRole", () => {
 
     expect(groups.map((group) => group.title)).toEqual([
       "General",
+      "Inventario",
       "Taller",
       "Administracion",
       "Cuenta",
@@ -35,11 +36,29 @@ describe("filterByRole", () => {
 
     expect(groups.map((group) => group.title)).toEqual([
       "General",
+      "Inventario",
       "Taller",
       "Cuenta",
     ]);
     expect(titlesFrom(groups)).not.toContain("Usuarios");
     expect(titlesFrom(groups)).not.toContain("Pendientes de validar");
+  });
+
+  it("muestra solo el grupo Inventario para jefe de inventario", () => {
+    const groups = filterByRole("jefe_inventario", sidebarData.navGroups);
+
+    expect(groups.map((group) => group.title)).toEqual([
+      "Inventario",
+      "Cuenta",
+    ]);
+    expect(titlesFrom(groups)).toEqual([
+      "Inventario",
+      "Movimientos",
+      "Solicitudes pendientes",
+      "Mi perfil",
+    ]);
+    expect(groups.map((group) => group.title)).not.toContain("General");
+    expect(groups.map((group) => group.title)).not.toContain("Administracion");
   });
 
   it("filtra subitems y elimina grupos vacios", () => {

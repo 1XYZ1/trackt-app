@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { RepuestoSelect } from "@/components/inventario";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/contexts/auth-context";
 import {
   useAddEquipoRepuesto,
@@ -78,7 +79,7 @@ export function EquipoRepuestos({ equipoId }: EquipoRepuestosProps) {
   return (
     <div className="flex flex-col gap-4">
       {canManage && (
-        <Card className="rounded-lg border-border/70">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Asociar repuesto habitual</CardTitle>
           </CardHeader>
@@ -124,15 +125,16 @@ export function EquipoRepuestos({ equipoId }: EquipoRepuestosProps) {
         </Card>
       )}
 
-      <Card className="rounded-lg border-border/70">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Repuestos habituales</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading && (
-            <div className="flex items-center gap-2 px-5 py-10 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando repuestos...
+            <div className="space-y-2.5 p-5">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <Skeleton className="h-9 w-full" key={idx} />
+              ))}
             </div>
           )}
 
@@ -172,7 +174,7 @@ export function EquipoRepuestos({ equipoId }: EquipoRepuestosProps) {
                 <tbody>
                   {asociados.map((a) => (
                     <tr
-                      className="border-border/60 border-b transition-colors last:border-0"
+                      className="border-border/60 border-b transition-colors last:border-0 hover:bg-accent/40"
                       key={a.id}
                     >
                       <td className="whitespace-nowrap px-5 py-3 font-mono text-xs">

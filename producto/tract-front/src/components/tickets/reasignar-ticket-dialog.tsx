@@ -14,6 +14,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useMecanicos } from "@/hooks/use-usuarios";
 import { useReasignarTicket } from "@/hooks/use-tickets";
@@ -125,23 +132,29 @@ export function ReasignarTicketDialog({
                 >
                   Nuevo mecánico
                 </label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
-                  id="reasignar-mecanico-select"
-                  onChange={(event) => {
-                    setMecanicoId(event.target.value);
+                <Select
+                  items={opciones.map((m) => ({
+                    label: `${m.fullName || m.email || m.id}${m.email ? ` (${m.email})` : ""}`,
+                    value: m.id,
+                  }))}
+                  onValueChange={(value) => {
+                    setMecanicoId((value as string | null) ?? "");
                     if (error) setError(null);
                   }}
-                  value={mecanicoId}
+                  value={mecanicoId || null}
                 >
-                  <option value="">— Selecciona —</option>
-                  {opciones.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.fullName || m.email || m.id}
-                      {m.email ? ` (${m.email})` : ""}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="reasignar-mecanico-select">
+                    <SelectValue placeholder="— Selecciona —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opciones.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.fullName || m.email || m.id}
+                        {m.email ? ` (${m.email})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">

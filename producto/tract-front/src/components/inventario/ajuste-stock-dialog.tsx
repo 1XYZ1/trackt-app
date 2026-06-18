@@ -93,7 +93,7 @@ export function AjusteStockDialog({ onOpenChange, open, repuesto }: Props) {
           <DialogTitle>Ajustar stock</DialogTitle>
           <DialogDescription>
             {repuesto
-              ? `Setea el stock actual de "${repuesto.codigo} - ${repuesto.nombre}". Util tras conteos fisicos.`
+              ? `Define el stock actual de "${repuesto.codigo} - ${repuesto.nombre}". Útil tras conteos físicos.`
               : "Setea el stock actual del repuesto seleccionado."}
           </DialogDescription>
         </DialogHeader>
@@ -102,19 +102,19 @@ export function AjusteStockDialog({ onOpenChange, open, repuesto }: Props) {
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-lg border border-border/50 bg-secondary/20 p-3 text-xs">
                 <p className="text-muted-foreground">Stock actual</p>
-                <p className="mt-1 font-mono font-semibold text-base">
+                <p className="mt-1 font-mono font-semibold text-base tabular-nums">
                   {repuesto?.stockActual ?? 0}
                 </p>
               </div>
               <div className="rounded-lg border border-border/50 bg-secondary/20 p-3 text-xs">
                 <p className="text-muted-foreground">Reservado</p>
-                <p className="mt-1 font-mono font-semibold text-base">
+                <p className="mt-1 font-mono font-semibold text-base tabular-nums">
                   {repuesto?.stockReservado ?? 0}
                 </p>
               </div>
               <div className="rounded-lg border border-border/50 bg-secondary/20 p-3 text-xs">
                 <p className="text-muted-foreground">Disponible</p>
-                <p className="mt-1 font-mono font-semibold text-base">
+                <p className="mt-1 font-mono font-semibold text-base tabular-nums">
                   {repuesto?.stockDisponible ?? 0}
                 </p>
               </div>
@@ -135,6 +135,16 @@ export function AjusteStockDialog({ onOpenChange, open, repuesto }: Props) {
                 type="number"
                 value={nuevoStockActual}
               />
+              {repuesto && Number.isFinite(nuevoStockActual) && (
+                <p className="text-[11px] text-muted-foreground">
+                  Disponible tras el ajuste:{" "}
+                  <span className="font-mono font-medium text-foreground tabular-nums">
+                    {Math.max(0, nuevoStockActual - repuesto.stockReservado)}
+                  </span>{" "}
+                  ({repuesto.stockReservado} reservado
+                  {repuesto.stockReservado === 1 ? "" : "s"})
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -142,7 +152,7 @@ export function AjusteStockDialog({ onOpenChange, open, repuesto }: Props) {
                 className="font-medium text-sm"
                 htmlFor="ajuste-observacion"
               >
-                Observacion (obligatoria)
+                Observación (obligatoria)
               </label>
               <Textarea
                 id="ajuste-observacion"
@@ -150,13 +160,20 @@ export function AjusteStockDialog({ onOpenChange, open, repuesto }: Props) {
                   setObservacion(e.target.value);
                   if (error) setError(null);
                 }}
-                placeholder="Ajuste por conteo fisico, merma, etc."
+                placeholder="Ajuste por conteo físico, merma, etc."
                 rows={3}
                 value={observacion}
               />
             </div>
 
-            {error && <p className="text-destructive text-xs">{error}</p>}
+            {error && (
+              <p
+                className="rounded-md bg-destructive/8 px-3 py-2 text-destructive-foreground text-xs"
+                role="alert"
+              >
+                {error}
+              </p>
+            )}
           </div>
         </DialogPanel>
         <DialogFooter>

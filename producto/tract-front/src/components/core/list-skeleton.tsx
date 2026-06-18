@@ -15,7 +15,7 @@ export function ListSkeleton({ count = 4, columns = 2 }: Props) {
     <div className={`grid gap-4 ${grid}`}>
       {Array.from({ length: count }).map((_, idx) => (
         <div
-          className="space-y-3 rounded-lg border border-border/70 p-4"
+          className="space-y-3 rounded-lg border border-border bg-card/40 p-4"
           key={idx}
         >
           <div className="flex items-center gap-2">

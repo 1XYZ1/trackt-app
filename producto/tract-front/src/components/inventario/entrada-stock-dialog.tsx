@@ -84,17 +84,24 @@ export function EntradaStockDialog({ onOpenChange, open, repuesto }: Props) {
         </DialogHeader>
         <DialogPanel>
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-lg border border-border/50 bg-secondary/20 p-3 text-xs">
                 <p className="text-muted-foreground">Stock actual</p>
-                <p className="mt-1 font-mono font-semibold text-base">
+                <p className="mt-1 font-mono font-semibold text-base tabular-nums">
                   {repuesto?.stockActual ?? 0}
                 </p>
               </div>
               <div className="rounded-lg border border-border/50 bg-secondary/20 p-3 text-xs">
                 <p className="text-muted-foreground">Disponible</p>
-                <p className="mt-1 font-mono font-semibold text-base">
+                <p className="mt-1 font-mono font-semibold text-base tabular-nums">
                   {repuesto?.stockDisponible ?? 0}
+                </p>
+              </div>
+              <div className="rounded-lg border border-success/30 bg-success/8 p-3 text-xs">
+                <p className="text-muted-foreground">Stock resultante</p>
+                <p className="mt-1 font-mono font-semibold text-base text-success-foreground tabular-nums">
+                  {(repuesto?.stockActual ?? 0) +
+                    (Number.isFinite(cantidad) && cantidad > 0 ? cantidad : 0)}
                 </p>
               </div>
             </div>
@@ -126,13 +133,20 @@ export function EntradaStockDialog({ onOpenChange, open, repuesto }: Props) {
               <Textarea
                 id="entrada-observacion"
                 onChange={(e) => setObservacion(e.target.value)}
-                placeholder="Compra, devolucion, etc."
+                placeholder="Compra, devolución, etc."
                 rows={2}
                 value={observacion}
               />
             </div>
 
-            {error && <p className="text-destructive text-xs">{error}</p>}
+            {error && (
+              <p
+                className="rounded-md bg-destructive/8 px-3 py-2 text-destructive-foreground text-xs"
+                role="alert"
+              >
+                {error}
+              </p>
+            )}
           </div>
         </DialogPanel>
         <DialogFooter>

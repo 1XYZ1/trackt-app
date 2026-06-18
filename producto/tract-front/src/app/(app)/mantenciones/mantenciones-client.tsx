@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, List, Loader2, Pencil, Plus, XCircle, Zap } from "lucide-react";
+import { CalendarDays, List, Pencil, Plus, XCircle, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import {
@@ -22,7 +22,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipPopup,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useHasRole } from "@/contexts/auth-context";
 import { useCargaMecanicos } from "@/hooks/use-tickets";
 import {
@@ -44,6 +51,21 @@ function fmtFecha(iso: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function TableSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="divide-y divide-border/60">
+      {Array.from({ length: rows }).map((_, idx) => (
+        <div className="flex items-center gap-4 px-5 py-3" key={idx}>
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="ml-auto h-5 w-20 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function MantencionesClient() {
@@ -73,17 +95,22 @@ export function MantencionesClient() {
 
   const nombrePorId = useMemo(() => {
     const map = new Map<string, string>();
-    for (const m of mecanicos) map.set(m.mecanicoId, m.nombre ?? m.email ?? m.mecanicoId);
+    for (const m of mecanicos)
+      map.set(m.mecanicoId, m.nombre ?? m.email ?? m.mecanicoId);
     return map;
   }, [mecanicos]);
 
   const prevMonth = () =>
     setCursor((c) =>
-      c.month === 0 ? { month: 11, year: c.year - 1 } : { month: c.month - 1, year: c.year },
+      c.month === 0
+        ? { month: 11, year: c.year - 1 }
+        : { month: c.month - 1, year: c.year },
     );
   const nextMonth = () =>
     setCursor((c) =>
-      c.month === 11 ? { month: 0, year: c.year + 1 } : { month: c.month + 1, year: c.year },
+      c.month === 11
+        ? { month: 0, year: c.year + 1 }
+        : { month: c.month + 1, year: c.year },
     );
 
   const openCreate = () => {
@@ -92,7 +119,9 @@ export function MantencionesClient() {
   };
   const openEdit = (p: Programacion) => {
     if (p.estado !== "PROGRAMADA") {
-      toast.info("Solo las programaciones en estado Programada se pueden editar");
+      toast.info(
+        "Solo las programaciones en estado Programada se pueden editar",
+      );
       return;
     }
     setEditing(p);
@@ -111,234 +140,325 @@ export function MantencionesClient() {
       setCancelTarget(null);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo cancelar la programación",
+        err instanceof Error
+          ? err.message
+          : "No se pudo cancelar la programación",
       );
     }
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-            <CalendarDays className="size-3.5" />
-            Mantenimiento preventivo
+    <TooltipProvider>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
+              <CalendarDays className="size-3.5" />
+              Mantenimiento preventivo
+            </div>
+            <h1 className="font-semibold text-2xl tracking-tight">
+              Mantenciones
+            </h1>
+            <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
+              Programaciones de mantenimiento y generación de órdenes de trabajo.
+            </p>
           </div>
-          <h1 className="font-semibold text-2xl tracking-tight">Mantenciones</h1>
-          <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-            Programaciones de mantenimiento y generación de órdenes de trabajo.
-          </p>
+          {canManage && (
+            <Button className="shrink-0" onClick={openCreate} size="sm">
+              <Plus />
+              Nueva programación
+            </Button>
+          )}
         </div>
-        {canManage && (
-          <Button onClick={openCreate} size="sm">
-            <Plus />
-            Nueva programación
-          </Button>
-        )}
-      </div>
 
-      <Tabs onValueChange={(v) => setTab(v as string)} value={tab}>
-        <TabsList>
-          <TabsTab value="calendario">
-            <CalendarDays />
-            Calendario
-          </TabsTab>
-          <TabsTab value="lista">
-            <List />
-            Lista
-          </TabsTab>
-        </TabsList>
+        <Tabs onValueChange={(v) => setTab(v as string)} value={tab}>
+          <TabsList>
+            <TabsTab value="calendario">
+              <CalendarDays />
+              Calendario
+            </TabsTab>
+            <TabsTab value="lista">
+              <List />
+              Lista
+            </TabsTab>
+          </TabsList>
 
-        <TabsPanel className="mt-4" value="calendario">
-          <Card className="rounded-lg border-border/70">
-            <CardContent className="p-4">
-              <CalendarioMes
-                events={eventos}
-                month={cursor.month}
-                onNext={nextMonth}
-                onPrev={prevMonth}
-                onSelectEvent={handleSelectEvent}
-                year={cursor.year}
-              />
-            </CardContent>
-          </Card>
-        </TabsPanel>
+          <TabsPanel className="mt-4" value="calendario">
+            <Card>
+              <CardContent className="p-3 sm:p-4">
+                <CalendarioMes
+                  events={eventos}
+                  month={cursor.month}
+                  onNext={nextMonth}
+                  onPrev={prevMonth}
+                  onSelectEvent={handleSelectEvent}
+                  year={cursor.year}
+                />
+              </CardContent>
+            </Card>
+          </TabsPanel>
 
-        <TabsPanel className="mt-4" value="lista">
-          <Card className="rounded-lg border-border/70">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Todas las programaciones</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {isLoading && (
-                <div className="flex items-center gap-2 px-5 py-16 text-muted-foreground text-sm">
-                  <Loader2 className="size-4 animate-spin" />
-                  Cargando programaciones...
-                </div>
-              )}
+          <TabsPanel className="mt-4" value="lista">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">
+                  Todas las programaciones
+                </CardTitle>
+                <p className="text-muted-foreground text-xs">
+                  {programaciones.length} programación
+                  {programaciones.length === 1 ? "" : "es"} registrada
+                  {programaciones.length === 1 ? "" : "s"}.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                {isLoading && <TableSkeleton />}
 
-              {!isLoading && error && (
-                <div className="p-5">
-                  <EmptyState
-                    icon="wrench"
-                    message="No se pudieron cargar las programaciones."
-                    title="Error al cargar"
-                  />
-                </div>
-              )}
+                {!isLoading && error && (
+                  <div className="p-5">
+                    <EmptyState
+                      icon="wrench"
+                      message="No se pudieron cargar las programaciones."
+                      title="Error al cargar"
+                    />
+                  </div>
+                )}
 
-              {!isLoading && !error && programaciones.length === 0 && (
-                <div className="p-5">
-                  <EmptyState
-                    icon="wrench"
-                    message="Crea la primera programación de mantenimiento."
-                    title="Sin programaciones"
-                  />
-                </div>
-              )}
+                {!isLoading && !error && programaciones.length === 0 && (
+                  <div className="p-5">
+                    <EmptyState
+                      icon="wrench"
+                      message="Crea la primera programación de mantenimiento."
+                      title="Sin programaciones"
+                    />
+                    {canManage && (
+                      <div className="mt-4 flex justify-center">
+                        <Button onClick={openCreate}>
+                          <Plus />
+                          Nueva programación
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              {!isLoading && !error && programaciones.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
-                        <th className="px-5 py-3 font-semibold">Título</th>
-                        <th className="px-5 py-3 font-semibold">Equipo</th>
-                        <th className="px-5 py-3 font-semibold">Fecha</th>
-                        <th className="px-5 py-3 font-semibold">Responsable</th>
-                        <th className="px-5 py-3 font-semibold">Estado</th>
-                        <th className="px-5 py-3 font-semibold">Prioridad</th>
-                        {canManage && (
-                          <th className="px-5 py-3 text-right font-semibold">Acciones</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
+                {!isLoading && !error && programaciones.length > 0 && (
+                  <>
+                    {/* Vista de tabla (desktop) */}
+                    <div className="hidden overflow-x-auto md:block">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
+                            <th className="px-5 py-3 font-semibold">Título</th>
+                            <th className="px-5 py-3 font-semibold">Equipo</th>
+                            <th className="px-5 py-3 font-semibold">Fecha</th>
+                            <th className="px-5 py-3 font-semibold">
+                              Responsable
+                            </th>
+                            <th className="px-5 py-3 font-semibold">Estado</th>
+                            <th className="px-5 py-3 font-semibold">Prioridad</th>
+                            {canManage && (
+                              <th className="px-5 py-3 text-right font-semibold">
+                                Acciones
+                              </th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {programaciones.map((p) => {
+                            const editable = p.estado === "PROGRAMADA";
+                            return (
+                              <tr
+                                className="border-border/60 border-b transition-colors last:border-0 hover:bg-accent/40"
+                                key={p.id}
+                              >
+                                <td className="px-5 py-3 font-medium">
+                                  {p.titulo}
+                                  {p.plantilla && (
+                                    <span className="block text-muted-foreground text-xs">
+                                      {p.plantilla.nombre}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="whitespace-nowrap px-5 py-3 font-mono text-xs">
+                                  {p.equipo.codigo}
+                                </td>
+                                <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs">
+                                  {fmtFecha(p.fechaProgramada)}
+                                </td>
+                                <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs">
+                                  {p.responsableId
+                                    ? (nombrePorId.get(p.responsableId) ?? "—")
+                                    : "—"}
+                                </td>
+                                <td className="px-5 py-3">
+                                  <ProgramacionEstadoBadge estado={p.estado} />
+                                </td>
+                                <td className="px-5 py-3">
+                                  <PrioridadBadge prioridad={p.prioridad} />
+                                </td>
+                                {canManage && (
+                                  <td className="whitespace-nowrap px-5 py-3 text-right">
+                                    <div className="flex justify-end gap-1">
+                                      <Button
+                                        disabled={!editable}
+                                        onClick={() => setGenerarTarget(p)}
+                                        size="sm"
+                                        variant="outline"
+                                      >
+                                        <Zap />
+                                        Generar OT
+                                      </Button>
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          render={
+                                            <Button
+                                              aria-label="Editar programación"
+                                              disabled={!editable}
+                                              onClick={() => openEdit(p)}
+                                              size="icon-sm"
+                                              variant="ghost"
+                                            >
+                                              <Pencil />
+                                            </Button>
+                                          }
+                                        />
+                                        <TooltipPopup>Editar</TooltipPopup>
+                                      </Tooltip>
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          render={
+                                            <Button
+                                              aria-label="Cancelar programación"
+                                              disabled={!editable}
+                                              onClick={() => setCancelTarget(p)}
+                                              size="icon-sm"
+                                              variant="destructive-outline"
+                                            >
+                                              <XCircle />
+                                            </Button>
+                                          }
+                                        />
+                                        <TooltipPopup>Cancelar</TooltipPopup>
+                                      </Tooltip>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Vista de tarjetas (móvil) */}
+                    <div className="divide-y divide-border/60 md:hidden">
                       {programaciones.map((p) => {
                         const editable = p.estado === "PROGRAMADA";
                         return (
-                          <tr
-                            className="border-border/60 border-b last:border-0 hover:bg-secondary/25"
-                            key={p.id}
-                          >
-                            <td className="px-5 py-3 font-medium">
-                              {p.titulo}
-                              {p.plantilla && (
-                                <span className="block text-muted-foreground text-xs">
-                                  {p.plantilla.nombre}
-                                </span>
-                              )}
-                            </td>
-                            <td className="whitespace-nowrap px-5 py-3 text-xs">
-                              {p.equipo.codigo}
-                            </td>
-                            <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs">
-                              {fmtFecha(p.fechaProgramada)}
-                            </td>
-                            <td className="whitespace-nowrap px-5 py-3 text-muted-foreground text-xs">
-                              {p.responsableId
-                                ? nombrePorId.get(p.responsableId) ?? "—"
-                                : "—"}
-                            </td>
-                            <td className="px-5 py-3">
-                              <ProgramacionEstadoBadge estado={p.estado} />
-                            </td>
-                            <td className="px-5 py-3">
-                              <PrioridadBadge prioridad={p.prioridad} />
-                            </td>
-                            {canManage && (
-                              <td className="whitespace-nowrap px-5 py-3 text-right">
-                                <div className="flex justify-end gap-1.5">
-                                  <Button
-                                    disabled={!editable}
-                                    onClick={() => setGenerarTarget(p)}
-                                    size="sm"
-                                    variant="outline"
-                                  >
-                                    <Zap />
-                                    Generar OT
-                                  </Button>
-                                  <Button
-                                    disabled={!editable}
-                                    onClick={() => openEdit(p)}
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <Pencil />
-                                  </Button>
-                                  <Button
-                                    disabled={!editable}
-                                    onClick={() => setCancelTarget(p)}
-                                    size="sm"
-                                    variant="destructive-outline"
-                                  >
-                                    <XCircle />
-                                  </Button>
-                                </div>
-                              </td>
+                          <div className="p-4" key={p.id}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="font-medium text-sm">{p.titulo}</p>
+                                <p className="text-muted-foreground text-xs">
+                                  {p.equipo.codigo} · {fmtFecha(p.fechaProgramada)}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 flex-col items-end gap-1">
+                                <ProgramacionEstadoBadge estado={p.estado} />
+                                <PrioridadBadge prioridad={p.prioridad} />
+                              </div>
+                            </div>
+                            {canManage && editable && (
+                              <div className="mt-3 flex gap-2">
+                                <Button
+                                  className="flex-1"
+                                  onClick={() => setGenerarTarget(p)}
+                                  size="sm"
+                                  variant="outline"
+                                >
+                                  <Zap />
+                                  Generar OT
+                                </Button>
+                                <Button
+                                  aria-label="Editar programación"
+                                  onClick={() => openEdit(p)}
+                                  size="icon-sm"
+                                  variant="ghost"
+                                >
+                                  <Pencil />
+                                </Button>
+                                <Button
+                                  aria-label="Cancelar programación"
+                                  onClick={() => setCancelTarget(p)}
+                                  size="icon-sm"
+                                  variant="destructive-outline"
+                                >
+                                  <XCircle />
+                                </Button>
+                              </div>
                             )}
-                          </tr>
+                          </div>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsPanel>
-      </Tabs>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsPanel>
+        </Tabs>
 
-      {canManage && (
-        <ProgramacionFormSheet
+        {canManage && (
+          <ProgramacionFormSheet
+            onOpenChange={(open) => {
+              setFormOpen(open);
+              if (!open) setEditing(null);
+            }}
+            open={formOpen}
+            programacion={editing}
+          />
+        )}
+
+        {generarTarget && (
+          <GenerarOtDialog
+            onOpenChange={(open) => {
+              if (!open) setGenerarTarget(null);
+            }}
+            open={Boolean(generarTarget)}
+            programacion={generarTarget}
+          />
+        )}
+
+        <AlertDialog
           onOpenChange={(open) => {
-            setFormOpen(open);
-            if (!open) setEditing(null);
+            if (!open) setCancelTarget(null);
           }}
-          open={formOpen}
-          programacion={editing}
-        />
-      )}
-
-      {generarTarget && (
-        <GenerarOtDialog
-          onOpenChange={(open) => {
-            if (!open) setGenerarTarget(null);
-          }}
-          open={Boolean(generarTarget)}
-          programacion={generarTarget}
-        />
-      )}
-
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open) setCancelTarget(null);
-        }}
-        open={Boolean(cancelTarget)}
-      >
-        <AlertDialogPopup>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar programación</AlertDialogTitle>
-            <AlertDialogDescription>
-              {cancelTarget
-                ? `Se cancelará "${cancelTarget.titulo}". Esta acción no se puede deshacer.`
-                : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>
-              Volver
-            </AlertDialogClose>
-            <Button
-              loading={cancelar.isPending}
-              onClick={handleConfirmCancel}
-              variant="destructive"
-            >
-              Cancelar programación
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
-    </div>
+          open={Boolean(cancelTarget)}
+        >
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancelar programación</AlertDialogTitle>
+              <AlertDialogDescription>
+                {cancelTarget
+                  ? `Se cancelará "${cancelTarget.titulo}". Esta acción no se puede deshacer.`
+                  : ""}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button variant="outline" />}>
+                Volver
+              </AlertDialogClose>
+              <Button
+                loading={cancelar.isPending}
+                onClick={handleConfirmCancel}
+                variant="destructive"
+              >
+                Cancelar programación
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
   );
 }

@@ -2,12 +2,21 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Download, Loader2, Table2 } from "lucide-react";
+import { BarChart3, Download, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useHasRole } from "@/contexts/auth-context";
 import {
   descargarReporteCsv,
@@ -71,9 +80,6 @@ const REPORTES: ReporteDef[] = [
     vistaOpciones: ["todos", "vencidos", "proximos"],
   },
 ];
-
-const selectClass =
-  "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24";
 
 export function ReportesClient() {
   const isAdmin = useHasRole("admin");
@@ -142,7 +148,7 @@ export function ReportesClient() {
 
   if (!canView) {
     return (
-      <Card className="rounded-lg border-border/70">
+      <Card>
         <CardContent className="p-5">
           <EmptyState
             icon="inbox"
@@ -170,18 +176,24 @@ export function ReportesClient() {
         </p>
       </div>
 
-      <Card className="rounded-lg border-border/70">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Tipo de reporte</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-1.5">
+          <div
+            aria-label="Tipo de reporte"
+            className="flex flex-wrap gap-1.5"
+            role="group"
+          >
             {REPORTES.map((r) => (
               <button
+                aria-pressed={selectedKey === r.key}
                 className={cn(
-                  "rounded-full border border-border px-3 py-1 text-sm transition-colors hover:bg-secondary/60",
-                  selectedKey === r.key &&
-                    "border-brand-primary/50 bg-brand-primary/10 text-foreground",
+                  "rounded-full border px-3 py-1 font-medium text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                  selectedKey === r.key
+                    ? "border-brand-primary/50 bg-brand-primary/10 text-brand-primary"
+                    : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
                 )}
                 key={r.key}
                 onClick={() => selectReport(r.key)}
@@ -224,17 +236,22 @@ export function ReportesClient() {
                 <label className="text-[11px] text-muted-foreground uppercase">
                   Vista
                 </label>
-                <select
-                  className={cn(selectClass, "w-40")}
-                  onChange={(e) => setVista(e.target.value)}
-                  value={vista}
+                <Select
+                  items={def.vistaOpciones.map((v) => ({ label: v, value: v }))}
+                  onValueChange={(value) => setVista((value as string) ?? "")}
+                  value={vista || null}
                 >
-                  {def.vistaOpciones.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {def.vistaOpciones.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             {def.filtros.includes("estado") && def.estadoOpciones && (
@@ -242,26 +259,35 @@ export function ReportesClient() {
                 <label className="text-[11px] text-muted-foreground uppercase">
                   Estado
                 </label>
-                <select
-                  className={cn(selectClass, "w-44")}
-                  onChange={(e) => setEstado(e.target.value)}
-                  value={estado}
+                <Select
+                  items={[
+                    { label: "Todos", value: null },
+                    ...def.estadoOpciones.map((e) => ({ label: e, value: e })),
+                  ]}
+                  onValueChange={(value) =>
+                    setEstado((value as string | null) ?? "")
+                  }
+                  value={estado || null}
                 >
-                  <option value="">Todos</option>
-                  {def.estadoOpciones.map((e) => (
-                    <option key={e} value={e}>
-                      {e}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Todos</SelectItem>
+                    {def.estadoOpciones.map((e) => (
+                      <SelectItem key={e} value={e}>
+                        {e}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             {def.filtros.includes("soloCriticos") && vista === "stock" && (
-              <label className="flex items-center gap-2 pb-2 text-sm">
-                <input
+              <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm">
+                <Switch
                   checked={soloCriticos}
-                  onChange={(e) => setSoloCriticos(e.target.checked)}
-                  type="checkbox"
+                  onCheckedChange={setSoloCriticos}
                 />
                 Solo críticos
               </label>
@@ -281,7 +307,7 @@ export function ReportesClient() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-lg border-border/70">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">
             Resultado{query.data ? ` (${query.data.total})` : ""}
@@ -298,9 +324,10 @@ export function ReportesClient() {
             </div>
           )}
           {ran && query.isLoading && (
-            <div className="flex items-center gap-2 px-5 py-16 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Cargando reporte...
+            <div className="space-y-2.5 p-5">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <Skeleton className="h-8 w-full" key={idx} />
+              ))}
             </div>
           )}
           {ran && query.error && (
@@ -322,12 +349,15 @@ export function ReportesClient() {
             </div>
           )}
           {ran && rows.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="max-h-[32rem] overflow-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
                     {columns.map((c) => (
-                      <th className="whitespace-nowrap px-4 py-3 font-semibold" key={c}>
+                      <th
+                        className="whitespace-nowrap px-4 py-3 font-semibold"
+                        key={c}
+                      >
                         {c}
                       </th>
                     ))}
@@ -335,7 +365,10 @@ export function ReportesClient() {
                 </thead>
                 <tbody>
                   {rows.map((row, idx) => (
-                    <tr className="border-border/60 border-b last:border-0" key={idx}>
+                    <tr
+                      className="border-border/60 border-b transition-colors last:border-0 odd:bg-secondary/15 hover:bg-accent/40"
+                      key={idx}
+                    >
                       {columns.map((c) => (
                         <td className="whitespace-nowrap px-4 py-2.5" key={c}>
                           {row[c] === null || row[c] === undefined

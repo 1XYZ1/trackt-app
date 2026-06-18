@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ImageOff } from "lucide-react";
+import { ImageOff, ZoomIn } from "lucide-react";
 import { EmptyState } from "@/components/core";
 import {
   Dialog,
@@ -54,18 +54,26 @@ export function EvidenciasGrid({ ticketId }: Props) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
         {data.map((evidencia) => (
           <button
-            className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted transition hover:border-primary"
+            aria-label={`Ampliar evidencia${
+              evidencia.descripcion ? `: ${evidencia.descripcion}` : ""
+            }`}
+            className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted outline-none transition hover:border-brand-primary/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
             key={evidencia.id}
             onClick={() => setOpenEvidencia(evidencia)}
             type="button"
           >
             {evidencia.downloadUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                alt={evidencia.descripcion ?? "Evidencia"}
-                className="size-full object-cover transition group-hover:scale-105"
-                src={evidencia.downloadUrl}
-              />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  alt={evidencia.descripcion ?? "Evidencia"}
+                  className="size-full object-cover transition group-hover:scale-105"
+                  src={evidencia.downloadUrl}
+                />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
+                  <ZoomIn className="size-5 text-white" />
+                </span>
+              </>
             ) : (
               <div className="flex size-full items-center justify-center text-muted-foreground">
                 <ImageOff className="size-6" />

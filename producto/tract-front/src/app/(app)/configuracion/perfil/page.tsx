@@ -1,3 +1,4 @@
+import { UserCog } from 'lucide-react';
 import { requireSession } from '@/lib/auth/require-role';
 import {
   Card,
@@ -7,6 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { roleLabel } from '@/lib/auth/role-labels';
 import { PerfilForm } from './perfil-form';
 
 export default async function PerfilPage() {
@@ -15,8 +17,12 @@ export default async function PerfilPage() {
   return (
     <div className="space-y-6">
       <div>
+        <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
+          <UserCog className="size-3.5" />
+          Configuración
+        </div>
         <h1 className="font-semibold text-2xl tracking-tight">Mi perfil</h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="mt-1 text-muted-foreground text-sm">
           Actualiza tu nombre y foto de perfil.
         </p>
       </div>
@@ -56,8 +62,8 @@ export default async function PerfilPage() {
               <p className="text-muted-foreground text-xs uppercase tracking-wide">
                 Rol
               </p>
-              <Badge variant="secondary" className="mt-1 capitalize">
-                {profile.role}
+              <Badge variant="secondary" className="mt-1">
+                {roleLabel(profile.role)}
               </Badge>
             </div>
             <div>
