@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   Tag,
   ListChecks,
+  BarChart3,
 } from 'lucide-react';
 import type { SidebarData } from '../types';
 
@@ -94,6 +95,12 @@ export const sidebarData: SidebarData = {
           title: 'Solicitudes pendientes',
           url: '/inventario/reservas-pendientes',
           icon: ClipboardCheck,
+          roles: ['admin', 'jefe_taller'],
+        },
+        {
+          title: 'Reportes',
+          url: '/reportes',
+          icon: BarChart3,
           roles: ['admin', 'jefe_taller'],
         },
       ],

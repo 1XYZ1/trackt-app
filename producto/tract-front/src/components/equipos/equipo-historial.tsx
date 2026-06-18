@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { FileDown, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useHasRole } from "@/contexts/auth-context";
 import { useEquipoHistorial } from "@/hooks/use-equipos";
 import type { EquipoHistorial } from "@/lib/api/equipos";
+import { descargarHistorialEquipoCsv } from "@/lib/api/reportes";
 
 function fmt(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -65,11 +68,32 @@ export type EquipoHistorialProps = {
 export function EquipoHistorial({ equipoId }: EquipoHistorialProps) {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const isAdmin = useHasRole("admin");
+  const isJefe = useHasRole("jefe_taller");
+  const canExport = isAdmin || isJefe;
 
   const { data, error, isLoading } = useEquipoHistorial(equipoId, {
     desde: desde || undefined,
     hasta: hasta || undefined,
   });
+
+  const handleCsv = async () => {
+    if (!data) return;
+    setDownloading(true);
+    try {
+      await descargarHistorialEquipoCsv(equipoId, data.equipo.codigo, {
+        desde: desde || undefined,
+        hasta: hasta || undefined,
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No se pudo descargar el historial",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -109,6 +133,19 @@ export function EquipoHistorial({ equipoId }: EquipoHistorialProps) {
               variant="ghost"
             >
               Limpiar
+            </Button>
+          )}
+          {canExport && (
+            <Button
+              className="ml-auto"
+              disabled={!data}
+              loading={downloading}
+              onClick={handleCsv}
+              size="sm"
+              variant="outline"
+            >
+              <FileDown />
+              Historial CSV
             </Button>
           )}
         </CardContent>
