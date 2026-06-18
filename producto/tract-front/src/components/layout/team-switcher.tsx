@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar';
 import type { Team } from './types';
 
@@ -14,11 +15,16 @@ export function TeamSwitcher({ teams }: Props) {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <div className="flex items-center gap-2 rounded-md p-2 text-sm">
-          <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <activeTeam.logo className="size-4" />
-          </div>
-          <div className="grid flex-1 overflow-hidden text-left leading-tight">
+        <div className="flex h-11 items-center gap-3 rounded-lg p-2 text-sm transition-colors hover:bg-sidebar-accent/50 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <Image
+            alt="Trackt"
+            className="h-[50px] w-[50px] shrink-0 object-contain"
+            height={50}
+            priority
+            src="/trackt-sidebar-logo.png"
+            width={50}
+          />
+          <div className="grid flex-1 overflow-hidden text-left leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate font-semibold">{activeTeam.name}</span>
             <span className="truncate text-muted-foreground text-xs">
               {activeTeam.plan}
