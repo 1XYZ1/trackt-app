@@ -1,24 +1,12 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  useEffect,
-  useRef,
-  type ClipboardEvent,
-  type KeyboardEvent,
-} from "react";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { useEffect, useRef } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetClose,
@@ -34,36 +22,6 @@ import { useCreateRepuesto, useUpdateRepuesto } from "@/hooks/use-inventario";
 import type { Repuesto } from "@/lib/api/inventario";
 import { slugCodigo } from "@/lib/strings";
 
-const UNIDADES = ["unidad", "litro", "kg", "metro", "caja"] as const;
-const CATEGORIAS = [
-  "Motor",
-  "Filtros",
-  "Frenos",
-  "Eléctrico",
-  "Neumáticos",
-] as const;
-
-const requiredOption = <T extends readonly string[]>(
-  options: T,
-  message: string,
-) =>
-  z
-    .string()
-    .min(1, message)
-    .refine((value) => options.includes(value), message);
-
-const nonNegativeInteger = (
-  requiredMessage: string,
-  numberMessage: string,
-  negativeMessage: string,
-) =>
-  z
-    .string()
-    .trim()
-    .min(1, requiredMessage)
-    .refine((value) => /^-?\d+$/.test(value), numberMessage)
-    .refine((value) => Number(value) >= 0, negativeMessage);
-
 const schema = z.object({
   codigo: z
     .string()
@@ -72,18 +30,11 @@ const schema = z.object({
     .regex(/^[a-zA-Z0-9-]+$/, "Solo letras, numeros y guiones (sin espacios)"),
   nombre: z.string().min(1, "Nombre es obligatorio").max(120),
   descripcion: z.string().max(500).optional(),
-  categoria: requiredOption(CATEGORIAS, "La categoría es obligatoria."),
-  unidad: requiredOption(UNIDADES, "La unidad es obligatoria."),
-  stockMinimo: nonNegativeInteger(
-    "El stock mínimo es obligatorio.",
-    "El stock mínimo debe ser un número.",
-    "El stock mínimo no puede ser negativo.",
-  ),
-  stockInicial: nonNegativeInteger(
-    "El stock inicial es obligatorio.",
-    "El stock inicial debe ser un número.",
-    "El stock inicial no puede ser negativo.",
-  ),
+  categoria: z.string().max(60).optional(),
+  unidad: z.string().max(20).optional(),
+  // valueAsNumber en register convierte el string del <input type="number"> a number.
+  stockMinimo: z.number().int().min(0).optional(),
+  stockInicial: z.number().int().min(0).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -94,43 +45,9 @@ const EMPTY: FormValues = {
   descripcion: "",
   categoria: "",
   unidad: "unidad",
-  stockMinimo: "0",
-  stockInicial: "0",
+  stockMinimo: 0,
+  stockInicial: 0,
 };
-
-const integerNavigationKeys = new Set([
-  "Backspace",
-  "Delete",
-  "ArrowLeft",
-  "ArrowRight",
-  "ArrowUp",
-  "ArrowDown",
-  "Home",
-  "End",
-  "Tab",
-]);
-
-function handleIntegerKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-  if (event.ctrlKey || event.metaKey || event.altKey) return;
-  if (integerNavigationKeys.has(event.key)) return;
-  if (/^\d$/.test(event.key)) return;
-
-  const input = event.currentTarget;
-  const isMinusAtStart =
-    event.key === "-" && input.selectionStart === 0 && !input.value.includes("-");
-
-  if (!isMinusAtStart) {
-    event.preventDefault();
-  }
-}
-
-function handleIntegerPaste(event: ClipboardEvent<HTMLInputElement>) {
-  const pastedText = event.clipboardData.getData("text");
-
-  if (!/^-?\d+$/.test(pastedText)) {
-    event.preventDefault();
-  }
-}
 
 export type RepuestoFormSheetProps = {
   open: boolean;
@@ -149,16 +66,14 @@ export function RepuestoFormSheet({
 
   const {
     control,
-    formState: { errors, isValid },
+    formState: { errors },
     getValues,
     handleSubmit,
     register,
     reset,
     setValue,
-    trigger,
   } = useForm<FormValues>({
     defaultValues: EMPTY,
-    mode: "onChange",
     resolver: zodResolver(schema),
   });
 
@@ -178,15 +93,14 @@ export function RepuestoFormSheet({
         descripcion: repuesto.descripcion ?? "",
         categoria: repuesto.categoria ?? "",
         unidad: repuesto.unidad,
-        stockMinimo: String(repuesto.stockMinimo),
-        stockInicial: "0",
+        stockMinimo: repuesto.stockMinimo,
+        stockInicial: 0,
       });
     } else {
       lastAuto.current = ""; // create: volver a autogenerar
       reset(EMPTY);
     }
-    void trigger();
-  }, [repuesto, open, reset, trigger]);
+  }, [repuesto, open, reset]);
 
   // Autogenerar codigo desde el nombre (solo create, mientras no se haya
   // editado a mano: el codigo actual sigue siendo el ultimo autogenerado).
@@ -196,7 +110,7 @@ export function RepuestoFormSheet({
     if (actual !== "" && actual !== lastAuto.current) return; // editado a mano
     const next = slugCodigo(nombre ?? "");
     lastAuto.current = next;
-    setValue("codigo", next, { shouldValidate: true });
+    setValue("codigo", next, { shouldValidate: false });
   }, [nombre, isEdit, getValues, setValue]);
 
   const onSubmit = handleSubmit(async (values) => {
@@ -213,9 +127,9 @@ export function RepuestoFormSheet({
           codigo: values.codigo.trim().toUpperCase(),
           nombre: values.nombre.trim(),
           descripcion: optionalField(values.descripcion),
-          categoria: values.categoria,
-          unidad: values.unidad,
-          stockMinimo: Number(values.stockMinimo),
+          categoria: optionalField(values.categoria),
+          unidad: values.unidad?.trim() || undefined,
+          stockMinimo: values.stockMinimo ?? 0,
         };
         await updateRepuesto.mutateAsync({ id: repuesto.id, payload });
         toast.success("Repuesto actualizado");
@@ -224,13 +138,13 @@ export function RepuestoFormSheet({
           codigo: values.codigo.trim().toUpperCase(),
           nombre: values.nombre.trim(),
           descripcion: optionalField(values.descripcion) ?? undefined,
-          categoria: values.categoria,
-          unidad: values.unidad,
-          stockMinimo: Number(values.stockMinimo),
+          categoria: optionalField(values.categoria) ?? undefined,
+          unidad: values.unidad?.trim() || undefined,
+          stockMinimo: values.stockMinimo ?? 0,
         };
         await createRepuesto.mutateAsync({
           ...payload,
-          stockInicial: Number(values.stockInicial),
+          stockInicial: values.stockInicial ?? 0,
         });
         toast.success("Repuesto creado");
       }
@@ -292,37 +206,11 @@ export function RepuestoFormSheet({
                 <label className="font-medium text-sm" htmlFor="unidad">
                   Unidad
                 </label>
-                <Controller
-                  control={control}
-                  name="unidad"
-                  render={({ field }) => (
-                    <Select
-                      disabled={isPending}
-                      onValueChange={(value) => field.onChange(value ?? "")}
-                      value={field.value}
-                    >
-                      <SelectTrigger
-                        aria-invalid={Boolean(errors.unidad)}
-                        id="unidad"
-                        onBlur={field.onBlur}
-                      >
-                        <SelectValue placeholder="Selecciona una unidad" />
-                      </SelectTrigger>
-                      <SelectPopup>
-                        {UNIDADES.map((unidad) => (
-                          <SelectItem key={unidad} value={unidad}>
-                            {unidad}
-                          </SelectItem>
-                        ))}
-                      </SelectPopup>
-                    </Select>
-                  )}
+                <Input
+                  id="unidad"
+                  placeholder="unidad / litro / metro"
+                  {...register("unidad")}
                 />
-                {errors.unidad && (
-                  <p className="text-destructive text-xs">
-                    {errors.unidad.message}
-                  </p>
-                )}
               </div>
             </div>
 
@@ -359,37 +247,11 @@ export function RepuestoFormSheet({
                 <label className="font-medium text-sm" htmlFor="categoria">
                   Categoria
                 </label>
-                <Controller
-                  control={control}
-                  name="categoria"
-                  render={({ field }) => (
-                    <Select
-                      disabled={isPending}
-                      onValueChange={(value) => field.onChange(value ?? "")}
-                      value={field.value}
-                    >
-                      <SelectTrigger
-                        aria-invalid={Boolean(errors.categoria)}
-                        id="categoria"
-                        onBlur={field.onBlur}
-                      >
-                        <SelectValue placeholder="Selecciona categoria" />
-                      </SelectTrigger>
-                      <SelectPopup>
-                        {CATEGORIAS.map((categoria) => (
-                          <SelectItem key={categoria} value={categoria}>
-                            {categoria}
-                          </SelectItem>
-                        ))}
-                      </SelectPopup>
-                    </Select>
-                  )}
+                <Input
+                  id="categoria"
+                  placeholder="Motor"
+                  {...register("categoria")}
                 />
-                {errors.categoria && (
-                  <p className="text-destructive text-xs">
-                    {errors.categoria.message}
-                  </p>
-                )}
               </div>
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="stockMinimo">
@@ -397,17 +259,11 @@ export function RepuestoFormSheet({
                 </label>
                 <Input
                   id="stockMinimo"
-                  inputMode="numeric"
-                  onKeyDown={handleIntegerKeyDown}
-                  onPaste={handleIntegerPaste}
-                  type="text"
-                  {...register("stockMinimo")}
+                  min={0}
+                  step={1}
+                  type="number"
+                  {...register("stockMinimo", { valueAsNumber: true })}
                 />
-                {errors.stockMinimo && (
-                  <p className="text-destructive text-xs">
-                    {errors.stockMinimo.message}
-                  </p>
-                )}
               </div>
               {!isEdit && (
                 <div className="space-y-2">
@@ -416,17 +272,11 @@ export function RepuestoFormSheet({
                   </label>
                   <Input
                     id="stockInicial"
-                    inputMode="numeric"
-                    onKeyDown={handleIntegerKeyDown}
-                    onPaste={handleIntegerPaste}
-                    type="text"
-                    {...register("stockInicial")}
+                    min={0}
+                    step={1}
+                    type="number"
+                    {...register("stockInicial", { valueAsNumber: true })}
                   />
-                  {errors.stockInicial && (
-                    <p className="text-destructive text-xs">
-                      {errors.stockInicial.message}
-                    </p>
-                  )}
                 </div>
               )}
             </div>
@@ -435,12 +285,7 @@ export function RepuestoFormSheet({
 
         <SheetFooter>
           <SheetClose render={<Button variant="outline" />}>Cancelar</SheetClose>
-          <Button
-            disabled={!isValid}
-            form="repuesto-form"
-            loading={isPending}
-            type="submit"
-          >
+          <Button form="repuesto-form" loading={isPending} type="submit">
             {isEdit ? "Guardar cambios" : "Crear repuesto"}
           </Button>
         </SheetFooter>
