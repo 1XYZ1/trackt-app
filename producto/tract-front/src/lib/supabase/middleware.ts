@@ -3,6 +3,24 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/auth'];
 
+// Redirige a /login preservando el destino interno como ?redirect= para volver
+// tras autenticarse (ej. la página del QR /q/<token>). Solo rutas internas
+// seguras (empiezan con "/" pero no "//" — evita open-redirect a host externo).
+function redirectToLogin(request: NextRequest) {
+  const dest = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  const url = request.nextUrl.clone();
+  url.pathname = '/login';
+  url.search = '';
+  if (
+    dest.startsWith('/') &&
+    !dest.startsWith('//') &&
+    !dest.startsWith('/login')
+  ) {
+    url.searchParams.set('redirect', dest);
+  }
+  return NextResponse.redirect(url);
+}
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
@@ -19,9 +37,7 @@ export async function updateSession(request: NextRequest) {
     }
     if (isPublic) return response;
 
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return redirectToLogin(request);
   }
 
   const supabase = createServerClient(
@@ -50,14 +66,24 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return redirectToLogin(request);
   }
 
   if (user && (pathname.startsWith('/login') || pathname === '/')) {
+    // Honra ?redirect= (destino interno) para que el usuario autenticado que
+    // viene del QR aterrice en /q/<token> y no en /dashboard.
+    const target = request.nextUrl.searchParams.get('redirect');
+    const safe =
+      !!target && target.startsWith('/') && !target.startsWith('//');
     const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
+    url.search = '';
+    if (safe) {
+      const dest = new URL(target, request.url);
+      url.pathname = dest.pathname;
+      url.search = dest.search;
+    } else {
+      url.pathname = '/dashboard';
+    }
     return NextResponse.redirect(url);
   }
 
