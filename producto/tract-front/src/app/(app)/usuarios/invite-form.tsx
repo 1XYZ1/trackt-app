@@ -18,6 +18,9 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+const roleSelectClassName =
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24 dark:bg-input/32 dark:text-foreground dark:[color-scheme:dark] dark:[&_option]:bg-popover dark:[&_option]:text-foreground dark:[&_option:checked]:bg-accent dark:[&_option:checked]:text-accent-foreground dark:[&_option:hover]:bg-accent dark:[&_option:hover]:text-accent-foreground";
+
 export function InviteForm() {
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<
@@ -70,7 +73,7 @@ export function InviteForm() {
           <Label htmlFor="role">Rol</Label>
           <select
             id="role"
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+            className={roleSelectClassName}
             {...register('role')}
           >
             <option value="mechanic">Mecánico</option>
