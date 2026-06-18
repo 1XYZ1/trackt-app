@@ -19,7 +19,10 @@ interface Props {
   role: UserRole;
 }
 
-function filterByRole(role: UserRole, groups: NavGroupType[]): NavGroupType[] {
+export function filterByRole(
+  role: UserRole,
+  groups: NavGroupType[],
+): NavGroupType[] {
   const allow = (rolesAllowed?: UserRole[]) =>
     !rolesAllowed || rolesAllowed.includes(role);
 
