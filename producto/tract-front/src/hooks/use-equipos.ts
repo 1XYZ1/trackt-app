@@ -2,15 +2,19 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addEquipoRepuesto,
   createEquipo,
   desactivarEquipo,
   generarQr,
   getEquipo,
   getEquipoHistorial,
+  getEquipoRepuestos,
   getEquipoResumen,
   getEquipos,
   reactivarEquipo,
+  removeEquipoRepuesto,
   updateEquipo,
+  type AddEquipoRepuestoPayload,
   type CreateEquipoPayload,
   type EquiposFilters,
   type HistorialFiltros,
@@ -56,6 +60,42 @@ export function useGenerarQr() {
     onSuccess: async (_data, id) => {
       await queryClient.invalidateQueries({
         queryKey: ["equipos", "detalle", id],
+      });
+    },
+  });
+}
+
+export function useEquipoRepuestos(id: string) {
+  return useQuery({
+    enabled: Boolean(id),
+    queryFn: () => getEquipoRepuestos(id),
+    queryKey: ["equipos", "repuestos", id],
+  });
+}
+
+export function useAddEquipoRepuesto(equipoId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: AddEquipoRepuestoPayload) =>
+      addEquipoRepuesto(equipoId, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["equipos", "repuestos", equipoId],
+      });
+    },
+  });
+}
+
+export function useRemoveEquipoRepuesto(equipoId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (repuestoId: string) =>
+      removeEquipoRepuesto(equipoId, repuestoId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["equipos", "repuestos", equipoId],
       });
     },
   });

@@ -340,6 +340,83 @@ export async function getEquipoHistorial(
   return (await response.json()) as EquipoHistorial;
 }
 
+// ============================================================
+// Repuestos asociados al equipo (array plano, no paginado)
+// ============================================================
+
+export type EquipoRepuesto = {
+  id: string;
+  equipoId: string;
+  cantidadRef: number | null;
+  observacion: string | null;
+  createdAt: string;
+  repuesto: {
+    id: string;
+    codigo: string;
+    nombre: string;
+    unidad: string;
+    activo: boolean;
+    marcaId: string | null;
+    stockDisponible: number;
+  };
+};
+
+export type AddEquipoRepuestoPayload = {
+  repuestoId: string;
+  cantidadRef?: number;
+  observacion?: string;
+};
+
+export async function getEquipoRepuestos(
+  id: string,
+): Promise<EquipoRepuesto[]> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/${id}/repuestos`);
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudieron cargar los repuestos del equipo"),
+    );
+  }
+  return (await response.json()) as EquipoRepuesto[];
+}
+
+export async function addEquipoRepuesto(
+  id: string,
+  payload: AddEquipoRepuestoPayload,
+): Promise<EquipoRepuesto> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/${id}/repuestos`, {
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo asociar el repuesto"),
+    );
+  }
+  return (await response.json()) as EquipoRepuesto;
+}
+
+export async function removeEquipoRepuesto(
+  id: string,
+  repuestoId: string,
+): Promise<void> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(
+    `${API_BASE_URL}/equipos/${id}/repuestos/${repuestoId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo quitar el repuesto"),
+    );
+  }
+}
+
 export async function reactivarEquipo(id: string): Promise<Equipo> {
   assertApiBaseUrl();
 

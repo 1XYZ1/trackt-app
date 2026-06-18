@@ -5,4 +5,6 @@ export { EntradaStockDialog } from "./entrada-stock-dialog";
 export { NuevaReservaDialog } from "./nueva-reserva-dialog";
 export { RepuestoFormSheet } from "./repuesto-form-sheet";
 export type { RepuestoFormSheetProps } from "./repuesto-form-sheet";
+export { RepuestoSelect } from "./repuesto-select";
+export type { RepuestoSelectProps } from "./repuesto-select";
 export { ReservasSection } from "./reservas-section";

@@ -8,6 +8,12 @@ export type Repuesto = {
   categoria: string | null;
   unidad: string;
   stockMinimo: number;
+  // Campos extendidos (fase 2/3). marca resuelta + atributos de catálogo.
+  marca: { id: string; nombre: string } | null;
+  marcaId: string | null;
+  codigoFabricante: string | null;
+  ubicacionBodega: string | null;
+  proveedor: string | null;
   activo: boolean;
   metadata: unknown;
   stockActual: number;
@@ -92,9 +98,13 @@ export type CreateRepuestoPayload = {
   unidad?: string;
   stockMinimo?: number;
   stockInicial?: number;
+  marcaId?: string;
+  codigoFabricante?: string;
+  ubicacionBodega?: string;
+  proveedor?: string;
 };
 
-// descripcion / categoria aceptan null para limpiar el campo en BD.
+// descripcion / categoria / campos extendidos aceptan null para limpiar en BD.
 export type UpdateRepuestoPayload = {
   codigo?: string;
   nombre?: string;
@@ -103,6 +113,10 @@ export type UpdateRepuestoPayload = {
   unidad?: string;
   stockMinimo?: number;
   activo?: boolean;
+  marcaId?: string | null;
+  codigoFabricante?: string | null;
+  ubicacionBodega?: string | null;
+  proveedor?: string | null;
 };
 
 export type EntradaStockPayload = {

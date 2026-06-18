@@ -199,6 +199,16 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
           <div className="grid gap-3 text-sm md:grid-cols-2">
             <Field label="Categoria" value={repuesto.categoria ?? "—"} />
             <Field label="Unidad" value={repuesto.unidad} />
+            <Field label="Marca" value={repuesto.marca?.nombre ?? "—"} />
+            <Field
+              label="Codigo fabricante"
+              value={repuesto.codigoFabricante ?? "—"}
+            />
+            <Field
+              label="Ubicacion bodega"
+              value={repuesto.ubicacionBodega ?? "—"}
+            />
+            <Field label="Proveedor" value={repuesto.proveedor ?? "—"} />
             <Field
               label="Descripcion"
               value={repuesto.descripcion ?? "—"}

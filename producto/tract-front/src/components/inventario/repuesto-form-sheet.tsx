@@ -2,9 +2,10 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { MarcaSelect } from "@/components/marcas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,6 +36,10 @@ const schema = z.object({
   // valueAsNumber en register convierte el string del <input type="number"> a number.
   stockMinimo: z.number().int().min(0).optional(),
   stockInicial: z.number().int().min(0).optional(),
+  marcaId: z.string().optional(),
+  codigoFabricante: z.string().max(120).optional(),
+  ubicacionBodega: z.string().max(120).optional(),
+  proveedor: z.string().max(120).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -47,6 +52,10 @@ const EMPTY: FormValues = {
   unidad: "unidad",
   stockMinimo: 0,
   stockInicial: 0,
+  marcaId: "",
+  codigoFabricante: "",
+  ubicacionBodega: "",
+  proveedor: "",
 };
 
 export type RepuestoFormSheetProps = {
@@ -95,6 +104,10 @@ export function RepuestoFormSheet({
         unidad: repuesto.unidad,
         stockMinimo: repuesto.stockMinimo,
         stockInicial: 0,
+        marcaId: repuesto.marcaId ?? "",
+        codigoFabricante: repuesto.codigoFabricante ?? "",
+        ubicacionBodega: repuesto.ubicacionBodega ?? "",
+        proveedor: repuesto.proveedor ?? "",
       });
     } else {
       lastAuto.current = ""; // create: volver a autogenerar
@@ -130,6 +143,10 @@ export function RepuestoFormSheet({
           categoria: optionalField(values.categoria),
           unidad: values.unidad?.trim() || undefined,
           stockMinimo: values.stockMinimo ?? 0,
+          marcaId: optionalField(values.marcaId),
+          codigoFabricante: optionalField(values.codigoFabricante),
+          ubicacionBodega: optionalField(values.ubicacionBodega),
+          proveedor: optionalField(values.proveedor),
         };
         await updateRepuesto.mutateAsync({ id: repuesto.id, payload });
         toast.success("Repuesto actualizado");
@@ -141,6 +158,10 @@ export function RepuestoFormSheet({
           categoria: optionalField(values.categoria) ?? undefined,
           unidad: values.unidad?.trim() || undefined,
           stockMinimo: values.stockMinimo ?? 0,
+          marcaId: optionalField(values.marcaId) ?? undefined,
+          codigoFabricante: optionalField(values.codigoFabricante) ?? undefined,
+          ubicacionBodega: optionalField(values.ubicacionBodega) ?? undefined,
+          proveedor: optionalField(values.proveedor) ?? undefined,
         };
         await createRepuesto.mutateAsync({
           ...payload,
@@ -279,6 +300,54 @@ export function RepuestoFormSheet({
                   />
                 </div>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="font-medium text-sm">Marca</label>
+              <Controller
+                control={control}
+                name="marcaId"
+                render={({ field }) => (
+                  <MarcaSelect
+                    onChange={(id) => field.onChange(id ?? "")}
+                    tipo="REPUESTO"
+                    value={field.value || null}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="codigoFabricante">
+                  Codigo fabricante
+                </label>
+                <Input
+                  id="codigoFabricante"
+                  placeholder="OEM-123"
+                  {...register("codigoFabricante")}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="ubicacionBodega">
+                  Ubicacion bodega
+                </label>
+                <Input
+                  id="ubicacionBodega"
+                  placeholder="Pasillo A-3"
+                  {...register("ubicacionBodega")}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="proveedor">
+                  Proveedor
+                </label>
+                <Input
+                  id="proveedor"
+                  placeholder="Proveedor S.A."
+                  {...register("proveedor")}
+                />
+              </div>
             </div>
           </form>
         </SheetPanel>
