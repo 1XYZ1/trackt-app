@@ -1,10 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Loader2, Pencil, Plus, Power, PowerOff, Search, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
-import { DesactivarEquipoDialog, EquipoFormSheet } from "@/components/equipos";
+import {
+  DesactivarEquipoDialog,
+  EquipoFormSheet,
+  EstadoOperativoBadge,
+} from "@/components/equipos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -173,6 +178,7 @@ export function EquiposClient() {
                     <th className="px-5 py-3 font-semibold">Marca</th>
                     <th className="px-5 py-3 font-semibold">Modelo</th>
                     <th className="px-5 py-3 font-semibold">Ubicacion</th>
+                    <th className="px-5 py-3 font-semibold">Estado op.</th>
                     {includeInactive && (
                       <th className="px-5 py-3 font-semibold">Estado</th>
                     )}
@@ -189,7 +195,7 @@ export function EquiposClient() {
                       <td
                         className="px-5 py-14 text-center"
                         colSpan={
-                          5 + (includeInactive ? 1 : 0) + (isAdmin ? 1 : 0)
+                          6 + (includeInactive ? 1 : 0) + (isAdmin ? 1 : 0)
                         }
                       >
                         <EmptyState
@@ -210,9 +216,21 @@ export function EquiposClient() {
                         key={equipo.id}
                       >
                         <td className="whitespace-nowrap px-5 py-3.5 font-mono font-semibold text-xs">
-                          {equipo.codigo}
+                          <Link
+                            className="text-brand-primary hover:underline"
+                            href={`/equipos/${equipo.id}`}
+                          >
+                            {equipo.codigo}
+                          </Link>
                         </td>
-                        <td className="px-5 py-3.5 font-medium">{equipo.nombre}</td>
+                        <td className="px-5 py-3.5 font-medium">
+                          <Link
+                            className="hover:underline"
+                            href={`/equipos/${equipo.id}`}
+                          >
+                            {equipo.nombre}
+                          </Link>
+                        </td>
                         <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
                           {equipo.marca ?? "—"}
                         </td>
@@ -227,6 +245,9 @@ export function EquiposClient() {
                               —
                             </span>
                           )}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-3.5">
+                          <EstadoOperativoBadge estado={equipo.estadoOperativo} />
                         </td>
                         {includeInactive && (
                           <td className="whitespace-nowrap px-5 py-3.5">

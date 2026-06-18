@@ -1,35 +1,115 @@
 import { authFetch } from "@/lib/api/http";
 
+export type EquipoEstadoOperativo =
+  | "OPERATIVO"
+  | "EN_MANTENIMIENTO"
+  | "FUERA_DE_SERVICIO";
+
+// Item de LISTA (GET /equipos). estadoOperativo es NOT NULL en BD.
 export type Equipo = {
   id: string;
   codigo: string;
   nombre: string;
+  tipo: string | null;
   // Nullable en BD: el backend devuelve null si el campo se limpió.
   marca: string | null;
   modelo: string | null;
   ubicacion: string | null;
+  estadoOperativo: EquipoEstadoOperativo;
   activo?: boolean;
+};
+
+// DETALLE (GET /equipos/:id, qr, create/update). Superset de Equipo.
+export type EquipoDetalle = Equipo & {
+  numeroSerie: string | null;
+  fechaInstalacion: string | null;
+  fechaCompra: string | null;
+  qrToken: string | null;
+  metadata: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EquipoAlerta = {
+  tipo:
+    | "EQUIPO_INACTIVO"
+    | "FUERA_DE_SERVICIO"
+    | "EN_MANTENIMIENTO"
+    | "OT_PRIORIDAD_ALTA";
+  mensaje: string;
+};
+
+export type EquipoResumen = {
+  equipo: EquipoDetalle;
+  estadisticas: {
+    ordenesAbiertas: number;
+    ordenesCerradas: number;
+    ticketsActivos: number;
+    ticketsCerrados: number;
+    reservasActivas: number;
+    repuestosConsumidos: number;
+  };
+  ultimasOrdenes: Array<{
+    id: string;
+    codigo: string;
+    descripcion: string;
+    prioridad: string;
+    estado: string;
+    fechaCierre: string | null;
+    createdAt: string;
+  }>;
+  ultimosTickets: Array<{
+    id: string;
+    codigo: string;
+    titulo: string;
+    estado: string;
+    prioridad: string;
+    otId: string | null;
+    createdAt: string;
+  }>;
+  proximasProgramaciones: Array<{
+    id: string;
+    titulo: string;
+    fechaProgramada: string;
+    estado: string;
+    prioridad: string;
+    plantilla: { id: string; nombre: string } | null;
+  }>;
+  alertas: EquipoAlerta[];
 };
 
 // Límite de página del listado (sin UI de paginación todavía). Se expone para
 // que la UI pueda avisar cuando la lista se trunca.
-export const EQUIPOS_PAGE_LIMIT = 200;
+// Debe respetar @Max(100) del PaginationQueryDto del backend; pedir más devuelve 400.
+export const EQUIPOS_PAGE_LIMIT = 100;
 
 export type CreateEquipoPayload = {
   codigo: string;
   nombre: string;
+  tipo?: string;
   marca?: string;
   modelo?: string;
+  numeroSerie?: string;
   ubicacion?: string;
+  estadoOperativo?: EquipoEstadoOperativo;
+  // ISO string (Date en backend).
+  fechaInstalacion?: string;
+  fechaCompra?: string;
 };
 
 // Update permite null en campos opcionales para limpiarlos en BD.
+// estadoOperativo NO acepta null (es NOT NULL en BD).
 export type UpdateEquipoPayload = {
   codigo?: string;
   nombre?: string;
+  tipo?: string | null;
   marca?: string | null;
   modelo?: string | null;
+  numeroSerie?: string | null;
   ubicacion?: string | null;
+  estadoOperativo?: EquipoEstadoOperativo;
+  fechaInstalacion?: string | null;
+  fechaCompra?: string | null;
 };
 
 export type EquiposFilters = {
@@ -59,11 +139,15 @@ async function extractError(response: Response, fallback: string) {
   return fallback;
 }
 
-export async function getEquipos(
-  filters: EquiposFilters = {},
-): Promise<Equipo[]> {
-  assertApiBaseUrl();
+type PaginatedEquipos = {
+  data: Equipo[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+};
 
+async function fetchEquiposPage(
+  page: number,
+  filters: EquiposFilters,
+): Promise<PaginatedEquipos> {
   const params = new URLSearchParams();
   if (filters.includeInactive) {
     params.set("includeInactive", "true");
@@ -71,11 +155,10 @@ export async function getEquipos(
   if (filters.search) {
     params.set("search", filters.search);
   }
-  // Sin UI de paginación todavía: traemos hasta EQUIPOS_PAGE_LIMIT en una página.
+  params.set("page", String(page));
   params.set("limit", String(EQUIPOS_PAGE_LIMIT));
 
-  const url = `${API_BASE_URL}/equipos${params.toString() ? `?${params.toString()}` : ""}`;
-  const response = await authFetch(url);
+  const response = await authFetch(`${API_BASE_URL}/equipos?${params.toString()}`);
 
   if (!response.ok) {
     throw new Error(
@@ -83,8 +166,48 @@ export async function getEquipos(
     );
   }
 
-  const result = (await response.json()) as { data: Equipo[] };
-  return result.data;
+  return (await response.json()) as PaginatedEquipos;
+}
+
+// Trae todos los equipos recorriendo las páginas (limit<=100 por @Max del backend).
+export async function getEquipos(
+  filters: EquiposFilters = {},
+): Promise<Equipo[]> {
+  assertApiBaseUrl();
+
+  const first = await fetchEquiposPage(1, filters);
+  if (first.meta.totalPages <= 1) return first.data;
+
+  const restPages = Array.from(
+    { length: first.meta.totalPages - 1 },
+    (_, i) => i + 2,
+  );
+  const rest = await Promise.all(restPages.map((p) => fetchEquiposPage(p, filters)));
+  return [first.data, ...rest.map((r) => r.data)].flat();
+}
+
+export async function getEquipo(id: string): Promise<EquipoDetalle> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/${id}`);
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo cargar el equipo"),
+    );
+  }
+  return (await response.json()) as EquipoDetalle;
+}
+
+export async function getEquipoResumen(id: string): Promise<EquipoResumen> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/${id}/resumen`);
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo cargar el resumen del equipo"),
+    );
+  }
+  return (await response.json()) as EquipoResumen;
 }
 
 export async function reactivarEquipo(id: string): Promise<Equipo> {

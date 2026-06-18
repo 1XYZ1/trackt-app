@@ -2,11 +2,12 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Sheet,
   SheetClose,
@@ -17,8 +18,9 @@ import {
   SheetPopup,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useCreateEquipo, useUpdateEquipo } from "@/hooks/use-equipos";
-import type { Equipo } from "@/lib/api/equipos";
+import { useCreateEquipo, useEquipo, useUpdateEquipo } from "@/hooks/use-equipos";
+import type { Equipo, EquipoEstadoOperativo } from "@/lib/api/equipos";
+import { cn } from "@/lib/utils";
 
 const equipoSchema = z.object({
   codigo: z
@@ -29,9 +31,19 @@ const equipoSchema = z.object({
     .string()
     .min(1, "El nombre es obligatorio")
     .max(120, "Maximo 120 caracteres"),
+  tipo: z.string().max(60, "Maximo 60 caracteres").optional(),
   marca: z.string().max(60, "Maximo 60 caracteres").optional(),
   modelo: z.string().max(60, "Maximo 60 caracteres").optional(),
+  numeroSerie: z.string().max(120, "Maximo 120 caracteres").optional(),
   ubicacion: z.string().max(120, "Maximo 120 caracteres").optional(),
+  estadoOperativo: z.enum([
+    "OPERATIVO",
+    "EN_MANTENIMIENTO",
+    "FUERA_DE_SERVICIO",
+  ]),
+  // input type=date -> "YYYY-MM-DD" (o "")
+  fechaInstalacion: z.string().optional(),
+  fechaCompra: z.string().optional(),
 });
 
 type EquipoFormValues = z.infer<typeof equipoSchema>;
@@ -39,10 +51,25 @@ type EquipoFormValues = z.infer<typeof equipoSchema>;
 const EMPTY_VALUES: EquipoFormValues = {
   codigo: "",
   nombre: "",
+  tipo: "",
   marca: "",
   modelo: "",
+  numeroSerie: "",
   ubicacion: "",
+  estadoOperativo: "OPERATIVO",
+  fechaInstalacion: "",
+  fechaCompra: "",
 };
+
+const ESTADOS: { label: string; value: EquipoEstadoOperativo }[] = [
+  { label: "Operativo", value: "OPERATIVO" },
+  { label: "En mantenimiento", value: "EN_MANTENIMIENTO" },
+  { label: "Fuera de servicio", value: "FUERA_DE_SERVICIO" },
+];
+
+// "YYYY-MM-DD" para <input type=date> a partir de un ISO del backend.
+const toDateInput = (iso: string | null | undefined) =>
+  iso ? iso.slice(0, 10) : "";
 
 export type EquipoFormSheetProps = {
   open: boolean;
@@ -59,7 +86,13 @@ export function EquipoFormSheet({
   const updateEquipo = useUpdateEquipo();
   const isEdit = Boolean(equipo);
 
+  // Carga el detalle completo al editar: la lista no trae numeroSerie/fechas,
+  // y enviarlos vacíos los limpiaría. Sólo se dispara con el sheet abierto.
+  const detalleQuery = useEquipo(open && equipo ? equipo.id : "");
+  const detalle = detalleQuery.data;
+
   const {
+    control,
     formState: { errors },
     handleSubmit,
     register,
@@ -69,21 +102,25 @@ export function EquipoFormSheet({
     resolver: zodResolver(equipoSchema),
   });
 
-  // Cargar valores del equipo al abrir en modo edicion; limpiar al cerrar/crear.
   useEffect(() => {
     if (!open) return;
-    if (equipo) {
+    if (equipo && detalle) {
       reset({
-        codigo: equipo.codigo ?? "",
-        nombre: equipo.nombre ?? "",
-        marca: equipo.marca ?? "",
-        modelo: equipo.modelo ?? "",
-        ubicacion: equipo.ubicacion ?? "",
+        codigo: detalle.codigo ?? "",
+        nombre: detalle.nombre ?? "",
+        tipo: detalle.tipo ?? "",
+        marca: detalle.marca ?? "",
+        modelo: detalle.modelo ?? "",
+        numeroSerie: detalle.numeroSerie ?? "",
+        ubicacion: detalle.ubicacion ?? "",
+        estadoOperativo: detalle.estadoOperativo,
+        fechaInstalacion: toDateInput(detalle.fechaInstalacion),
+        fechaCompra: toDateInput(detalle.fechaCompra),
       });
-    } else {
+    } else if (!equipo) {
       reset(EMPTY_VALUES);
     }
-  }, [equipo, open, reset]);
+  }, [equipo, detalle, open, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
     // En edit, string vacio = limpiar campo → enviar null. En create, omitir.
@@ -95,24 +132,35 @@ export function EquipoFormSheet({
 
     try {
       if (isEdit && equipo) {
-        const payload = {
-          codigo: values.codigo.trim(),
-          nombre: values.nombre.trim(),
-          marca: optionalField(values.marca),
-          modelo: optionalField(values.modelo),
-          ubicacion: optionalField(values.ubicacion),
-        };
-        await updateEquipo.mutateAsync({ id: equipo.id, payload });
+        await updateEquipo.mutateAsync({
+          id: equipo.id,
+          payload: {
+            codigo: values.codigo.trim(),
+            nombre: values.nombre.trim(),
+            tipo: optionalField(values.tipo),
+            marca: optionalField(values.marca),
+            modelo: optionalField(values.modelo),
+            numeroSerie: optionalField(values.numeroSerie),
+            ubicacion: optionalField(values.ubicacion),
+            estadoOperativo: values.estadoOperativo,
+            fechaInstalacion: optionalField(values.fechaInstalacion),
+            fechaCompra: optionalField(values.fechaCompra),
+          },
+        });
         toast.success("Equipo actualizado");
       } else {
-        const payload = {
+        await createEquipo.mutateAsync({
           codigo: values.codigo.trim(),
           nombre: values.nombre.trim(),
+          tipo: optionalField(values.tipo) ?? undefined,
           marca: optionalField(values.marca) ?? undefined,
           modelo: optionalField(values.modelo) ?? undefined,
+          numeroSerie: optionalField(values.numeroSerie) ?? undefined,
           ubicacion: optionalField(values.ubicacion) ?? undefined,
-        };
-        await createEquipo.mutateAsync(payload);
+          estadoOperativo: values.estadoOperativo,
+          fechaInstalacion: optionalField(values.fechaInstalacion) ?? undefined,
+          fechaCompra: optionalField(values.fechaCompra) ?? undefined,
+        });
         toast.success("Equipo creado");
       }
       reset(EMPTY_VALUES);
@@ -144,20 +192,29 @@ export function EquipoFormSheet({
 
         <SheetPanel>
           <form className="space-y-5" id="equipo-form" onSubmit={onSubmit}>
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="codigo">
-                Codigo
-              </label>
-              <Input
-                id="codigo"
-                placeholder="EQ-001"
-                {...register("codigo")}
-              />
-              {errors.codigo && (
-                <p className="text-destructive text-xs">
-                  {errors.codigo.message}
-                </p>
-              )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="codigo">
+                  Codigo
+                </label>
+                <Input id="codigo" placeholder="EQ-001" {...register("codigo")} />
+                {errors.codigo && (
+                  <p className="text-destructive text-xs">
+                    {errors.codigo.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="tipo">
+                  Tipo
+                </label>
+                <Input id="tipo" placeholder="Excavadora" {...register("tipo")} />
+                {errors.tipo && (
+                  <p className="text-destructive text-xs">
+                    {errors.tipo.message}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -201,20 +258,89 @@ export function EquipoFormSheet({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="ubicacion">
-                Ubicacion
-              </label>
-              <Input
-                id="ubicacion"
-                placeholder="Mina norte"
-                {...register("ubicacion")}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="numeroSerie">
+                  N° de serie
+                </label>
+                <Input
+                  id="numeroSerie"
+                  placeholder="SN-12345"
+                  {...register("numeroSerie")}
+                />
+                {errors.numeroSerie && (
+                  <p className="text-destructive text-xs">
+                    {errors.numeroSerie.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="ubicacion">
+                  Ubicacion
+                </label>
+                <Input
+                  id="ubicacion"
+                  placeholder="Mina norte"
+                  {...register("ubicacion")}
+                />
+                {errors.ubicacion && (
+                  <p className="text-destructive text-xs">
+                    {errors.ubicacion.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="fechaInstalacion">
+                  Fecha de instalación
+                </label>
+                <Input
+                  id="fechaInstalacion"
+                  type="date"
+                  {...register("fechaInstalacion")}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="fechaCompra">
+                  Fecha de compra
+                </label>
+                <Input
+                  id="fechaCompra"
+                  type="date"
+                  {...register("fechaCompra")}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="font-medium text-sm">Estado operativo</label>
+              <Controller
+                control={control}
+                name="estadoOperativo"
+                render={({ field }) => (
+                  <RadioGroup
+                    className="grid gap-2 sm:grid-cols-3"
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    {ESTADOS.map((estado) => (
+                      <label
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-secondary/20 p-3 text-sm transition-colors hover:bg-secondary/40",
+                          field.value === estado.value &&
+                            "border-brand-primary/50 bg-brand-primary/10",
+                        )}
+                        key={estado.value}
+                      >
+                        <RadioGroupItem value={estado.value} />
+                        {estado.label}
+                      </label>
+                    ))}
+                  </RadioGroup>
+                )}
               />
-              {errors.ubicacion && (
-                <p className="text-destructive text-xs">
-                  {errors.ubicacion.message}
-                </p>
-              )}
             </div>
           </form>
         </SheetPanel>

@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createEquipo,
   desactivarEquipo,
+  getEquipo,
+  getEquipoResumen,
   getEquipos,
   reactivarEquipo,
   updateEquipo,
@@ -16,6 +18,22 @@ export function useEquipos(filters: EquiposFilters = {}) {
   return useQuery({
     queryFn: () => getEquipos(filters),
     queryKey: ["equipos", filters],
+  });
+}
+
+export function useEquipo(id: string) {
+  return useQuery({
+    enabled: Boolean(id),
+    queryFn: () => getEquipo(id),
+    queryKey: ["equipos", "detalle", id],
+  });
+}
+
+export function useEquipoResumen(id: string) {
+  return useQuery({
+    enabled: Boolean(id),
+    queryFn: () => getEquipoResumen(id),
+    queryKey: ["equipos", "resumen", id],
   });
 }
 
