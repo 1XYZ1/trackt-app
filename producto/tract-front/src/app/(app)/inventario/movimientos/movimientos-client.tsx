@@ -27,6 +27,9 @@ const TIPOS: MovimientoTipo[] = [
   "CONSUMO",
 ];
 
+const filterSelectClassName =
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24 dark:bg-input/32 dark:text-foreground dark:[color-scheme:dark] dark:[&_option]:bg-popover dark:[&_option]:text-foreground dark:[&_option:checked]:bg-accent dark:[&_option:checked]:text-accent-foreground dark:[&_option:hover]:bg-accent dark:[&_option:hover]:text-accent-foreground";
+
 function tipoBadgeVariant(
   tipo: MovimientoTipo,
 ): "default" | "secondary" | "outline" | "error" | "warning" {
@@ -106,7 +109,7 @@ export function MovimientosClient() {
                 Repuesto
               </label>
               <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+                className={filterSelectClassName}
                 onChange={(e) => setRepuestoId(e.target.value)}
                 value={repuestoId}
               >
@@ -124,7 +127,7 @@ export function MovimientosClient() {
                 Tipo
               </label>
               <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+                className={filterSelectClassName}
                 onChange={(e) => setTipo(e.target.value as MovimientoTipo | "")}
                 value={tipo}
               >
