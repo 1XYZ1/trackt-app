@@ -9,7 +9,6 @@ export type User = {
 
 export type Team = {
   name: string;
-  logo: React.ElementType;
   plan: string;
 };
 

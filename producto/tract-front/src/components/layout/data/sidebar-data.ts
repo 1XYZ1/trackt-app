@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Users,
   UserCog,
-  Command,
   Gauge,
   Package,
   History,
@@ -19,7 +18,6 @@ export const sidebarData: SidebarData = {
   teams: [
     {
       name: 'Trackt',
-      logo: Command,
       plan: 'Gestion de equipos',
     },
   ],
