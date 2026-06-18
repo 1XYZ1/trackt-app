@@ -6,8 +6,8 @@ import { z } from 'zod';
 import { createClient } from '../../lib/supabase/server';
 
 const loginSchema = z.object({
-  email: z.string().email('Correo invalido'),
-  password: z.string().min(1, 'Contrasena requerida'),
+  email: z.string().email('Correo inválido'),
+  password: z.string().min(1, 'Contraseña requerida'),
 });
 
 export async function login(formData: FormData) {
@@ -16,7 +16,7 @@ export async function login(formData: FormData) {
     password: formData.get('password'),
   });
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message ?? 'Datos invalidos';
+    const msg = parsed.error.issues[0]?.message ?? 'Datos inválidos';
     redirect(`/login?error=${encodeURIComponent(msg)}`);
   }
 
@@ -38,7 +38,7 @@ export async function logout() {
 }
 
 const forgotSchema = z.object({
-  email: z.string().email('Correo invalido'),
+  email: z.string().email('Correo inválido'),
 });
 
 async function resolveOrigin(): Promise<string> {
@@ -60,7 +60,7 @@ async function resolveOrigin(): Promise<string> {
 export async function forgotPassword(formData: FormData) {
   const parsed = forgotSchema.safeParse({ email: formData.get('email') });
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message ?? 'Datos invalidos';
+    const msg = parsed.error.issues[0]?.message ?? 'Datos inválidos';
     redirect(`/forgot-password?error=${encodeURIComponent(msg)}`);
   }
 
@@ -85,7 +85,7 @@ export async function forgotPassword(formData: FormData) {
 
 const resetSchema = z
   .object({
-    password: z.string().min(8, 'Minimo 8 caracteres'),
+    password: z.string().min(8, 'Mínimo 8 caracteres'),
     passwordConfirm: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirm, {
@@ -99,7 +99,7 @@ export async function resetPassword(formData: FormData) {
     passwordConfirm: formData.get('passwordConfirm'),
   });
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message ?? 'Datos invalidos';
+    const msg = parsed.error.issues[0]?.message ?? 'Datos inválidos';
     redirect(`/reset-password?error=${encodeURIComponent(msg)}`);
   }
 
@@ -110,7 +110,7 @@ export async function resetPassword(formData: FormData) {
   if (!user) {
     redirect(
       `/login?error=${encodeURIComponent(
-        'Sesion de recuperacion invalida o expirada',
+        'Sesión de recuperación inválida o expirada',
       )}`,
     );
   }
@@ -125,7 +125,7 @@ export async function resetPassword(formData: FormData) {
   await supabase.auth.signOut();
   redirect(
     `/login?message=${encodeURIComponent(
-      'Contraseña actualizada. Inicia sesion con la nueva clave.',
+      'Contraseña actualizada. Inicia sesión con la nueva clave.',
     )}`,
   );
 }

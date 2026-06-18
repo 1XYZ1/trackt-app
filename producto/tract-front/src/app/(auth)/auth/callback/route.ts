@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
 
   if (!code) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent('Codigo invalido')}`,
+      `${origin}/login?error=${encodeURIComponent('Código inválido')}`,
     );
   }
 
