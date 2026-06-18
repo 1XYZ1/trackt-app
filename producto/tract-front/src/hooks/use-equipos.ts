@@ -2,16 +2,19 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addEquipoPlantilla,
   addEquipoRepuesto,
   createEquipo,
   desactivarEquipo,
   generarQr,
   getEquipo,
   getEquipoHistorial,
+  getEquipoPlantillas,
   getEquipoRepuestos,
   getEquipoResumen,
   getEquipos,
   reactivarEquipo,
+  removeEquipoPlantilla,
   removeEquipoRepuesto,
   updateEquipo,
   type AddEquipoRepuestoPayload,
@@ -96,6 +99,42 @@ export function useRemoveEquipoRepuesto(equipoId: string) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ["equipos", "repuestos", equipoId],
+      });
+    },
+  });
+}
+
+export function useEquipoPlantillas(equipoId: string) {
+  return useQuery({
+    enabled: Boolean(equipoId),
+    queryFn: () => getEquipoPlantillas(equipoId),
+    queryKey: ["equipos", "plantillas", equipoId],
+  });
+}
+
+export function useAddEquipoPlantilla(equipoId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (plantillaId: string) =>
+      addEquipoPlantilla(equipoId, plantillaId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["equipos", "plantillas", equipoId],
+      });
+    },
+  });
+}
+
+export function useRemoveEquipoPlantilla(equipoId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (plantillaId: string) =>
+      removeEquipoPlantilla(equipoId, plantillaId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["equipos", "plantillas", equipoId],
       });
     },
   });

@@ -6,6 +6,8 @@ export { EquipoHistorial } from "./equipo-historial";
 export type { EquipoHistorialProps } from "./equipo-historial";
 export { EquipoRepuestos } from "./equipo-repuestos";
 export type { EquipoRepuestosProps } from "./equipo-repuestos";
+export { EquipoPlantillas } from "./equipo-plantillas";
+export type { EquipoPlantillasProps } from "./equipo-plantillas";
 export { QrDialog } from "./qr-dialog";
 export type { QrDialogProps } from "./qr-dialog";
 export { EquipoFormSheet } from "./equipo-form-sheet";

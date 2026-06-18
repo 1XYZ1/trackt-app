@@ -417,6 +417,76 @@ export async function removeEquipoRepuesto(
   }
 }
 
+// ============================================================
+// Plantillas asociadas al equipo (array plano, no paginado)
+// ============================================================
+
+export type EquipoPlantilla = {
+  id: string;
+  equipoId: string;
+  createdAt: string;
+  plantilla: {
+    id: string;
+    nombre: string;
+    descripcion: string | null;
+    tipoEquipo: string | null;
+    frecuencia: string | null;
+    activo: boolean;
+    itemsCount: number;
+  };
+};
+
+export async function getEquipoPlantillas(
+  equipoId: string,
+): Promise<EquipoPlantilla[]> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(
+    `${API_BASE_URL}/equipos/${equipoId}/plantillas`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudieron cargar las plantillas del equipo"),
+    );
+  }
+  return (await response.json()) as EquipoPlantilla[];
+}
+
+export async function addEquipoPlantilla(
+  equipoId: string,
+  plantillaId: string,
+): Promise<EquipoPlantilla> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(
+    `${API_BASE_URL}/equipos/${equipoId}/plantillas/${plantillaId}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo asociar la plantilla"),
+    );
+  }
+  return (await response.json()) as EquipoPlantilla;
+}
+
+export async function removeEquipoPlantilla(
+  equipoId: string,
+  plantillaId: string,
+): Promise<void> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(
+    `${API_BASE_URL}/equipos/${equipoId}/plantillas/${plantillaId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo quitar la plantilla"),
+    );
+  }
+}
+
 export async function reactivarEquipo(id: string): Promise<Equipo> {
   assertApiBaseUrl();
 

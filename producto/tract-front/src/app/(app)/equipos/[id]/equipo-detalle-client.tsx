@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/core";
 import {
   EquipoFormSheet,
   EquipoHistorial,
+  EquipoPlantillas,
   EquipoRepuestos,
   EstadoOperativoBadge,
   QrDialog,
@@ -361,7 +362,7 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
           <EquipoRepuestos equipoId={id} />
         </TabsPanel>
         <TabsPanel className="mt-4" value="plantillas">
-          <PanelPlaceholder titulo="Plantillas aplicables" />
+          <EquipoPlantillas equipoId={id} />
         </TabsPanel>
         <TabsPanel className="mt-4" value="programaciones">
           <PanelPlaceholder titulo="Programaciones" />
