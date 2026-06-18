@@ -134,6 +134,7 @@ export type AprobarReservaPayload = {
 export type RepuestosFilters = {
   search?: string;
   categoria?: string;
+  marcaId?: string;
   bajoStock?: boolean;
   includeInactive?: boolean;
 };
@@ -194,16 +195,19 @@ async function extractError(response: Response, fallback: string) {
 // Repuestos
 // ============================================================
 
-export async function getRepuestos(
-  filters: RepuestosFilters = {},
-): Promise<Repuesto[]> {
-  assertApiBaseUrl();
+async function fetchRepuestosPage(
+  page: number,
+  filters: RepuestosFilters,
+): Promise<Paginated<Repuesto>> {
   const qs = new URLSearchParams();
   if (filters.search) qs.set("search", filters.search);
   if (filters.categoria) qs.set("categoria", filters.categoria);
+  if (filters.marcaId) qs.set("marcaId", filters.marcaId);
   if (filters.bajoStock) qs.set("bajoStock", "true");
   if (filters.includeInactive) qs.set("includeInactive", "true");
-  qs.set("limit", "200");
+  qs.set("page", String(page));
+  // Respeta @Max(100) del backend; pedir más devuelve 400.
+  qs.set("limit", "100");
 
   const response = await authFetch(
     `${API_BASE_URL}/inventario/repuestos?${qs.toString()}`,
@@ -211,8 +215,25 @@ export async function getRepuestos(
   if (!response.ok) {
     throw new Error("No se pudieron cargar los repuestos");
   }
-  const result = (await response.json()) as Paginated<Repuesto>;
-  return result.data;
+  return (await response.json()) as Paginated<Repuesto>;
+}
+
+// Trae todos los repuestos recorriendo las páginas (limit<=100 por @Max del backend).
+export async function getRepuestos(
+  filters: RepuestosFilters = {},
+): Promise<Repuesto[]> {
+  assertApiBaseUrl();
+  const first = await fetchRepuestosPage(1, filters);
+  if (first.meta.totalPages <= 1) return first.data;
+
+  const restPages = Array.from(
+    { length: first.meta.totalPages - 1 },
+    (_, i) => i + 2,
+  );
+  const rest = await Promise.all(
+    restPages.map((p) => fetchRepuestosPage(p, filters)),
+  );
+  return [first.data, ...rest.map((r) => r.data)].flat();
 }
 
 export async function getRepuestoById(id: string): Promise<RepuestoDetalle> {
