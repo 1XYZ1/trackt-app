@@ -1,5 +1,17 @@
 export { DesactivarEquipoDialog } from "./desactivar-equipo-dialog";
 export type { DesactivarEquipoDialogProps } from "./desactivar-equipo-dialog";
+export { EstadoOperativoBadge, ESTADO_OPERATIVO_LABEL } from "./estado-operativo-badge";
+export type { EstadoOperativoBadgeProps } from "./estado-operativo-badge";
+export { EquipoHistorial } from "./equipo-historial";
+export type { EquipoHistorialProps } from "./equipo-historial";
+export { EquipoRepuestos } from "./equipo-repuestos";
+export type { EquipoRepuestosProps } from "./equipo-repuestos";
+export { EquipoPlantillas } from "./equipo-plantillas";
+export type { EquipoPlantillasProps } from "./equipo-plantillas";
+export { EquipoProgramaciones } from "./equipo-programaciones";
+export type { EquipoProgramacionesProps } from "./equipo-programaciones";
+export { QrDialog } from "./qr-dialog";
+export type { QrDialogProps } from "./qr-dialog";
 export { EquipoFormSheet } from "./equipo-form-sheet";
 export type { EquipoFormSheetProps } from "./equipo-form-sheet";
 export { EquipoSelect } from "./equipo-select";

@@ -1,68 +1,78 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, Power, PowerOff, Search, Truck } from "lucide-react";
+import { Loader2, Pencil, Plus, Power, PowerOff, Search, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
-import {
-  DesactivarEquipoDialog,
-  EquipoFormSheet,
-  EstadoOperativoBadge,
-} from "@/components/equipos";
+import { DesactivarMarcaDialog, MarcaFormSheet } from "@/components/marcas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useHasRole } from "@/contexts/auth-context";
-import { useEquipos, useReactivarEquipo } from "@/hooks/use-equipos";
-import { EQUIPOS_PAGE_LIMIT, type Equipo } from "@/lib/api/equipos";
+import { useMarcas, useReactivarMarca } from "@/hooks/use-marcas";
+import type { Marca, MarcaTipo } from "@/lib/api/marcas";
+import { cn } from "@/lib/utils";
 
-export function EquiposClient() {
+const TIPO_LABEL: Record<MarcaTipo, string> = {
+  AMBOS: "Ambos",
+  EQUIPO: "Equipo",
+  REPUESTO: "Repuesto",
+};
+
+type TipoFilter = "TODOS" | MarcaTipo;
+
+const TIPO_FILTERS: { label: string; value: TipoFilter }[] = [
+  { label: "Todos", value: "TODOS" },
+  { label: "Equipo", value: "EQUIPO" },
+  { label: "Repuesto", value: "REPUESTO" },
+  { label: "Ambos", value: "AMBOS" },
+];
+
+export function MarcasClient() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [tipoFilter, setTipoFilter] = useState<TipoFilter>("TODOS");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Equipo | null>(null);
-  const [toDeactivate, setToDeactivate] = useState<Equipo | null>(null);
+  const [editing, setEditing] = useState<Marca | null>(null);
+  const [toDeactivate, setToDeactivate] = useState<Marca | null>(null);
   const [reactivarId, setReactivarId] = useState<string | null>(null);
 
   const isAdmin = useHasRole("admin");
-  const reactivar = useReactivarEquipo();
+  const reactivar = useReactivarMarca();
 
-  const handleReactivar = (equipo: Equipo) => {
-    setReactivarId(equipo.id);
-    reactivar.mutate(equipo.id, {
-      onSuccess: () => toast.success(`Equipo ${equipo.codigo} reactivado`),
+  const handleReactivar = (marca: Marca) => {
+    setReactivarId(marca.id);
+    reactivar.mutate(marca.id, {
+      onSuccess: () => toast.success(`Marca ${marca.nombre} reactivada`),
       onError: (err) =>
         toast.error(
-          err instanceof Error ? err.message : "No se pudo reactivar el equipo",
+          err instanceof Error ? err.message : "No se pudo reactivar la marca",
         ),
       onSettled: () => setReactivarId(null),
     });
   };
 
-  // Debounce 300ms para que el search server-side no dispare a cada tecla.
   useEffect(() => {
     const trimmed = query.trim();
     const t = setTimeout(() => setDebouncedQuery(trimmed), 300);
     return () => clearTimeout(t);
   }, [query]);
 
-  const { data: equipos = [], error, isLoading } = useEquipos({
+  const { data: marcas = [], error, isLoading } = useMarcas({
     includeInactive,
     search: debouncedQuery || undefined,
+    tipo: tipoFilter === "TODOS" ? undefined : tipoFilter,
   });
-
-  const filteredEquipos = equipos;
 
   const openCreate = () => {
     setEditing(null);
     setFormOpen(true);
   };
 
-  const openEdit = (equipo: Equipo) => {
-    setEditing(equipo);
+  const openEdit = (marca: Marca) => {
+    setEditing(marca);
     setFormOpen(true);
   };
 
@@ -76,12 +86,12 @@ export function EquiposClient() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-            <Truck className="size-3.5" />
-            Flota operacional
+            <Tag className="size-3.5" />
+            Catálogo
           </div>
-          <h1 className="font-semibold text-2xl tracking-tight">Equipos</h1>
+          <h1 className="font-semibold text-2xl tracking-tight">Marcas</h1>
           <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-            Listado de equipos operacionales registrados para mantenimiento.
+            Marcas reutilizables para equipos y repuestos.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -90,7 +100,7 @@ export function EquiposClient() {
             <Input
               className="pl-7"
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar codigo, nombre o ubicacion"
+              placeholder="Buscar marca"
               type="search"
               value={query}
             />
@@ -98,45 +108,55 @@ export function EquiposClient() {
           {isAdmin && (
             <Button onClick={openCreate} size="sm">
               <Plus />
-              Agregar equipo
+              Agregar marca
             </Button>
           )}
         </div>
       </div>
 
       <Card className="rounded-lg border-border/70">
-        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0 pb-3">
-          <div>
-            <CardTitle className="text-base">Equipos registrados</CardTitle>
-            <p className="text-muted-foreground text-xs">
-              {filteredEquipos.length} resultado
-              {filteredEquipos.length === 1 ? "" : "s"} disponibles.
-              {equipos.length >= EQUIPOS_PAGE_LIMIT && (
-                <span className="text-warning-foreground">
-                  {" "}
-                  Mostrando los primeros {EQUIPOS_PAGE_LIMIT}; refina la busqueda
-                  para ver el resto.
-                </span>
-              )}
-            </p>
+        <CardHeader className="flex-col items-stretch gap-3 space-y-0 pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Marcas registradas</CardTitle>
+              <p className="text-muted-foreground text-xs">
+                {marcas.length} resultado{marcas.length === 1 ? "" : "s"}.
+              </p>
+            </div>
+            {isAdmin && (
+              <label className="flex items-center gap-2 text-muted-foreground text-xs">
+                <input
+                  checked={includeInactive}
+                  className="size-3.5"
+                  onChange={(event) => setIncludeInactive(event.target.checked)}
+                  type="checkbox"
+                />
+                Incluir inactivas
+              </label>
+            )}
           </div>
-          {isAdmin && (
-            <label className="flex items-center gap-2 text-muted-foreground text-xs">
-              <input
-                checked={includeInactive}
-                className="size-3.5"
-                onChange={(event) => setIncludeInactive(event.target.checked)}
-                type="checkbox"
-              />
-              Incluir inactivos
-            </label>
-          )}
+          <div className="flex flex-wrap gap-1.5">
+            {TIPO_FILTERS.map((filter) => (
+              <button
+                className={cn(
+                  "rounded-full border border-border px-3 py-1 text-xs transition-colors hover:bg-secondary/60",
+                  tipoFilter === filter.value &&
+                    "border-brand-primary/50 bg-brand-primary/10 text-foreground",
+                )}
+                key={filter.value}
+                onClick={() => setTipoFilter(filter.value)}
+                type="button"
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading && (
             <div className="flex items-center gap-2 px-5 py-16 text-muted-foreground text-sm">
               <Loader2 className="size-4 animate-spin" />
-              Cargando equipos...
+              Cargando marcas...
             </div>
           )}
 
@@ -144,41 +164,37 @@ export function EquiposClient() {
             <div className="p-5">
               <EmptyState
                 icon="wrench"
-                message="No se pudieron cargar los equipos desde la API. Revisa la conexion o el endpoint GET /equipos."
-                title="Error al cargar equipos"
+                message="No se pudieron cargar las marcas desde la API. Revisa la conexión o el endpoint GET /marcas."
+                title="Error al cargar marcas"
               />
             </div>
           )}
 
-          {!isLoading && !error && equipos.length === 0 && (
+          {!isLoading && !error && marcas.length === 0 && (
             <div className="p-5">
               <EmptyState
                 icon="wrench"
-                message="Crea el primer equipo para iniciar el registro de la flota operacional."
-                title="No hay equipos registrados"
+                message="Crea la primera marca del catálogo para reutilizarla en equipos y repuestos."
+                title="No hay marcas registradas"
               />
               {isAdmin && (
                 <div className="mt-4 flex justify-center">
                   <Button onClick={openCreate}>
                     <Plus />
-                    Agregar equipo
+                    Agregar marca
                   </Button>
                 </div>
               )}
             </div>
           )}
 
-          {!isLoading && !error && equipos.length > 0 && (
+          {!isLoading && !error && marcas.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
-                    <th className="px-5 py-3 font-semibold">Codigo</th>
                     <th className="px-5 py-3 font-semibold">Nombre</th>
-                    <th className="px-5 py-3 font-semibold">Marca</th>
-                    <th className="px-5 py-3 font-semibold">Modelo</th>
-                    <th className="px-5 py-3 font-semibold">Ubicacion</th>
-                    <th className="px-5 py-3 font-semibold">Estado op.</th>
+                    <th className="px-5 py-3 font-semibold">Tipo</th>
                     {includeInactive && (
                       <th className="px-5 py-3 font-semibold">Estado</th>
                     )}
@@ -190,69 +206,23 @@ export function EquiposClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEquipos.length === 0 && (
-                    <tr>
-                      <td
-                        className="px-5 py-14 text-center"
-                        colSpan={
-                          6 + (includeInactive ? 1 : 0) + (isAdmin ? 1 : 0)
-                        }
-                      >
-                        <EmptyState
-                          className="border-0 bg-transparent"
-                          icon="search"
-                          message="Ajusta la busqueda para encontrar otro equipo."
-                          title="Sin resultados"
-                        />
-                      </td>
-                    </tr>
-                  )}
-
-                  {filteredEquipos.map((equipo) => {
-                    const inactive = equipo.activo === false;
+                  {marcas.map((marca) => {
+                    const inactive = marca.activo === false;
                     return (
                       <tr
                         className="border-border/60 border-b transition-colors last:border-0 hover:bg-secondary/25"
-                        key={equipo.id}
+                        key={marca.id}
                       >
-                        <td className="whitespace-nowrap px-5 py-3.5 font-mono font-semibold text-xs">
-                          <Link
-                            className="text-brand-primary hover:underline"
-                            href={`/equipos/${equipo.id}`}
-                          >
-                            {equipo.codigo}
-                          </Link>
-                        </td>
-                        <td className="px-5 py-3.5 font-medium">
-                          <Link
-                            className="hover:underline"
-                            href={`/equipos/${equipo.id}`}
-                          >
-                            {equipo.nombre}
-                          </Link>
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.marca ?? "—"}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.modelo ?? "—"}
-                        </td>
+                        <td className="px-5 py-3.5 font-medium">{marca.nombre}</td>
                         <td className="whitespace-nowrap px-5 py-3.5">
-                          {equipo.ubicacion ? (
-                            <Badge variant="secondary">{equipo.ubicacion}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5">
-                          <EstadoOperativoBadge estado={equipo.estadoOperativo} />
+                          <Badge variant="secondary">
+                            {TIPO_LABEL[marca.tipo]}
+                          </Badge>
                         </td>
                         {includeInactive && (
                           <td className="whitespace-nowrap px-5 py-3.5">
                             <Badge variant={inactive ? "outline" : "default"}>
-                              {inactive ? "Inactivo" : "Activo"}
+                              {inactive ? "Inactiva" : "Activa"}
                             </Badge>
                           </td>
                         )}
@@ -260,7 +230,7 @@ export function EquiposClient() {
                           <td className="whitespace-nowrap px-5 py-3.5 text-right">
                             <div className="flex justify-end gap-2">
                               <Button
-                                onClick={() => openEdit(equipo)}
+                                onClick={() => openEdit(marca)}
                                 size="sm"
                                 variant="ghost"
                               >
@@ -271,9 +241,9 @@ export function EquiposClient() {
                                 <Button
                                   loading={
                                     reactivar.isPending &&
-                                    reactivarId === equipo.id
+                                    reactivarId === marca.id
                                   }
-                                  onClick={() => handleReactivar(equipo)}
+                                  onClick={() => handleReactivar(marca)}
                                   size="sm"
                                   variant="outline"
                                 >
@@ -282,7 +252,7 @@ export function EquiposClient() {
                                 </Button>
                               ) : (
                                 <Button
-                                  onClick={() => setToDeactivate(equipo)}
+                                  onClick={() => setToDeactivate(marca)}
                                   size="sm"
                                   variant="destructive-outline"
                                 >
@@ -305,13 +275,13 @@ export function EquiposClient() {
 
       {isAdmin && (
         <>
-          <EquipoFormSheet
-            equipo={editing}
+          <MarcaFormSheet
+            marca={editing}
             onOpenChange={handleFormOpenChange}
             open={formOpen}
           />
-          <DesactivarEquipoDialog
-            equipo={toDeactivate}
+          <DesactivarMarcaDialog
+            marca={toDeactivate}
             onOpenChange={(open) => {
               if (!open) setToDeactivate(null);
             }}

@@ -68,12 +68,35 @@ function adaptOrden(orden: OrdenTrabajo): OrdenTrabajo {
   return { ...orden, estado: adaptOrdenEstado(orden.estado) };
 }
 
+type PaginatedOrdenes = {
+  data: OrdenTrabajo[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+};
+
+// Máximo permitido por PaginationQueryDto del backend (@Max(100)).
+const ORDENES_PAGE_SIZE = 100;
+
+async function fetchOrdenesPage(page: number): Promise<PaginatedOrdenes> {
+  const response = await authFetch(
+    `${API_BASE_URL}/ordenes?page=${page}&limit=${ORDENES_PAGE_SIZE}`,
+  );
+  return parseJsonResponse<PaginatedOrdenes>(response);
+}
+
+// Recorre todas las páginas: el backend pagina con limit por defecto 10, así que
+// pedir sin paginar truncaba la lista (y los conteos del summary) a 10 OT.
 export async function getOrdenes(): Promise<OrdenTrabajo[]> {
   assertApiBaseUrl();
 
-  const response = await authFetch(`${API_BASE_URL}/ordenes`);
-  const result = await parseJsonResponse<{ data: OrdenTrabajo[] }>(response);
-  return result.data.map(adaptOrden);
+  const first = await fetchOrdenesPage(1);
+  if (first.meta.totalPages <= 1) return first.data.map(adaptOrden);
+
+  const restPages = Array.from(
+    { length: first.meta.totalPages - 1 },
+    (_, i) => i + 2,
+  );
+  const rest = await Promise.all(restPages.map(fetchOrdenesPage));
+  return [first.data, ...rest.map((r) => r.data)].flat().map(adaptOrden);
 }
 
 export async function getOrdenById(id: string): Promise<OrdenTrabajo> {
@@ -82,6 +105,23 @@ export async function getOrdenById(id: string): Promise<OrdenTrabajo> {
   const response = await authFetch(`${API_BASE_URL}/ordenes/${id}`);
   const orden = await parseJsonResponse<OrdenTrabajo>(response);
   return adaptOrden(orden);
+}
+
+// Descarga el PDF de la OT (StreamableFile application/pdf). Lee blob, NO json,
+// y lo abre en una pestaña nueva (inline).
+export async function descargarPdfOrden(id: string): Promise<void> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/ordenes/${id}/pdf`);
+  if (!response.ok) {
+    throw new Error("No se pudo generar el PDF de la orden");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  // Revoca tras dar tiempo a la pestaña a cargar el recurso.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function createOrden(

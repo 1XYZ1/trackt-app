@@ -2,70 +2,76 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, Power, PowerOff, Search, Truck } from "lucide-react";
+import {
+  ClipboardList,
+  Loader2,
+  Pencil,
+  Plus,
+  Power,
+  PowerOff,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import {
-  DesactivarEquipoDialog,
-  EquipoFormSheet,
-  EstadoOperativoBadge,
-} from "@/components/equipos";
+  DesactivarPlantillaDialog,
+  PlantillaFormSheet,
+} from "@/components/plantillas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useHasRole } from "@/contexts/auth-context";
-import { useEquipos, useReactivarEquipo } from "@/hooks/use-equipos";
-import { EQUIPOS_PAGE_LIMIT, type Equipo } from "@/lib/api/equipos";
+import { usePlantillas, useReactivarPlantilla } from "@/hooks/use-plantillas";
+import type { PlantillaListItem } from "@/lib/api/plantillas";
 
-export function EquiposClient() {
+export function PlantillasClient() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Equipo | null>(null);
-  const [toDeactivate, setToDeactivate] = useState<Equipo | null>(null);
+  const [editing, setEditing] = useState<PlantillaListItem | null>(null);
+  const [toDeactivate, setToDeactivate] = useState<PlantillaListItem | null>(
+    null,
+  );
   const [reactivarId, setReactivarId] = useState<string | null>(null);
 
   const isAdmin = useHasRole("admin");
-  const reactivar = useReactivarEquipo();
+  const isJefe = useHasRole("jefe_taller");
+  const canManage = isAdmin || isJefe;
+  const reactivar = useReactivarPlantilla();
 
-  const handleReactivar = (equipo: Equipo) => {
-    setReactivarId(equipo.id);
-    reactivar.mutate(equipo.id, {
-      onSuccess: () => toast.success(`Equipo ${equipo.codigo} reactivado`),
-      onError: (err) =>
-        toast.error(
-          err instanceof Error ? err.message : "No se pudo reactivar el equipo",
-        ),
-      onSettled: () => setReactivarId(null),
-    });
-  };
-
-  // Debounce 300ms para que el search server-side no dispare a cada tecla.
   useEffect(() => {
     const trimmed = query.trim();
     const t = setTimeout(() => setDebouncedQuery(trimmed), 300);
     return () => clearTimeout(t);
   }, [query]);
 
-  const { data: equipos = [], error, isLoading } = useEquipos({
+  const { data: plantillas = [], error, isLoading } = usePlantillas({
     includeInactive,
     search: debouncedQuery || undefined,
   });
 
-  const filteredEquipos = equipos;
+  const handleReactivar = (plantilla: PlantillaListItem) => {
+    setReactivarId(plantilla.id);
+    reactivar.mutate(plantilla.id, {
+      onSuccess: () => toast.success(`Plantilla ${plantilla.nombre} reactivada`),
+      onError: (err) =>
+        toast.error(
+          err instanceof Error ? err.message : "No se pudo reactivar",
+        ),
+      onSettled: () => setReactivarId(null),
+    });
+  };
 
   const openCreate = () => {
     setEditing(null);
     setFormOpen(true);
   };
-
-  const openEdit = (equipo: Equipo) => {
-    setEditing(equipo);
+  const openEdit = (plantilla: PlantillaListItem) => {
+    setEditing(plantilla);
     setFormOpen(true);
   };
-
   const handleFormOpenChange = (open: boolean) => {
     setFormOpen(open);
     if (!open) setEditing(null);
@@ -76,12 +82,12 @@ export function EquiposClient() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-            <Truck className="size-3.5" />
-            Flota operacional
+            <ClipboardList className="size-3.5" />
+            Mantenimiento
           </div>
-          <h1 className="font-semibold text-2xl tracking-tight">Equipos</h1>
+          <h1 className="font-semibold text-2xl tracking-tight">Plantillas</h1>
           <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-            Listado de equipos operacionales registrados para mantenimiento.
+            Recetas de mantenimiento con insumos y checklist reutilizables.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -90,15 +96,15 @@ export function EquiposClient() {
             <Input
               className="pl-7"
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar codigo, nombre o ubicacion"
+              placeholder="Buscar plantilla"
               type="search"
               value={query}
             />
           </div>
-          {isAdmin && (
+          {canManage && (
             <Button onClick={openCreate} size="sm">
               <Plus />
-              Agregar equipo
+              Nueva plantilla
             </Button>
           )}
         </div>
@@ -107,20 +113,12 @@ export function EquiposClient() {
       <Card className="rounded-lg border-border/70">
         <CardHeader className="flex-row items-center justify-between gap-4 space-y-0 pb-3">
           <div>
-            <CardTitle className="text-base">Equipos registrados</CardTitle>
+            <CardTitle className="text-base">Plantillas registradas</CardTitle>
             <p className="text-muted-foreground text-xs">
-              {filteredEquipos.length} resultado
-              {filteredEquipos.length === 1 ? "" : "s"} disponibles.
-              {equipos.length >= EQUIPOS_PAGE_LIMIT && (
-                <span className="text-warning-foreground">
-                  {" "}
-                  Mostrando los primeros {EQUIPOS_PAGE_LIMIT}; refina la busqueda
-                  para ver el resto.
-                </span>
-              )}
+              {plantillas.length} resultado{plantillas.length === 1 ? "" : "s"}.
             </p>
           </div>
-          {isAdmin && (
+          {canManage && (
             <label className="flex items-center gap-2 text-muted-foreground text-xs">
               <input
                 checked={includeInactive}
@@ -128,7 +126,7 @@ export function EquiposClient() {
                 onChange={(event) => setIncludeInactive(event.target.checked)}
                 type="checkbox"
               />
-              Incluir inactivos
+              Incluir inactivas
             </label>
           )}
         </CardHeader>
@@ -136,7 +134,7 @@ export function EquiposClient() {
           {isLoading && (
             <div className="flex items-center gap-2 px-5 py-16 text-muted-foreground text-sm">
               <Loader2 className="size-4 animate-spin" />
-              Cargando equipos...
+              Cargando plantillas...
             </div>
           )}
 
@@ -144,123 +142,74 @@ export function EquiposClient() {
             <div className="p-5">
               <EmptyState
                 icon="wrench"
-                message="No se pudieron cargar los equipos desde la API. Revisa la conexion o el endpoint GET /equipos."
-                title="Error al cargar equipos"
+                message="No se pudieron cargar las plantillas desde la API."
+                title="Error al cargar plantillas"
               />
             </div>
           )}
 
-          {!isLoading && !error && equipos.length === 0 && (
+          {!isLoading && !error && plantillas.length === 0 && (
             <div className="p-5">
               <EmptyState
                 icon="wrench"
-                message="Crea el primer equipo para iniciar el registro de la flota operacional."
-                title="No hay equipos registrados"
+                message="Crea la primera plantilla de mantenimiento."
+                title="No hay plantillas"
               />
-              {isAdmin && (
-                <div className="mt-4 flex justify-center">
-                  <Button onClick={openCreate}>
-                    <Plus />
-                    Agregar equipo
-                  </Button>
-                </div>
-              )}
             </div>
           )}
 
-          {!isLoading && !error && equipos.length > 0 && (
+          {!isLoading && !error && plantillas.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
-                    <th className="px-5 py-3 font-semibold">Codigo</th>
                     <th className="px-5 py-3 font-semibold">Nombre</th>
-                    <th className="px-5 py-3 font-semibold">Marca</th>
-                    <th className="px-5 py-3 font-semibold">Modelo</th>
-                    <th className="px-5 py-3 font-semibold">Ubicacion</th>
-                    <th className="px-5 py-3 font-semibold">Estado op.</th>
+                    <th className="px-5 py-3 font-semibold">Tipo equipo</th>
+                    <th className="px-5 py-3 font-semibold">Frecuencia</th>
+                    <th className="px-5 py-3 text-right font-semibold">Ítems</th>
                     {includeInactive && (
                       <th className="px-5 py-3 font-semibold">Estado</th>
                     )}
-                    {isAdmin && (
-                      <th className="px-5 py-3 text-right font-semibold">
-                        Acciones
-                      </th>
-                    )}
+                    {canManage && <th className="px-5 py-3 text-right font-semibold">Acciones</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEquipos.length === 0 && (
-                    <tr>
-                      <td
-                        className="px-5 py-14 text-center"
-                        colSpan={
-                          6 + (includeInactive ? 1 : 0) + (isAdmin ? 1 : 0)
-                        }
-                      >
-                        <EmptyState
-                          className="border-0 bg-transparent"
-                          icon="search"
-                          message="Ajusta la busqueda para encontrar otro equipo."
-                          title="Sin resultados"
-                        />
-                      </td>
-                    </tr>
-                  )}
-
-                  {filteredEquipos.map((equipo) => {
-                    const inactive = equipo.activo === false;
+                  {plantillas.map((plantilla) => {
+                    const inactive = plantilla.activo === false;
                     return (
                       <tr
                         className="border-border/60 border-b transition-colors last:border-0 hover:bg-secondary/25"
-                        key={equipo.id}
+                        key={plantilla.id}
                       >
-                        <td className="whitespace-nowrap px-5 py-3.5 font-mono font-semibold text-xs">
-                          <Link
-                            className="text-brand-primary hover:underline"
-                            href={`/equipos/${equipo.id}`}
-                          >
-                            {equipo.codigo}
-                          </Link>
-                        </td>
                         <td className="px-5 py-3.5 font-medium">
                           <Link
                             className="hover:underline"
-                            href={`/equipos/${equipo.id}`}
+                            href={`/plantillas/${plantilla.id}`}
                           >
-                            {equipo.nombre}
+                            {plantilla.nombre}
                           </Link>
                         </td>
                         <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.marca ?? "—"}
+                          {plantilla.tipoEquipo ?? "—"}
                         </td>
                         <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                          {equipo.modelo ?? "—"}
+                          {plantilla.frecuencia ?? "—"}
                         </td>
-                        <td className="whitespace-nowrap px-5 py-3.5">
-                          {equipo.ubicacion ? (
-                            <Badge variant="secondary">{equipo.ubicacion}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3.5">
-                          <EstadoOperativoBadge estado={equipo.estadoOperativo} />
+                        <td className="px-5 py-3.5 text-right tabular-nums">
+                          {plantilla.itemsCount}
                         </td>
                         {includeInactive && (
                           <td className="whitespace-nowrap px-5 py-3.5">
                             <Badge variant={inactive ? "outline" : "default"}>
-                              {inactive ? "Inactivo" : "Activo"}
+                              {inactive ? "Inactiva" : "Activa"}
                             </Badge>
                           </td>
                         )}
-                        {isAdmin && (
+                        {canManage && (
                           <td className="whitespace-nowrap px-5 py-3.5 text-right">
                             <div className="flex justify-end gap-2">
                               <Button
-                                onClick={() => openEdit(equipo)}
+                                onClick={() => openEdit(plantilla)}
                                 size="sm"
                                 variant="ghost"
                               >
@@ -271,9 +220,9 @@ export function EquiposClient() {
                                 <Button
                                   loading={
                                     reactivar.isPending &&
-                                    reactivarId === equipo.id
+                                    reactivarId === plantilla.id
                                   }
-                                  onClick={() => handleReactivar(equipo)}
+                                  onClick={() => handleReactivar(plantilla)}
                                   size="sm"
                                   variant="outline"
                                 >
@@ -282,7 +231,7 @@ export function EquiposClient() {
                                 </Button>
                               ) : (
                                 <Button
-                                  onClick={() => setToDeactivate(equipo)}
+                                  onClick={() => setToDeactivate(plantilla)}
                                   size="sm"
                                   variant="destructive-outline"
                                 >
@@ -303,19 +252,19 @@ export function EquiposClient() {
         </CardContent>
       </Card>
 
-      {isAdmin && (
+      {canManage && (
         <>
-          <EquipoFormSheet
-            equipo={editing}
+          <PlantillaFormSheet
             onOpenChange={handleFormOpenChange}
             open={formOpen}
+            plantilla={editing}
           />
-          <DesactivarEquipoDialog
-            equipo={toDeactivate}
+          <DesactivarPlantillaDialog
             onOpenChange={(open) => {
               if (!open) setToDeactivate(null);
             }}
             open={Boolean(toDeactivate)}
+            plantilla={toDeactivate}
           />
         </>
       )}

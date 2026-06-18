@@ -6,21 +6,38 @@ import {
   ArrowLeft,
   Calendar,
   ClipboardList,
+  FileText,
   Loader2,
   Plus,
   User,
   Wrench,
 } from "lucide-react";
+import { toast } from "sonner";
 import { EmptyState, StatusBadge, TicketCard } from "@/components/core";
 import { CrearTicketSheet } from "@/components/tickets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOrden } from "@/hooks/use-ordenes";
+import { descargarPdfOrden } from "@/lib/api/ordenes";
 
 export function OrdenDetalleClient({ id }: { id: string }) {
   const [createTicketOpen, setCreateTicketOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const { data: orden, error, isLoading } = useOrden(id);
+
+  const handlePdf = async () => {
+    setPdfLoading(true);
+    try {
+      await descargarPdfOrden(id);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No se pudo generar el PDF",
+      );
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -66,14 +83,25 @@ export function OrdenDetalleClient({ id }: { id: string }) {
             Detalle de orden de trabajo y seguimiento de tickets derivados.
           </p>
         </div>
-        <Button
-          onClick={() => setCreateTicketOpen(true)}
-          size="sm"
-          variant="outline"
-        >
-          <Plus />
-          Crear ticket desde esta OT
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            loading={pdfLoading}
+            onClick={handlePdf}
+            size="sm"
+            variant="outline"
+          >
+            <FileText />
+            Descargar PDF
+          </Button>
+          <Button
+            onClick={() => setCreateTicketOpen(true)}
+            size="sm"
+            variant="outline"
+          >
+            <Plus />
+            Crear ticket desde esta OT
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">

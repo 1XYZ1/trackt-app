@@ -11,6 +11,9 @@ import {
   Package,
   History,
   ClipboardCheck,
+  Tag,
+  ListChecks,
+  BarChart3,
 } from 'lucide-react';
 import type { SidebarData } from '../types';
 
@@ -57,6 +60,12 @@ export const sidebarData: SidebarData = {
           roles: ['admin', 'jefe_taller'],
         },
         {
+          title: 'Plantillas',
+          url: '/plantillas',
+          icon: ListChecks,
+          roles: ['admin', 'jefe_taller'],
+        },
+        {
           title: 'Ordenes',
           url: '/ordenes',
           icon: ClipboardList,
@@ -86,6 +95,12 @@ export const sidebarData: SidebarData = {
           icon: ClipboardCheck,
           roles: ['admin', 'jefe_taller'],
         },
+        {
+          title: 'Reportes',
+          url: '/reportes',
+          icon: BarChart3,
+          roles: ['admin', 'jefe_taller'],
+        },
       ],
     },
     {
@@ -110,6 +125,7 @@ export const sidebarData: SidebarData = {
           icon: CheckCircle2,
           roles: ['admin'],
         },
+        { title: 'Marcas', url: '/marcas', icon: Tag, roles: ['admin'] },
         { title: 'Usuarios', url: '/usuarios', icon: Users, roles: ['admin'] },
       ],
     },
