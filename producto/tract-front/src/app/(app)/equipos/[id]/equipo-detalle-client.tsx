@@ -8,11 +8,17 @@ import {
   ClipboardList,
   Loader2,
   Pencil,
+  QrCode,
   Ticket,
   Wrench,
 } from "lucide-react";
 import { EmptyState } from "@/components/core";
-import { EquipoFormSheet, EstadoOperativoBadge } from "@/components/equipos";
+import {
+  EquipoFormSheet,
+  EquipoHistorial,
+  EstadoOperativoBadge,
+  QrDialog,
+} from "@/components/equipos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +88,7 @@ export type EquipoDetalleClientProps = {
 export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
   const [tab, setTab] = useState("resumen");
   const [editOpen, setEditOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const isAdmin = useHasRole("admin");
 
   const equipoQuery = useEquipo(id);
@@ -147,12 +154,22 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
               {equipo.nombre}
             </h1>
           </div>
-          {isAdmin && (
-            <Button onClick={() => setEditOpen(true)} size="sm" variant="outline">
-              <Pencil />
-              Editar
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setQrOpen(true)} size="sm" variant="outline">
+              <QrCode />
+              QR
             </Button>
-          )}
+            {isAdmin && (
+              <Button
+                onClick={() => setEditOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <Pencil />
+                Editar
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -337,7 +354,7 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
         </TabsPanel>
 
         <TabsPanel className="mt-4" value="historial">
-          <PanelPlaceholder titulo="Historial" />
+          <EquipoHistorial equipoId={id} />
         </TabsPanel>
         <TabsPanel className="mt-4" value="repuestos">
           <PanelPlaceholder titulo="Repuestos habituales" />
@@ -357,6 +374,12 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
           open={editOpen}
         />
       )}
+      <QrDialog
+        canManage={isAdmin}
+        equipo={equipo}
+        onOpenChange={setQrOpen}
+        open={qrOpen}
+      />
     </div>
   );
 }

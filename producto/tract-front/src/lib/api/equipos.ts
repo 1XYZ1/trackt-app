@@ -210,6 +210,136 @@ export async function getEquipoResumen(id: string): Promise<EquipoResumen> {
   return (await response.json()) as EquipoResumen;
 }
 
+// Regenera el qrToken (admin). Invalida el token anterior.
+export async function generarQr(id: string): Promise<EquipoDetalle> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/${id}/qr`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo generar el código QR"),
+    );
+  }
+  return (await response.json()) as EquipoDetalle;
+}
+
+export async function getEquipoByQr(token: string): Promise<EquipoDetalle> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/qr/${token}`);
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se encontró el equipo del código QR"),
+    );
+  }
+  return (await response.json()) as EquipoDetalle;
+}
+
+export type HistorialFiltros = {
+  desde?: string;
+  hasta?: string;
+  estado?: string;
+};
+
+export type EquipoHistorial = {
+  equipo: EquipoDetalle;
+  filtros: { desde: string | null; hasta: string | null; estado: string | null };
+  ordenes: Array<{
+    id: string;
+    codigo: string;
+    descripcion: string;
+    prioridad: string;
+    estado: string;
+    fechaCierre: string | null;
+    createdAt: string;
+  }>;
+  tickets: Array<{
+    id: string;
+    codigo: string;
+    titulo: string;
+    estado: string;
+    prioridad: string;
+    otId: string | null;
+    mecanicoId: string | null;
+    fechaCierre: string | null;
+    createdAt: string;
+  }>;
+  evidencias: Array<{
+    id: string;
+    ticketId: string | null;
+    storagePath: string;
+    descripcion: string | null;
+    createdAt: string;
+    ticket: { codigo: string } | null;
+  }>;
+  reservas: Array<{
+    id: string;
+    ticketId: string | null;
+    estado: string;
+    observacion: string | null;
+    createdAt: string;
+    ticket: { codigo: string } | null;
+    items: Array<{
+      cantidad: number;
+      repuesto: { id: string; codigo: string; nombre: string; unidad: string };
+    }>;
+  }>;
+  movimientos: Array<{
+    id: string;
+    tipo: string;
+    cantidad: number;
+    stockResultante: number;
+    ticketId: string | null;
+    reservaId: string | null;
+    observacion: string | null;
+    createdAt: string;
+    repuesto: { id: string; codigo: string; nombre: string; unidad: string };
+  }>;
+  repuestosConsumidos: Array<{
+    repuestoId: string;
+    codigo: string;
+    nombre: string | null;
+    unidad: string | null;
+    cantidadConsumida: number;
+    movimientos: number;
+  }>;
+  programaciones: Array<{
+    id: string;
+    titulo: string;
+    fechaProgramada: string;
+    estado: string;
+    prioridad: string;
+    recurrencia: string | null;
+    plantilla: { id: string; nombre: string } | null;
+    metadata: unknown;
+  }>;
+};
+
+export async function getEquipoHistorial(
+  id: string,
+  filtros: HistorialFiltros = {},
+): Promise<EquipoHistorial> {
+  assertApiBaseUrl();
+
+  const params = new URLSearchParams();
+  if (filtros.desde) params.set("desde", filtros.desde);
+  if (filtros.hasta) params.set("hasta", filtros.hasta);
+  if (filtros.estado) params.set("estado", filtros.estado);
+  const qs = params.toString();
+
+  const response = await authFetch(
+    `${API_BASE_URL}/equipos/${id}/historial${qs ? `?${qs}` : ""}`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo cargar el historial del equipo"),
+    );
+  }
+  return (await response.json()) as EquipoHistorial;
+}
+
 export async function reactivarEquipo(id: string): Promise<Equipo> {
   assertApiBaseUrl();
 

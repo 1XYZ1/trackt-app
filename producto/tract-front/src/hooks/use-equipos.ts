@@ -4,13 +4,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createEquipo,
   desactivarEquipo,
+  generarQr,
   getEquipo,
+  getEquipoHistorial,
   getEquipoResumen,
   getEquipos,
   reactivarEquipo,
   updateEquipo,
   type CreateEquipoPayload,
   type EquiposFilters,
+  type HistorialFiltros,
   type UpdateEquipoPayload,
 } from "@/lib/api/equipos";
 
@@ -34,6 +37,27 @@ export function useEquipoResumen(id: string) {
     enabled: Boolean(id),
     queryFn: () => getEquipoResumen(id),
     queryKey: ["equipos", "resumen", id],
+  });
+}
+
+export function useEquipoHistorial(id: string, filtros: HistorialFiltros = {}) {
+  return useQuery({
+    enabled: Boolean(id),
+    queryFn: () => getEquipoHistorial(id, filtros),
+    queryKey: ["equipos", "historial", id, filtros],
+  });
+}
+
+export function useGenerarQr() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => generarQr(id),
+    onSuccess: async (_data, id) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["equipos", "detalle", id],
+      });
+    },
   });
 }
 
