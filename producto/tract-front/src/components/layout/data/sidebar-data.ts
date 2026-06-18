@@ -12,6 +12,7 @@ import {
   Package,
   History,
   ClipboardCheck,
+  Tag,
 } from 'lucide-react';
 import type { SidebarData } from '../types';
 
@@ -112,6 +113,7 @@ export const sidebarData: SidebarData = {
           icon: CheckCircle2,
           roles: ['admin'],
         },
+        { title: 'Marcas', url: '/marcas', icon: Tag, roles: ['admin'] },
         { title: 'Usuarios', url: '/usuarios', icon: Users, roles: ['admin'] },
       ],
     },
