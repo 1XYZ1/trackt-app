@@ -21,6 +21,7 @@ import { UpdateEquipoDto } from './dto/update-equipo.dto';
 import { TenantService } from '../common/tenant/tenant.service';
 import { AuthUser } from '../auth/types';
 import { HistorialQueryDto } from './dto/historial-query.dto';
+import { CambiarEstadoOperativoDto } from './dto/cambiar-estado-operativo.dto';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -100,6 +101,24 @@ export class EquiposController {
   ) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.equiposService.update(tenantId, id, dto);
+  }
+
+  // Cambio acotado de estado operativo: lo puede hacer también mecánico/jefe
+  // desde la página QR mobile (a diferencia del PATCH :id general, admin-only).
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @HttpCode(HttpStatus.OK)
+  @Patch(':id/estado-operativo')
+  async cambiarEstadoOperativo(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Body() dto: CambiarEstadoOperativoDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.equiposService.cambiarEstadoOperativo(
+      tenantId,
+      id,
+      dto.estadoOperativo,
+    );
   }
 
   @Roles('admin')

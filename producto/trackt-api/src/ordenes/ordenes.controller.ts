@@ -44,7 +44,7 @@ export class OrdenesController {
     private readonly tenantService: TenantService,
   ) {}
 
-  @Roles('admin', 'mechanic')
+  @Roles('admin', 'jefe_taller', 'mechanic')
   @Post()
   async create(@Req() req: RequestWithUser, @Body() dto: CreateOrdenDto) {
     const tenantId = this.tenantService.resolveTenantId(req.user);

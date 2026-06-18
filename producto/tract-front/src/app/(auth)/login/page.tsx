@@ -4,11 +4,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { LoginForm } from './login-form';
 
 type LoginPageProps = {
-  searchParams: Promise<{ error?: string; message?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    message?: string;
+    redirect?: string;
+  }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { error, message } = await searchParams;
+  const { error, message, redirect } = await searchParams;
   const errorMessage = error ? normalizeAuthError(error) : null;
 
   return (
@@ -94,7 +98,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 </div>
               )}
 
-              <LoginForm />
+              <LoginForm redirect={redirect} />
 
               <div className="mt-7 border-white/5 border-t pt-5">
                 <div className="flex items-center gap-2 text-slate-500 text-xs">

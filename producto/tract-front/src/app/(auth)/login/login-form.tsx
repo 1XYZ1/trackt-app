@@ -26,7 +26,7 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function LoginForm() {
+export function LoginForm({ redirect }: { redirect?: string }) {
   const [pending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
   const {
@@ -43,6 +43,8 @@ export function LoginForm() {
       const formData = new FormData();
       formData.set('email', values.email);
       formData.set('password', values.password);
+      // Propaga el destino post-login (ej. /q/<token>) al server action.
+      if (redirect) formData.set('redirect', redirect);
       await login(formData);
     });
   };

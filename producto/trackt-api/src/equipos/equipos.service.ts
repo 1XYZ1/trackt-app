@@ -321,6 +321,32 @@ export class EquiposService {
     });
   }
 
+  /**
+   * Cambia SOLO el estado operativo (OPERATIVO / EN_MANTENIMIENTO /
+   * FUERA_DE_SERVICIO). Endpoint liviano para la página QR mobile: a diferencia
+   * de update() (admin), lo pueden usar mecánico/jefe para marcar el equipo en
+   * terreno sin permiso de edición completa.
+   */
+  async cambiarEstadoOperativo(
+    tenantId: string,
+    id: string,
+    estadoOperativo: EquipoEstadoOperativo,
+  ) {
+    const equipo = await this.prisma.equipo.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!equipo) {
+      throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
+    }
+
+    return this.prisma.equipo.update({
+      where: { id },
+      data: { estadoOperativo },
+      select: DETAIL_SELECT,
+    });
+  }
+
   // ---------- QR ----------
 
   /**

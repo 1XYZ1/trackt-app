@@ -32,6 +32,7 @@ import {
   useSubirEvidencia,
 } from "@/hooks/use-mis-tickets";
 import type { TicketEvidence } from "@/lib/api/mis-tickets";
+import { ReservasSection } from "@/components/inventario/reservas-section";
 
 function getPriorityVariant(priority: "BAJA" | "MEDIA" | "ALTA") {
   if (priority === "ALTA") return "error";
@@ -239,6 +240,12 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
           </Button>
         </CardContent>
       </Card>
+
+      <ReservasSection
+        ticketEstado={ticket.estado}
+        ticketId={ticket.id}
+        ticketMecanicoId={ticket.mecanico?.id ?? null}
+      />
 
       <div className="sticky bottom-3 z-10">
         <Button

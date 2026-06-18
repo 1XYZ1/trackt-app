@@ -333,9 +333,52 @@ describe('EquiposService', () => {
 
     it('falla con NotFoundException si el equipo no existe en el tenant', async () => {
       prisma.equipo.findFirst.mockResolvedValue(null);
+      await expect(service.reactivar(TENANT, EQUIPO_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  // ---------- cambiarEstadoOperativo ----------
+
+  describe('cambiarEstadoOperativo', () => {
+    it('actualiza solo el estado operativo, scoped por tenant', async () => {
+      prisma.equipo.findFirst.mockResolvedValue({ id: EQUIPO_ID });
+      prisma.equipo.update.mockImplementation(({ data }) =>
+        Promise.resolve({ id: EQUIPO_ID, ...data }),
+      );
+
+      const result = await service.cambiarEstadoOperativo(
+        TENANT,
+        EQUIPO_ID,
+        EquipoEstadoOperativo.EN_MANTENIMIENTO,
+      );
+
+      const findArgs = prisma.equipo.findFirst.mock.calls[0][0];
+      expect(findArgs.where).toEqual({ id: EQUIPO_ID, tenantId: TENANT });
+
+      const args = prisma.equipo.update.mock.calls[0][0];
+      expect(args.where).toEqual({ id: EQUIPO_ID });
+      // Solo toca estadoOperativo: nada más en data.
+      expect(args.data).toEqual({
+        estadoOperativo: EquipoEstadoOperativo.EN_MANTENIMIENTO,
+      });
+      expect(result.estadoOperativo).toBe(
+        EquipoEstadoOperativo.EN_MANTENIMIENTO,
+      );
+    });
+
+    it('falla con NotFoundException si el equipo es de otro tenant o no existe', async () => {
+      prisma.equipo.findFirst.mockResolvedValue(null);
+
       await expect(
-        service.reactivar(TENANT, EQUIPO_ID),
+        service.cambiarEstadoOperativo(
+          TENANT,
+          EQUIPO_ID,
+          EquipoEstadoOperativo.FUERA_DE_SERVICIO,
+        ),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.equipo.update).not.toHaveBeenCalled();
     });
   });
 

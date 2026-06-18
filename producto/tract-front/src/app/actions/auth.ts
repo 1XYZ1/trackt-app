@@ -10,14 +10,36 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Contraseña requerida'),
 });
 
+// Solo permite rutas internas como destino post-login: debe empezar con "/"
+// pero no con "//" ni "/\" (que el navegador interpretaría como host externo,
+// abriendo un open-redirect). Cualquier otra cosa cae a /dashboard.
+function safeRedirectPath(value: FormDataEntryValue | null): string {
+  if (typeof value !== 'string') return '/dashboard';
+  if (
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.startsWith('/\\')
+  ) {
+    return '/dashboard';
+  }
+  return value;
+}
+
 export async function login(formData: FormData) {
   const parsed = loginSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
   });
+  // Destino tras login (ej. la página del QR escaneado). Se preserva también en
+  // los redirects de error para no perderlo si el primer intento falla.
+  const redirectTo = safeRedirectPath(formData.get('redirect'));
+  const redirectQuery =
+    redirectTo === '/dashboard'
+      ? ''
+      : `&redirect=${encodeURIComponent(redirectTo)}`;
   if (!parsed.success) {
     const msg = parsed.error.issues[0]?.message ?? 'Datos inválidos';
-    redirect(`/login?error=${encodeURIComponent(msg)}`);
+    redirect(`/login?error=${encodeURIComponent(msg)}${redirectQuery}`);
   }
 
   const supabase = await createClient();
@@ -26,9 +48,11 @@ export async function login(formData: FormData) {
     password: parsed.data.password,
   });
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    redirect(
+      `/login?error=${encodeURIComponent(error.message)}${redirectQuery}`,
+    );
   }
-  redirect('/dashboard');
+  redirect(redirectTo);
 }
 
 export async function logout() {

@@ -540,6 +540,30 @@ export async function updateEquipo(
   return (await response.json()) as Equipo;
 }
 
+// Cambio acotado de estado operativo (página QR mobile). Permitido a
+// admin/jefe/mecánico en el backend, a diferencia del updateEquipo general.
+export async function cambiarEstadoOperativo(
+  id: string,
+  estadoOperativo: EquipoEstadoOperativo,
+): Promise<EquipoDetalle> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(
+    `${API_BASE_URL}/equipos/${id}/estado-operativo`,
+    {
+      body: JSON.stringify({ estadoOperativo }),
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo cambiar el estado operativo"),
+    );
+  }
+  return (await response.json()) as EquipoDetalle;
+}
+
 export async function desactivarEquipo(id: string): Promise<Equipo> {
   assertApiBaseUrl();
 

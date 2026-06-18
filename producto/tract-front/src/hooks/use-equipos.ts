@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addEquipoPlantilla,
   addEquipoRepuesto,
+  cambiarEstadoOperativo,
   createEquipo,
   desactivarEquipo,
   generarQr,
   getEquipo,
+  getEquipoByQr,
   getEquipoHistorial,
   getEquipoPlantillas,
   getEquipoRepuestos,
@@ -19,6 +21,7 @@ import {
   updateEquipo,
   type AddEquipoRepuestoPayload,
   type CreateEquipoPayload,
+  type EquipoEstadoOperativo,
   type EquiposFilters,
   type HistorialFiltros,
   type UpdateEquipoPayload,
@@ -186,6 +189,37 @@ export function useReactivarEquipo() {
     mutationFn: (id: string) => reactivarEquipo(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["equipos"] });
+    },
+  });
+}
+
+// Resuelve un equipo por su token QR (página /q/[token]). Devuelve el detalle,
+// del que se obtiene el id para cargar el resumen.
+export function useEquipoByQr(token: string) {
+  return useQuery({
+    enabled: Boolean(token),
+    queryFn: () => getEquipoByQr(token),
+    queryKey: ["equipos", "qr", token],
+  });
+}
+
+export function useCambiarEstadoOperativo() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      estadoOperativo,
+    }: {
+      id: string;
+      estadoOperativo: EquipoEstadoOperativo;
+    }) => cambiarEstadoOperativo(id, estadoOperativo),
+    onSuccess: async (_data, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["equipos", "resumen", id] }),
+        queryClient.invalidateQueries({ queryKey: ["equipos", "detalle", id] }),
+        queryClient.invalidateQueries({ queryKey: ["equipos"], exact: true }),
+      ]);
     },
   });
 }

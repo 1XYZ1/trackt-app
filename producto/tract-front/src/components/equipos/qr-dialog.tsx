@@ -36,6 +36,14 @@ export function QrDialog({
 
   const token = equipo?.qrToken ?? null;
 
+  // El QR debe codificar la URL navegable (no el token crudo) para que la
+  // cámara del teléfono abra directamente la página del equipo. Usa
+  // NEXT_PUBLIC_SITE_URL y cae al origin del navegador si no está configurada.
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
+    (typeof window !== "undefined" ? window.location.origin : "");
+  const qrValue = token ? `${siteUrl}/q/${token}` : "";
+
   const handleGenerar = () => {
     if (!equipo) return;
     generarQr.mutate(equipo.id, {
@@ -51,12 +59,12 @@ export function QrDialog({
   };
 
   const handleCopy = async () => {
-    if (!token) return;
+    if (!qrValue) return;
     try {
-      await navigator.clipboard.writeText(token);
-      toast.success("Token copiado");
+      await navigator.clipboard.writeText(qrValue);
+      toast.success("Enlace copiado");
     } catch {
-      toast.error("No se pudo copiar el token");
+      toast.error("No se pudo copiar el enlace");
     }
   };
 
@@ -80,15 +88,15 @@ export function QrDialog({
             {token ? (
               <>
                 <div className="rounded-xl bg-white p-4">
-                  <QRCodeSVG level="M" size={220} value={token} />
+                  <QRCodeSVG level="M" size={220} value={qrValue} />
                 </div>
                 <div className="w-full space-y-1">
                   <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                    Token
+                    Enlace del QR
                   </p>
                   <div className="flex items-center gap-2">
                     <code className="min-w-0 flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs">
-                      {token}
+                      {qrValue}
                     </code>
                     <Button onClick={handleCopy} size="icon" variant="outline">
                       <Copy />

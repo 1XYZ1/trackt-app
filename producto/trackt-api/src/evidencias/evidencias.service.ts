@@ -118,7 +118,10 @@ export class EvidenciasService {
         `Tamaño excede el máximo permitido (${MAX_BYTES} bytes)`,
       );
     }
-    if (meta?.mimetype && !ALLOWED_MIME.includes(meta.mimetype as AllowedMime)) {
+    if (
+      meta?.mimetype &&
+      !ALLOWED_MIME.includes(meta.mimetype as AllowedMime)
+    ) {
       await admin.storage.from(BUCKET).remove([dto.storagePath]);
       throw new ForbiddenException('MIME type no permitido');
     }
