@@ -107,6 +107,23 @@ export async function getOrdenById(id: string): Promise<OrdenTrabajo> {
   return adaptOrden(orden);
 }
 
+// Descarga el PDF de la OT (StreamableFile application/pdf). Lee blob, NO json,
+// y lo abre en una pestaña nueva (inline).
+export async function descargarPdfOrden(id: string): Promise<void> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/ordenes/${id}/pdf`);
+  if (!response.ok) {
+    throw new Error("No se pudo generar el PDF de la orden");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  // Revoca tras dar tiempo a la pestaña a cargar el recurso.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function createOrden(
   payload: CreateOrdenPayload,
 ): Promise<OrdenTrabajo> {
