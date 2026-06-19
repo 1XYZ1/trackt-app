@@ -1,10 +1,4 @@
 import type { Metadata } from "next";
-import {
-  dehydrate,
-  HydrationBoundary,
-  QueryClient,
-} from "@tanstack/react-query";
-import { getTicketsServer } from "@/lib/api/tickets.server";
 import { TicketsClient, type TicketsSearchParams } from "./tickets-client";
 
 type TicketsPageProps = {
@@ -17,29 +11,12 @@ export const metadata: Metadata = {
     "Listado global de tickets de taller con filtros por estado, mecanico y OT.",
 };
 
-// La página depende de la sesión (cookies) → siempre dinámica, nunca estática.
-export const dynamic = "force-dynamic";
-
 export default async function TicketsPage({ searchParams }: TicketsPageProps) {
+  // Sin prefetch en servidor: el cliente carga los tickets vía React Query
+  // (useTickets) y pinta el skeleton de kanban/lista mientras tanto. El
+  // loading.tsx da la transición instantánea. Antes esta página era
+  // `force-dynamic` y await-eaba getAllTickets (todas las páginas paginadas)
+  // bloqueando la navegación y duplicando el fetch en cliente.
   const params = await searchParams;
-
-  // Prefetch en el servidor para que el primer paint del kanban/lista llegue con
-  // datos (sin spinner). La queryKey coincide con useTickets() → hidratación
-  // directa. Best-effort: si falla (sin env en build, sesión ausente, API caída),
-  // el cliente refetchea con su propia sesión.
-  const queryClient = new QueryClient();
-  try {
-    await queryClient.prefetchQuery({
-      queryKey: ["tickets"],
-      queryFn: getTicketsServer,
-    });
-  } catch {
-    // Degrada al fetch del cliente.
-  }
-
-  return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <TicketsClient initialFilters={params} />
-    </HydrationBoundary>
-  );
+  return <TicketsClient initialFilters={params} />;
 }

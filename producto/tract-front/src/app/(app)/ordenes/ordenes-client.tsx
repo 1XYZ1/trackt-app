@@ -13,7 +13,7 @@ import { EquipoSelect } from "@/components/equipos";
 import { NuevaOrdenSheet } from "@/components/ordenes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useOrdenes } from "@/hooks/use-ordenes";
+import { useOrdenes, usePrefetchOrden } from "@/hooks/use-ordenes";
 import type { OrdenEstado, OrdenTrabajo } from "@/lib/api/ordenes";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +61,7 @@ export function OrdenesClient() {
   const [equipoId, setEquipoId] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const { data: ordenes = [], error, isLoading } = useOrdenes();
+  const prefetchOrden = usePrefetchOrden();
 
   const filteredOrdenes = useMemo(() => {
     // TODO(api): mover filtros a backend cuando GET /ordenes soporte query params.
@@ -213,6 +214,8 @@ export function OrdenesClient() {
                   className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   href={`/ordenes/${orden.id}`}
                   key={orden.id}
+                  onFocus={() => prefetchOrden(orden.id)}
+                  onMouseEnter={() => prefetchOrden(orden.id)}
                 >
                   <OtCard
                     className="h-full transition-colors hover:border-brand-primary/40"

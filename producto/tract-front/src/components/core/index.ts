@@ -1,9 +1,12 @@
+export { DetailSkeleton } from "./detail-skeleton";
 export { EmptyState } from "./empty-state";
 export type { EmptyStateProps } from "./empty-state";
+export { KpiSkeleton } from "./kpi-skeleton";
 export { ListSkeleton } from "./list-skeleton";
 export { OtCard } from "./ot-card";
 export type { OtCardProps } from "./ot-card";
 export { StatusBadge } from "./status-badge";
+export { TableSkeleton } from "./table-skeleton";
 export type { StatusBadgeProps } from "./status-badge";
 export { TicketCard } from "./ticket-card";
 export type { TicketCardProps } from "./ticket-card";

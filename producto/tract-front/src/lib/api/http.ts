@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 
 // Cliente browser perezoso: NO crear a nivel de módulo. Si un módulo de servidor
-// importa esta cadena (ej. tickets.server.ts → tickets.ts → http.ts) durante el
-// build, un createClient() a nivel de módulo se evaluaría en el servidor y
+// importa esta cadena (ej. un Server Component → lib/api/*.ts → http.ts) durante
+// el build, un createClient() a nivel de módulo se evaluaría en el servidor y
 // lanzaría sin env de Supabase. Creándolo bajo demanda, solo corre en el browser.
 let supabaseClient: ReturnType<typeof createClient> | null = null;
 function getSupabase() {

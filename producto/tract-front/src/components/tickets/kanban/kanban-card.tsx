@@ -2,7 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
-import type React from "react";
+import { memo, type KeyboardEvent } from "react";
 import { CalendarClock, GripVertical, Wrench } from "lucide-react";
 import { UserAvatar } from "@/components/core";
 import { usePrefetchTicket } from "@/hooks/use-tickets";
@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
  * Contenido visual de una card del kanban (denso, estilo Linear). Separado de la
  * lógica de drag para reusarlo tal cual en el DragOverlay.
  */
-export function KanbanCardContent({
+export const KanbanCardContent = memo(function KanbanCardContent({
   ticket,
   className,
   draggable,
@@ -87,14 +87,14 @@ export function KanbanCardContent({
       </div>
     </div>
   );
-}
+});
 
 /**
  * Card arrastrable del kanban. Si `draggable` es false (sin transiciones válidas
  * para el usuario), no registra listeners de drag y solo navega al detalle.
  * Un click sin movimiento navega (activationConstraint distance:8 en el sensor).
  */
-export function KanbanCard({
+export const KanbanCard = memo(function KanbanCard({
   ticket,
   draggable,
 }: {
@@ -117,7 +117,7 @@ export function KanbanCard({
   const keyboardProps = draggable
     ? {}
     : {
-        onKeyDown: (event: React.KeyboardEvent) => {
+        onKeyDown: (event: KeyboardEvent) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             goToDetail();
@@ -149,4 +149,4 @@ export function KanbanCard({
       />
     </div>
   );
-}
+});

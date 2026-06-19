@@ -10,6 +10,7 @@ import {
   ticketEstadoLabel,
   type TicketEstado,
 } from "@/components/core";
+import { KanbanSkeleton } from "@/components/tickets/kanban/kanban-skeleton";
 import { TicketsKanban } from "@/components/tickets/kanban/tickets-kanban";
 import { TicketsLista } from "@/components/tickets/lista/tickets-lista";
 import {
@@ -284,7 +285,14 @@ export function TicketsClient({
         </div>
       )}
 
-      {isLoading && <ListSkeleton columns={2} count={4} />}
+      {isLoading &&
+        (isKanban ? (
+          <div className="min-h-0 flex-1">
+            <KanbanSkeleton />
+          </div>
+        ) : (
+          <ListSkeleton columns={2} count={4} />
+        ))}
 
       {!isLoading && error && (
         <EmptyState

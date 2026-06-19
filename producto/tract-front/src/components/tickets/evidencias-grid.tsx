@@ -64,10 +64,15 @@ export function EvidenciasGrid({ ticketId }: Props) {
           >
             {evidencia.downloadUrl ? (
               <>
+                {/* URL firmada (TTL ~5min) → no next/image (el optimizer
+                    cachearía por firma y churnearía). Lazy nativo difiere los
+                    thumbs fuera de viewport. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   alt={evidencia.descripcion ?? "Evidencia"}
                   className="size-full object-cover transition group-hover:scale-105"
+                  decoding="async"
+                  loading="lazy"
                   src={evidencia.downloadUrl}
                 />
                 <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
@@ -98,6 +103,7 @@ export function EvidenciasGrid({ ticketId }: Props) {
                 <img
                   alt={openEvidencia.descripcion ?? "Evidencia"}
                   className="max-h-[70vh] w-full object-contain"
+                  decoding="async"
                   src={openEvidencia.downloadUrl}
                 />
               ) : (
