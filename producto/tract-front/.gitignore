@@ -40,4 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
+# playwright e2e
+/test-results
+/playwright-report
+# /e2e/evidence  -> evidencia versionada a propósito (insumo del informe). Ver e2e/REPORTE-E2E.md

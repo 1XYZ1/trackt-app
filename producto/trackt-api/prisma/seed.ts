@@ -1369,9 +1369,81 @@ async function seedTenantRow(t: SeedTenant) {
   });
 }
 
+/**
+ * Build a map of email → { id, email } for ALL existing Supabase auth users,
+ * paging through every page until done.
+ */
+async function listAllAuthUsers(): Promise<Map<string, { id: string; email: string }>> {
+  const map = new Map<string, { id: string; email: string }>();
+  let page = 1;
+  const perPage = 1000;
+
+  while (true) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+    if (error) {
+      console.warn(`  [warn] listUsers page ${page}: ${error.message}`);
+      break;
+    }
+    if (!data || data.users.length === 0) break;
+
+    for (const u of data.users) {
+      if (u.email) {
+        map.set(u.email, { id: u.id, email: u.email });
+      }
+    }
+
+    // If we got fewer than perPage, we're on the last page
+    if (data.users.length < perPage) break;
+    page++;
+  }
+
+  return map;
+}
+
+/**
+ * For every seed user, if an auth user exists with the same email but a
+ * DIFFERENT id, delete its profile row first (FK: profiles.id → auth.users.id)
+ * then delete the stale auth user — so we can re-create with the deterministic id.
+ */
+async function cleanStaleAuthUsers(tenantUsers: SeedUser[], authByEmail: Map<string, { id: string; email: string }>) {
+  for (const u of tenantUsers) {
+    const existing = authByEmail.get(u.email);
+    if (!existing) continue;          // not in auth at all → nothing to clean
+    if (existing.id === u.id) continue; // already the right id → idempotent
+
+    console.log(`  [cleanup] ${u.email}: stale id ${existing.id} → will replace with ${u.id}`);
+
+    // 1. Delete profile row (FK child) before deleting auth user (FK parent)
+    try {
+      await prisma.$executeRaw`DELETE FROM public.profiles WHERE id = ${existing.id}::uuid`;
+    } catch (e: unknown) {
+      console.warn(`  [warn] could not delete stale profile ${existing.id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // 2. Delete stale auth user
+    const { error } = await supabase.auth.admin.deleteUser(existing.id);
+    if (error) {
+      console.warn(`  [warn] could not delete stale auth user ${existing.id} (${u.email}): ${error.message}`);
+      // Remove from map so we don't try INSERT to profiles for this user
+      authByEmail.delete(u.email);
+    } else {
+      // Remove from map; it will be re-added after createUser succeeds
+      authByEmail.delete(u.email);
+    }
+  }
+}
+
 async function seedUsers(t: SeedTenant) {
+  // 1. Fetch all auth users and clean stale ones for this tenant's users
+  const authByEmail = await listAllAuthUsers();
+  await cleanStaleAuthUsers(t.users, authByEmail);
+
   for (const u of t.users) {
-    const { error } = await supabase.auth.admin.createUser({
+    // 2. Create auth user with deterministic id
+    const { data: createData, error } = await supabase.auth.admin.createUser({
       email: u.email,
       password: PASSWORD,
       email_confirm: true,
@@ -1379,19 +1451,41 @@ async function seedUsers(t: SeedTenant) {
       id: u.id,
     });
 
-    if (error && !/already/i.test(error.message)) {
-      throw new Error(`createUser ${u.email}: ${error.message}`);
+    let authUserExists = false;
+
+    if (error) {
+      // "already exists" or "User already registered" → check by id to confirm
+      if (/already/i.test(error.message)) {
+        // Verify the existing user has our deterministic id
+        const { data: existing } = await supabase.auth.admin.getUserById(u.id);
+        if (existing?.user?.id === u.id) {
+          authUserExists = true;
+        } else {
+          console.warn(`  [warn] createUser ${u.email}: ${error.message} — but getUserById(${u.id}) returned no match; skipping profile insert`);
+        }
+      } else {
+        throw new Error(`createUser ${u.email}: ${error.message}`);
+      }
+    } else {
+      // Successfully created
+      authUserExists = createData?.user?.id === u.id;
+      if (!authUserExists) {
+        console.warn(`  [warn] createUser ${u.email}: created but returned id mismatch; skipping profile insert`);
+      }
     }
 
-    await prisma.$executeRaw`
-      INSERT INTO public.profiles (id, full_name, role, tenant_id)
-      VALUES (${u.id}::uuid, ${u.fullName}, ${u.role}::user_role, ${t.id})
-      ON CONFLICT (id) DO UPDATE
-        SET full_name = EXCLUDED.full_name,
-            role      = EXCLUDED.role,
-            tenant_id = EXCLUDED.tenant_id,
-            updated_at = NOW();
-    `;
+    // 3. Only insert/upsert profile if auth user with our id exists
+    if (authUserExists) {
+      await prisma.$executeRaw`
+        INSERT INTO public.profiles (id, full_name, role, tenant_id)
+        VALUES (${u.id}::uuid, ${u.fullName}, ${u.role}::user_role, ${t.id})
+        ON CONFLICT (id) DO UPDATE
+          SET full_name = EXCLUDED.full_name,
+              role      = EXCLUDED.role,
+              tenant_id = EXCLUDED.tenant_id,
+              updated_at = NOW();
+      `;
+    }
   }
 }
 
