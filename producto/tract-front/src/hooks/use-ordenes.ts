@@ -26,6 +26,20 @@ export function useOrden(id?: string) {
   });
 }
 
+/**
+ * Devuelve un callback para prefetchear el detalle de una OT (al hover de una
+ * card/fila). Calienta la cache ["ordenes", id] que consume useOrden(), así la
+ * navegación al detalle es instantánea.
+ */
+export function usePrefetchOrden() {
+  const queryClient = useQueryClient();
+  return (id: string) =>
+    queryClient.prefetchQuery({
+      queryKey: ["ordenes", id],
+      queryFn: () => getOrdenById(id),
+    });
+}
+
 export function useCreateOrden() {
   const queryClient = useQueryClient();
 

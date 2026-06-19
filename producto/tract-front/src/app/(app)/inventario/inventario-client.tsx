@@ -14,7 +14,7 @@ import {
   Search,
   Sliders,
 } from "lucide-react";
-import { EmptyState } from "@/components/core";
+import { EmptyState, TableSkeleton } from "@/components/core";
 import {
   AjusteStockDialog,
   DesactivarRepuestoDialog,
@@ -33,7 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/contexts/auth-context";
 import { useRepuestos } from "@/hooks/use-inventario";
 import { cn } from "@/lib/utils";
@@ -85,7 +84,7 @@ export function InventarioClient() {
     return Array.from(set).sort();
   }, [repuestos, categoria]);
 
-  const filtered = (() => {
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return repuestos;
     // Mantener filtro cliente para feedback instantaneo mientras se debounce
@@ -97,7 +96,7 @@ export function InventarioClient() {
         (r.categoria ?? "").toLowerCase().includes(q) ||
         (r.descripcion ?? "").toLowerCase().includes(q),
     );
-  })();
+  }, [query, repuestos]);
 
   const activos = repuestos.filter((r) => r.activo).length;
   const totalBajoStock = repuestos.filter((r) => r.bajoStock && r.activo).length;
@@ -278,18 +277,7 @@ export function InventarioClient() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoading && (
-            <div className="space-y-px p-5">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div className="flex items-center gap-4 py-2" key={idx}>
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-5 w-12" />
-                  <Skeleton className="h-5 w-12" />
-                </div>
-              ))}
-            </div>
-          )}
+          {isLoading && <TableSkeleton cols={8} />}
 
           {!isLoading && error && (
             <div className="p-5">

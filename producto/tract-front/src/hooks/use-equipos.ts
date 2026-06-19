@@ -42,6 +42,25 @@ export function useEquipo(id: string) {
   });
 }
 
+/**
+ * Devuelve un callback para prefetchear el detalle de un equipo (al hover de una
+ * fila/card del listado). Calienta las caches que consume la página de detalle
+ * (detalle + resumen), así la navegación abre con datos.
+ */
+export function usePrefetchEquipo() {
+  const queryClient = useQueryClient();
+  return (id: string) => {
+    queryClient.prefetchQuery({
+      queryKey: ["equipos", "detalle", id],
+      queryFn: () => getEquipo(id),
+    });
+    queryClient.prefetchQuery({
+      queryKey: ["equipos", "resumen", id],
+      queryFn: () => getEquipoResumen(id),
+    });
+  };
+}
+
 export function useEquipoResumen(id: string) {
   return useQuery({
     enabled: Boolean(id),

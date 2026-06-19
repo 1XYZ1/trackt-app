@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
+import { useMemo } from "react";
 import {
   TICKET_ESTADOS,
   ticketEstadoLabel,
@@ -28,10 +29,14 @@ const COLAPSADOS_POR_DEFECTO: TicketEstado[] = ["CERRADO", "CANCELADO"];
 export function TicketsLista({ tickets }: { tickets: TicketTrabajo[] }) {
   const prefetch = usePrefetchTicket();
 
-  const grupos = TICKET_ESTADOS.map((estado) => ({
-    estado,
-    items: tickets.filter((t) => t.estado === estado),
-  })).filter((g) => g.items.length > 0);
+  const grupos = useMemo(
+    () =>
+      TICKET_ESTADOS.map((estado) => ({
+        estado,
+        items: tickets.filter((t) => t.estado === estado),
+      })).filter((g) => g.items.length > 0),
+    [tickets],
+  );
 
   if (grupos.length === 0) return null;
 

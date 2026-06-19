@@ -13,7 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
-import { EmptyState } from "@/components/core";
+import { EmptyState, TableSkeleton } from "@/components/core";
 import {
   DesactivarEquipoDialog,
   EquipoFormSheet,
@@ -32,29 +32,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useHasRole } from "@/contexts/auth-context";
-import { useEquipos, useReactivarEquipo } from "@/hooks/use-equipos";
+import {
+  useEquipos,
+  usePrefetchEquipo,
+  useReactivarEquipo,
+} from "@/hooks/use-equipos";
 import { EQUIPOS_PAGE_LIMIT, type Equipo } from "@/lib/api/equipos";
-
-function TableSkeleton({ rows = 6, cols = 6 }: { rows?: number; cols?: number }) {
-  return (
-    <div className="divide-y divide-border/60">
-      {Array.from({ length: rows }).map((_, rowIdx) => (
-        <div
-          className="flex items-center gap-4 px-5 py-3.5"
-          key={rowIdx}
-        >
-          {Array.from({ length: cols }).map((__, colIdx) => (
-            <Skeleton
-              className="h-4"
-              key={colIdx}
-              style={{ width: `${colIdx === 0 ? 64 : 80 + ((colIdx * 13) % 60)}px` }}
-            />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export function EquiposClient() {
   const [query, setQuery] = useState("");
@@ -67,6 +50,7 @@ export function EquiposClient() {
 
   const isAdmin = useHasRole("admin");
   const reactivar = useReactivarEquipo();
+  const prefetchEquipo = usePrefetchEquipo();
 
   const handleReactivar = (equipo: Equipo) => {
     setReactivarId(equipo.id);
@@ -275,6 +259,8 @@ export function EquiposClient() {
                           <tr
                             className="border-border/60 border-b transition-colors last:border-0 hover:bg-accent/40"
                             key={equipo.id}
+                            onFocus={() => prefetchEquipo(equipo.id)}
+                            onMouseEnter={() => prefetchEquipo(equipo.id)}
                           >
                             <td className="whitespace-nowrap px-5 py-3.5 font-mono font-semibold text-xs">
                               <Link
@@ -391,7 +377,12 @@ export function EquiposClient() {
                   {filteredEquipos.map((equipo) => {
                     const inactive = equipo.activo === false;
                     return (
-                      <div className="p-4" key={equipo.id}>
+                      <div
+                        className="p-4"
+                        key={equipo.id}
+                        onFocus={() => prefetchEquipo(equipo.id)}
+                        onMouseEnter={() => prefetchEquipo(equipo.id)}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <Link
                             className="min-w-0"

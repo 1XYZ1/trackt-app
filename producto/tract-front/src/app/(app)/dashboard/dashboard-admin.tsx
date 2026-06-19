@@ -90,15 +90,13 @@ export async function DashboardAdmin({ profile }: Props) {
   }
 
   const supabase = await createClient();
-  // getUser() revalida el token contra el server de auth (getSession solo lee
-  // cookies y puede devolver uno expirado). Validamos y luego tomamos el token.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // La página ya pasó el guard del layout (requireSession valida el usuario vía
+  // getUser) y la API revalida el Bearer en cada request, así que aquí basta
+  // getSession (lee cookies, sin round-trip al auth server) para tomar el token.
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  const token = user ? (session?.access_token ?? null) : null;
+  const token = session?.access_token ?? null;
 
   const ordenesUrl = `${API_BASE_URL}/ordenes`;
   const ticketsUrl = `${API_BASE_URL}/tickets`;
