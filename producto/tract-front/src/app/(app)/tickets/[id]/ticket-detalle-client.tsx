@@ -14,7 +14,12 @@ import {
   UserPlus,
   Wrench,
 } from "lucide-react";
-import { EmptyState, StatusBadge, TimelineItem } from "@/components/core";
+import {
+  DetailBreadcrumb,
+  EmptyState,
+  StatusBadge,
+  TimelineItem,
+} from "@/components/core";
 import type { TimelineEvento } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -139,12 +144,11 @@ export function TicketDetalleClient({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Button render={<Link href="/tickets" />} size="sm" variant="ghost">
-          <ArrowLeft />
-          Volver a tickets
-        </Button>
-      </div>
+      <DetailBreadcrumb
+        current={ticket.codigo}
+        parentHref="/tickets"
+        parentLabel="Tickets"
+      />
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">

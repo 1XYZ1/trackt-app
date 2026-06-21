@@ -13,7 +13,7 @@ import {
   Sliders,
   Warehouse,
 } from "lucide-react";
-import { EmptyState } from "@/components/core";
+import { DetailBreadcrumb, EmptyState } from "@/components/core";
 import {
   AjusteStockDialog,
   DesactivarRepuestoDialog,
@@ -70,13 +70,13 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <Link
-            className="mb-2 inline-flex items-center gap-1.5 rounded-sm text-muted-foreground text-xs outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            href="/inventario"
-          >
-            <ArrowLeft className="size-3.5" />
-            Inventario
-          </Link>
+          <div className="mb-2">
+            <DetailBreadcrumb
+              current={repuesto.codigo}
+              parentHref="/inventario"
+              parentLabel="Inventario"
+            />
+          </div>
           <h1 className="flex flex-wrap items-center gap-x-3 gap-y-2 font-semibold text-2xl tracking-tight">
             <span className="font-mono">{repuesto.codigo}</span>
             <Badge variant={repuesto.activo ? "success" : "outline"}>

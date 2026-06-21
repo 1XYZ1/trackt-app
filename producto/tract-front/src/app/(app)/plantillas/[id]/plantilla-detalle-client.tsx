@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, CheckSquare, Pencil } from "lucide-react";
-import { EmptyState } from "@/components/core";
+import { DetailBreadcrumb, EmptyState } from "@/components/core";
 import {
   PlantillaFormSheet,
   PlantillaItemsEditor,
@@ -70,13 +70,11 @@ export function PlantillaDetalleClient({ id }: PlantillaDetalleClientProps) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
-        <Link
-          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
-          href="/plantillas"
-        >
-          <ArrowLeft className="size-4" />
-          Volver a plantillas
-        </Link>
+        <DetailBreadcrumb
+          current={plantilla.nombre}
+          parentHref="/plantillas"
+          parentLabel="Plantillas"
+        />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-2">
             <h1 className="font-semibold text-2xl tracking-tight">

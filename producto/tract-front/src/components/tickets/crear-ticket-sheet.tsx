@@ -111,9 +111,10 @@ export function CrearTicketSheet({
           <form className="space-y-5" id="crear-ticket-form" onSubmit={onSubmit}>
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor="titulo">
-                Titulo
+                Título
               </label>
               <Input
+                aria-invalid={!!errors.titulo}
                 id="titulo"
                 placeholder="Ej: Revisar fuga hidraulica"
                 {...register("titulo")}
@@ -125,11 +126,12 @@ export function CrearTicketSheet({
 
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor="descripcion">
-                Descripcion
+                Descripción
               </label>
               <Textarea
+                aria-invalid={!!errors.descripcion}
                 id="descripcion"
-                placeholder="Describe el trabajo requerido para el mecanico."
+                placeholder="Describe el trabajo requerido para el mecánico."
                 {...register("descripcion")}
               />
               {errors.descripcion && (

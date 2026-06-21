@@ -6,7 +6,6 @@ import {
   Ticket,
   CheckCircle2,
   Users,
-  UserCog,
   Gauge,
   Package,
   History,
@@ -26,19 +25,7 @@ export const sidebarData: SidebarData = {
   ],
   navGroups: [
     {
-      title: 'Mi trabajo',
-      roles: ['mechanic'],
-      items: [
-        {
-          title: 'Mis tickets',
-          url: '/mis-tickets',
-          icon: Ticket,
-          roles: ['mechanic'],
-        },
-      ],
-    },
-    {
-      title: 'General',
+      title: 'Panel',
       roles: ['admin', 'jefe_taller'],
       items: [
         {
@@ -47,6 +34,18 @@ export const sidebarData: SidebarData = {
           icon: LayoutDashboard,
           roles: ['admin', 'jefe_taller'],
         },
+        {
+          title: 'Reportes',
+          url: '/reportes',
+          icon: BarChart3,
+          roles: ['admin', 'jefe_taller'],
+        },
+      ],
+    },
+    {
+      title: 'Equipos',
+      roles: ['admin', 'jefe_taller'],
+      items: [
         {
           title: 'Equipos',
           url: '/equipos',
@@ -65,8 +64,14 @@ export const sidebarData: SidebarData = {
           icon: ListChecks,
           roles: ['admin', 'jefe_taller'],
         },
+      ],
+    },
+    {
+      title: 'Operación',
+      roles: ['admin', 'jefe_taller'],
+      items: [
         {
-          title: 'Ordenes',
+          title: 'Órdenes',
           url: '/ordenes',
           icon: ClipboardList,
           roles: ['admin', 'jefe_taller'],
@@ -78,9 +83,15 @@ export const sidebarData: SidebarData = {
           roles: ['admin', 'jefe_taller'],
         },
         {
-          title: 'Reportes',
-          url: '/reportes',
-          icon: BarChart3,
+          title: 'Pendientes de validar',
+          url: '/tickets?estado=EJECUTADO',
+          icon: CheckCircle2,
+          roles: ['admin'],
+        },
+        {
+          title: 'Carga de mecánicos',
+          url: '/taller/carga',
+          icon: Gauge,
           roles: ['admin', 'jefe_taller'],
         },
       ],
@@ -110,35 +121,23 @@ export const sidebarData: SidebarData = {
       ],
     },
     {
-      title: 'Taller',
-      roles: ['admin', 'jefe_taller'],
-      items: [
-        {
-          title: 'Carga de mecanicos',
-          url: '/taller/carga',
-          icon: Gauge,
-          roles: ['admin', 'jefe_taller'],
-        },
-      ],
-    },
-    {
-      title: 'Administracion',
+      title: 'Administración',
       roles: ['admin'],
       items: [
-        {
-          title: 'Pendientes de validar',
-          url: '/tickets?estado=EJECUTADO',
-          icon: CheckCircle2,
-          roles: ['admin'],
-        },
         { title: 'Marcas', url: '/marcas', icon: Tag, roles: ['admin'] },
         { title: 'Usuarios', url: '/usuarios', icon: Users, roles: ['admin'] },
       ],
     },
     {
-      title: 'Cuenta',
+      title: 'Mi trabajo',
+      roles: ['mechanic'],
       items: [
-        { title: 'Mi perfil', url: '/configuracion/perfil', icon: UserCog },
+        {
+          title: 'Mis tickets',
+          url: '/mis-tickets',
+          icon: Ticket,
+          roles: ['mechanic'],
+        },
       ],
     },
   ],

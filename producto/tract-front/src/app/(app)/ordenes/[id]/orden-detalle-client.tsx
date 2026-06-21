@@ -13,7 +13,12 @@ import {
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
-import { EmptyState, StatusBadge, TicketCard } from "@/components/core";
+import {
+  DetailBreadcrumb,
+  EmptyState,
+  StatusBadge,
+  TicketCard,
+} from "@/components/core";
 import { CrearTicketSheet } from "@/components/tickets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,13 +90,11 @@ export function OrdenDetalleClient({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <Link
-            className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
-            href="/ordenes"
-          >
-            <ArrowLeft className="size-4" />
-            Volver a órdenes
-          </Link>
+          <DetailBreadcrumb
+            current={orden.codigo}
+            parentHref="/ordenes"
+            parentLabel="Órdenes"
+          />
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <h1 className="font-mono font-semibold text-2xl tracking-tight">
               {orden.codigo}

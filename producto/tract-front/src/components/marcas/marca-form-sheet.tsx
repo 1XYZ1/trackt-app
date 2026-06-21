@@ -130,7 +130,12 @@ export function MarcaFormSheet({
               <label className="font-medium text-sm" htmlFor="nombre">
                 Nombre
               </label>
-              <Input id="nombre" placeholder="Caterpillar" {...register("nombre")} />
+              <Input
+                aria-invalid={!!errors.nombre}
+                id="nombre"
+                placeholder="Caterpillar"
+                {...register("nombre")}
+              />
               {errors.nombre && (
                 <p className="text-destructive text-xs">{errors.nombre.message}</p>
               )}

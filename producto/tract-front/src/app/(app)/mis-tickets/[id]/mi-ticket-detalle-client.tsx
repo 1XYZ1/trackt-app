@@ -11,7 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
-import { EmptyState, StatusBadge } from "@/components/core";
+import { DetailBreadcrumb, EmptyState, StatusBadge } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -201,15 +201,11 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-24">
-      <Button
-        className="w-fit"
-        render={<Link href="/mis-tickets" />}
-        size="sm"
-        variant="ghost"
-      >
-        <ArrowLeft />
-        Volver
-      </Button>
+      <DetailBreadcrumb
+        current={ticket.codigo}
+        parentHref="/mis-tickets"
+        parentLabel="Mis tickets"
+      />
 
       <Card className="rounded-xl border-border/70">
         <CardContent className="space-y-4 p-4">

@@ -6,6 +6,7 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -195,9 +196,14 @@ export function EquipoFormSheet({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="codigo">
-                  Codigo
+                  Código
                 </label>
-                <Input id="codigo" placeholder="EQ-001" {...register("codigo")} />
+                <Input
+                  aria-invalid={!!errors.codigo}
+                  id="codigo"
+                  placeholder="EQ-001"
+                  {...register("codigo")}
+                />
                 {errors.codigo && (
                   <p className="text-destructive text-xs">
                     {errors.codigo.message}
@@ -208,7 +214,12 @@ export function EquipoFormSheet({
                 <label className="font-medium text-sm" htmlFor="tipo">
                   Tipo
                 </label>
-                <Input id="tipo" placeholder="Excavadora" {...register("tipo")} />
+                <Input
+                  aria-invalid={!!errors.tipo}
+                  id="tipo"
+                  placeholder="Excavadora"
+                  {...register("tipo")}
+                />
                 {errors.tipo && (
                   <p className="text-destructive text-xs">
                     {errors.tipo.message}
@@ -222,6 +233,7 @@ export function EquipoFormSheet({
                 Nombre
               </label>
               <Input
+                aria-invalid={!!errors.nombre}
                 id="nombre"
                 placeholder="Excavadora 320"
                 {...register("nombre")}
@@ -238,7 +250,12 @@ export function EquipoFormSheet({
                 <label className="font-medium text-sm" htmlFor="marca">
                   Marca
                 </label>
-                <Input id="marca" placeholder="CAT" {...register("marca")} />
+                <Input
+                  aria-invalid={!!errors.marca}
+                  id="marca"
+                  placeholder="CAT"
+                  {...register("marca")}
+                />
                 {errors.marca && (
                   <p className="text-destructive text-xs">
                     {errors.marca.message}
@@ -249,7 +266,12 @@ export function EquipoFormSheet({
                 <label className="font-medium text-sm" htmlFor="modelo">
                   Modelo
                 </label>
-                <Input id="modelo" placeholder="320" {...register("modelo")} />
+                <Input
+                  aria-invalid={!!errors.modelo}
+                  id="modelo"
+                  placeholder="320"
+                  {...register("modelo")}
+                />
                 {errors.modelo && (
                   <p className="text-destructive text-xs">
                     {errors.modelo.message}
@@ -264,6 +286,7 @@ export function EquipoFormSheet({
                   N° de serie
                 </label>
                 <Input
+                  aria-invalid={!!errors.numeroSerie}
                   id="numeroSerie"
                   placeholder="SN-12345"
                   {...register("numeroSerie")}
@@ -276,9 +299,10 @@ export function EquipoFormSheet({
               </div>
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="ubicacion">
-                  Ubicacion
+                  Ubicación
                 </label>
                 <Input
+                  aria-invalid={!!errors.ubicacion}
                   id="ubicacion"
                   placeholder="Mina norte"
                   {...register("ubicacion")}
@@ -296,20 +320,34 @@ export function EquipoFormSheet({
                 <label className="font-medium text-sm" htmlFor="fechaInstalacion">
                   Fecha de instalación
                 </label>
-                <Input
-                  id="fechaInstalacion"
-                  type="date"
-                  {...register("fechaInstalacion")}
+                <Controller
+                  control={control}
+                  name="fechaInstalacion"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="fechaInstalacion"
+                      onChange={field.onChange}
+                      placeholder="Fecha de instalación"
+                      value={field.value ?? ""}
+                    />
+                  )}
                 />
               </div>
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="fechaCompra">
                   Fecha de compra
                 </label>
-                <Input
-                  id="fechaCompra"
-                  type="date"
-                  {...register("fechaCompra")}
+                <Controller
+                  control={control}
+                  name="fechaCompra"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="fechaCompra"
+                      onChange={field.onChange}
+                      placeholder="Fecha de compra"
+                      value={field.value ?? ""}
+                    />
+                  )}
                 />
               </div>
             </div>

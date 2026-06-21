@@ -198,7 +198,7 @@ export function TicketsClient({
               defaultValue={filters.q}
               key={`q-${filters.q}`}
               onChange={(event) => debouncedUpdateFilter("q", event.target.value)}
-              placeholder="Buscar codigo o titulo"
+              placeholder="Buscar código o título"
               type="search"
             />
           </div>
@@ -212,7 +212,7 @@ export function TicketsClient({
               onChange={(event) =>
                 debouncedUpdateFilter("mecanico", event.target.value)
               }
-              placeholder="Mecanico"
+              placeholder="Mecánico"
             />
           </div>
           <div className="relative w-full sm:w-32">
@@ -305,7 +305,7 @@ export function TicketsClient({
       {!isLoading && !error && tickets.length === 0 && (
         <EmptyState
           icon="ticket"
-          message="Los tickets apareceran aqui cuando se creen desde una orden de trabajo."
+          message="Los tickets aparecerán aquí cuando se creen desde una orden de trabajo."
           title="No hay tickets registrados"
         />
       )}
@@ -315,7 +315,7 @@ export function TicketsClient({
           <EmptyState
             className="w-full"
             icon="search"
-            message="Ajusta busqueda, estado, mecanico u OT para ver otros tickets."
+            message="Ajusta búsqueda, estado, mecánico u OT para ver otros tickets."
             title="Sin resultados"
           />
           {(hasTextFilters || (estado && estado !== "TODOS")) && (

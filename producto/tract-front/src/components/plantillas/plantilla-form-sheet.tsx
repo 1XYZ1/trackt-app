@@ -159,6 +159,7 @@ export function PlantillaFormSheet({
                 Nombre
               </label>
               <Input
+                aria-invalid={!!errors.nombre}
                 id="nombre"
                 placeholder="Mantención preventiva 250h"
                 {...register("nombre")}

@@ -206,6 +206,7 @@ export function RepuestoFormSheet({
                   Código
                 </label>
                 <Input
+                  aria-invalid={!!errors.codigo}
                   className="uppercase"
                   id="codigo"
                   placeholder="FILTRO-001"
@@ -240,6 +241,7 @@ export function RepuestoFormSheet({
                 Nombre
               </label>
               <Input
+                aria-invalid={!!errors.nombre}
                 id="nombre"
                 placeholder="Filtro de aceite"
                 {...register("nombre")}
