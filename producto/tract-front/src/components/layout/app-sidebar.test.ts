@@ -10,22 +10,19 @@ describe("filterByRole", () => {
   it("muestra solo la navegacion operativa del mecanico", () => {
     const groups = filterByRole("mechanic", sidebarData.navGroups);
 
-    expect(groups.map((group) => group.title)).toEqual([
-      "Mi trabajo",
-      "Cuenta",
-    ]);
-    expect(titlesFrom(groups)).toEqual(["Mis tickets", "Mi perfil"]);
+    expect(groups.map((group) => group.title)).toEqual(["Mi trabajo"]);
+    expect(titlesFrom(groups)).toEqual(["Mis tickets"]);
   });
 
   it("muestra administracion solo para usuarios admin", () => {
     const groups = filterByRole("admin", sidebarData.navGroups);
 
     expect(groups.map((group) => group.title)).toEqual([
-      "General",
+      "Panel",
+      "Equipos",
+      "Operación",
       "Inventario",
-      "Taller",
-      "Administracion",
-      "Cuenta",
+      "Administración",
     ]);
     expect(titlesFrom(groups)).toContain("Usuarios");
     expect(titlesFrom(groups)).toContain("Pendientes de validar");
@@ -35,10 +32,10 @@ describe("filterByRole", () => {
     const groups = filterByRole("jefe_taller", sidebarData.navGroups);
 
     expect(groups.map((group) => group.title)).toEqual([
-      "General",
+      "Panel",
+      "Equipos",
+      "Operación",
       "Inventario",
-      "Taller",
-      "Cuenta",
     ]);
     expect(titlesFrom(groups)).not.toContain("Usuarios");
     expect(titlesFrom(groups)).not.toContain("Pendientes de validar");
@@ -47,18 +44,14 @@ describe("filterByRole", () => {
   it("muestra solo el grupo Inventario para jefe de inventario", () => {
     const groups = filterByRole("jefe_inventario", sidebarData.navGroups);
 
-    expect(groups.map((group) => group.title)).toEqual([
-      "Inventario",
-      "Cuenta",
-    ]);
+    expect(groups.map((group) => group.title)).toEqual(["Inventario"]);
     expect(titlesFrom(groups)).toEqual([
       "Inventario",
       "Movimientos",
       "Solicitudes pendientes",
-      "Mi perfil",
     ]);
-    expect(groups.map((group) => group.title)).not.toContain("General");
-    expect(groups.map((group) => group.title)).not.toContain("Administracion");
+    expect(groups.map((group) => group.title)).not.toContain("Panel");
+    expect(groups.map((group) => group.title)).not.toContain("Administración");
   });
 
   it("filtra subitems y elimina grupos vacios", () => {

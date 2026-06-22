@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -226,10 +227,11 @@ export function MovimientosClient() {
               >
                 Desde
               </label>
-              <Input
+              <DatePicker
                 id="mov-desde"
-                onChange={(e) => setDesde(e.target.value)}
-                type="date"
+                max={hasta || undefined}
+                onChange={setDesde}
+                placeholder="Desde"
                 value={desde}
               />
             </div>
@@ -241,10 +243,11 @@ export function MovimientosClient() {
               >
                 Hasta
               </label>
-              <Input
+              <DatePicker
                 id="mov-hasta"
-                onChange={(e) => setHasta(e.target.value)}
-                type="date"
+                min={desde || undefined}
+                onChange={setHasta}
+                placeholder="Hasta"
                 value={hasta}
               />
             </div>
@@ -299,8 +302,9 @@ export function MovimientosClient() {
           )}
 
           {!isLoading && !error && movimientos.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
                 <thead>
                   <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
                     <th className="px-5 py-3 font-semibold">Fecha</th>
@@ -367,7 +371,50 @@ export function MovimientosClient() {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+              <div className="divide-y divide-border/60 md:hidden">
+                {movimientos.map((m) => (
+                  <div className="p-4" key={m.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {m.repuesto ? (
+                          <Link
+                            className="rounded-sm font-mono font-semibold text-xs outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                            href={`/inventario/repuestos/${m.repuestoId}`}
+                          >
+                            {m.repuesto.codigo}
+                          </Link>
+                        ) : (
+                          <span className="font-mono text-muted-foreground text-xs">
+                            {m.repuestoId}
+                          </span>
+                        )}
+                        {m.repuesto && (
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {m.repuesto.nombre}
+                          </p>
+                        )}
+                      </div>
+                      <MovimientoBadge tipo={m.tipo} />
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs">
+                      <MovimientoCantidad cantidad={m.cantidad} />
+                      <span className="tabular-nums">
+                        Stock {m.stockResultante}
+                      </span>
+                      <span className="tabular-nums">
+                        {new Date(m.createdAt).toLocaleDateString("es-CL")}
+                      </span>
+                    </div>
+                    {m.observacion && (
+                      <p className="mt-1.5 text-muted-foreground text-xs">
+                        {m.observacion}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

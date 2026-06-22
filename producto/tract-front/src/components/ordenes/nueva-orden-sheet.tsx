@@ -129,11 +129,12 @@ export function NuevaOrdenSheet({ onOpenChange, open }: NuevaOrdenSheetProps) {
 
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor="descripcion">
-                Descripcion
+                Descripción
               </label>
               <Textarea
+                aria-invalid={!!errors.descripcion}
                 id="descripcion"
-                placeholder="Describe la solicitud de mantencion, falla o trabajo requerido."
+                placeholder="Describe la solicitud de mantención, falla o trabajo requerido."
                 {...register("descripcion")}
               />
               {errors.descripcion && (

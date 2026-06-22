@@ -308,8 +308,9 @@ export function InventarioClient() {
           )}
 
           {!isLoading && !error && repuestos.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
                 <thead>
                   <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
                     <th className="px-5 py-3 font-semibold">Código</th>
@@ -458,7 +459,96 @@ export function InventarioClient() {
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+              <div className="divide-y divide-border/60 md:hidden">
+                {filtered.length === 0 ? (
+                  <div className="p-5">
+                    <EmptyState
+                      className="border-0 bg-transparent"
+                      icon="search"
+                      message="Ajusta la búsqueda o el filtro de bajo stock."
+                      title="Sin resultados"
+                    />
+                  </div>
+                ) : (
+                  filtered.map((r) => {
+                    const inactive = !r.activo;
+                    return (
+                      <div
+                        className={cn(
+                          "p-4",
+                          inactive && "opacity-60",
+                          r.bajoStock && r.activo && "bg-warning/4",
+                        )}
+                        key={r.id}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <Link
+                            className="min-w-0"
+                            href={`/inventario/repuestos/${r.id}`}
+                          >
+                            <p className="font-mono font-semibold text-brand-primary text-xs">
+                              {r.codigo}
+                            </p>
+                            <p className="mt-0.5 flex items-center gap-1.5 truncate font-medium text-sm">
+                              {r.bajoStock && r.activo && (
+                                <AlertTriangle className="size-3.5 shrink-0 text-warning-foreground" />
+                              )}
+                              {r.nombre}
+                            </p>
+                          </Link>
+                          <StockDisponibleBadge
+                            bajoStock={r.bajoStock}
+                            disponible={r.stockDisponible}
+                          />
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs">
+                          {r.categoria && <span>{r.categoria}</span>}
+                          <span className="tabular-nums">
+                            Stock {r.stockActual} {r.unidad}
+                          </span>
+                          <span className="tabular-nums">
+                            Reservado {r.stockReservado}
+                          </span>
+                          <span className="tabular-nums">
+                            Mín {r.stockMinimo}
+                          </span>
+                          {inactive && <Badge variant="outline">Inactivo</Badge>}
+                        </div>
+                        {canManage && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              onClick={() => setEntradaTarget(r)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <PlusCircle />
+                              Entrada
+                            </Button>
+                            <Button
+                              onClick={() => setAjusteTarget(r)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <Sliders />
+                              Ajuste
+                            </Button>
+                            <Button
+                              onClick={() => openEdit(r)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <Pencil />
+                              Editar
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

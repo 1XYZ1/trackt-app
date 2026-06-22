@@ -15,7 +15,7 @@ import {
   TicketCheck,
   Wrench,
 } from "lucide-react";
-import { EmptyState } from "@/components/core";
+import { DetailBreadcrumb, EmptyState } from "@/components/core";
 import {
   EquipoFormSheet,
   EquipoHistorial,
@@ -150,13 +150,11 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
-        <Link
-          className="inline-flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
-          href="/equipos"
-        >
-          <ArrowLeft className="size-4" />
-          Volver a equipos
-        </Link>
+        <DetailBreadcrumb
+          current={equipo.codigo}
+          parentHref="/equipos"
+          parentLabel="Equipos"
+        />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">

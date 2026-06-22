@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -162,6 +162,13 @@ export function ReportesClient() {
 
   const rows = query.data?.data ?? [];
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+  // Columnas numéricas → alineadas a la derecha y sin truncar.
+  const numericCols = new Set(
+    columns.filter((c) => {
+      const sample = rows.find((r) => r[c] !== null && r[c] !== undefined);
+      return sample !== undefined && typeof sample[c] === "number";
+    }),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -210,10 +217,11 @@ export function ReportesClient() {
                 <label className="text-[11px] text-muted-foreground uppercase">
                   Desde
                 </label>
-                <Input
-                  className="w-40"
-                  onChange={(e) => setDesde(e.target.value)}
-                  type="date"
+                <DatePicker
+                  className="w-44"
+                  max={hasta || undefined}
+                  onChange={setDesde}
+                  placeholder="Desde"
                   value={desde}
                 />
               </div>
@@ -223,10 +231,11 @@ export function ReportesClient() {
                 <label className="text-[11px] text-muted-foreground uppercase">
                   Hasta
                 </label>
-                <Input
-                  className="w-40"
-                  onChange={(e) => setHasta(e.target.value)}
-                  type="date"
+                <DatePicker
+                  className="w-44"
+                  min={desde || undefined}
+                  onChange={setHasta}
+                  placeholder="Hasta"
                   value={hasta}
                 />
               </div>
@@ -349,13 +358,16 @@ export function ReportesClient() {
             </div>
           )}
           {ran && rows.length > 0 && (
-            <div className="max-h-[32rem] overflow-auto">
-              <table className="w-full text-sm">
+            <div className="max-h-[32rem] overflow-x-auto overflow-y-auto">
+              <table className="w-full table-auto text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-border border-b text-left text-[11px] text-muted-foreground uppercase tracking-wider">
                     {columns.map((c) => (
                       <th
-                        className="whitespace-nowrap px-4 py-3 font-semibold"
+                        className={cn(
+                          "whitespace-nowrap px-4 py-3 font-semibold",
+                          numericCols.has(c) && "text-right",
+                        )}
                         key={c}
                       >
                         {c}
@@ -369,13 +381,27 @@ export function ReportesClient() {
                       className="border-border/60 border-b transition-colors last:border-0 odd:bg-secondary/15 hover:bg-accent/40"
                       key={idx}
                     >
-                      {columns.map((c) => (
-                        <td className="whitespace-nowrap px-4 py-2.5" key={c}>
-                          {row[c] === null || row[c] === undefined
+                      {columns.map((c) => {
+                        const value = row[c];
+                        const text =
+                          value === null || value === undefined
                             ? "—"
-                            : String(row[c])}
-                        </td>
-                      ))}
+                            : String(value);
+                        return (
+                          <td
+                            className={cn(
+                              "px-4 py-2.5",
+                              numericCols.has(c)
+                                ? "whitespace-nowrap text-right tabular-nums"
+                                : "max-w-[16rem] truncate",
+                            )}
+                            key={c}
+                            title={text}
+                          >
+                            {text}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>

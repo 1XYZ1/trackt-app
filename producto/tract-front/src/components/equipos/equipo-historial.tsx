@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/contexts/auth-context";
 import { useEquipoHistorial } from "@/hooks/use-equipos";
@@ -106,11 +106,12 @@ export function EquipoHistorial({ equipoId }: EquipoHistorialProps) {
             <label className="text-[11px] text-muted-foreground uppercase" htmlFor="hist-desde">
               Desde
             </label>
-            <Input
+            <DatePicker
               className="w-44"
               id="hist-desde"
-              onChange={(e) => setDesde(e.target.value)}
-              type="date"
+              max={hasta || undefined}
+              onChange={setDesde}
+              placeholder="Desde"
               value={desde}
             />
           </div>
@@ -118,11 +119,12 @@ export function EquipoHistorial({ equipoId }: EquipoHistorialProps) {
             <label className="text-[11px] text-muted-foreground uppercase" htmlFor="hist-hasta">
               Hasta
             </label>
-            <Input
+            <DatePicker
               className="w-44"
               id="hist-hasta"
-              onChange={(e) => setHasta(e.target.value)}
-              type="date"
+              min={desde || undefined}
+              onChange={setHasta}
+              placeholder="Hasta"
               value={hasta}
             />
           </div>

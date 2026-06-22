@@ -63,7 +63,7 @@ export function AppSidebar({ user, role }: Props) {
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={user} />
+        <NavUser role={role} user={user} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

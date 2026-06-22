@@ -1,3 +1,4 @@
+export { DetailBreadcrumb } from "./detail-breadcrumb";
 export { DetailSkeleton } from "./detail-skeleton";
 export { EmptyState } from "./empty-state";
 export type { EmptyStateProps } from "./empty-state";
