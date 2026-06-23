@@ -18,6 +18,7 @@ import {
 } from '../common/utils/pagination';
 import {
   EquipoEstadoOperativo,
+  MarcaTipo,
   OrdenTrabajoEstado,
   Prioridad,
   Prisma,
@@ -33,7 +34,8 @@ const LIST_SELECT = {
   codigo: true,
   nombre: true,
   tipo: true,
-  marca: true,
+  marcaId: true,
+  marcaRef: { select: { id: true, nombre: true } },
   modelo: true,
   ubicacion: true,
   estadoOperativo: true,
@@ -46,7 +48,8 @@ const DETAIL_SELECT = {
   codigo: true,
   nombre: true,
   tipo: true,
-  marca: true,
+  marcaId: true,
+  marcaRef: { select: { id: true, nombre: true } },
   modelo: true,
   numeroSerie: true,
   ubicacion: true,
@@ -106,6 +109,25 @@ function normNullable(
   return trimmed === '' ? null : trimmed;
 }
 
+/**
+ * La relación al catálogo se selecciona como `marcaRef`; al cliente se expone
+ * como `marca: { id, nombre } | null` (misma forma que el repuesto). Espeja a
+ * `mapRepuesto` de InventarioService.
+ */
+type EquipoConMarca<T> = Omit<T, 'marcaRef'> & {
+  marca: { id: string; nombre: string } | null;
+};
+
+function mapEquipo<
+  T extends { marcaRef: { id: string; nombre: string } | null },
+>(equipo: T): EquipoConMarca<T> {
+  const { marcaRef, ...rest } = equipo;
+  return {
+    ...rest,
+    marca: marcaRef ? { id: marcaRef.id, nombre: marcaRef.nombre } : null,
+  } as EquipoConMarca<T>;
+}
+
 @Injectable()
 export class EquiposService {
   constructor(private readonly prisma: PrismaService) {}
@@ -114,7 +136,9 @@ export class EquiposService {
     tenantId: string,
     query: ListEquiposQueryDto,
   ): Promise<
-    PaginatedResult<Prisma.EquipoGetPayload<{ select: typeof LIST_SELECT }>>
+    PaginatedResult<
+      EquipoConMarca<Prisma.EquipoGetPayload<{ select: typeof LIST_SELECT }>>
+    >
   > {
     const {
       page = 1,
@@ -136,7 +160,9 @@ export class EquiposService {
           { codigo: { contains: search, mode: 'insensitive' } },
           { nombre: { contains: search, mode: 'insensitive' } },
           { tipo: { contains: search, mode: 'insensitive' } },
+          // marca = texto legacy; marcaRef = nombre del catálogo (fuente actual).
           { marca: { contains: search, mode: 'insensitive' } },
+          { marcaRef: { nombre: { contains: search, mode: 'insensitive' } } },
           { modelo: { contains: search, mode: 'insensitive' } },
           { numeroSerie: { contains: search, mode: 'insensitive' } },
           { ubicacion: { contains: search, mode: 'insensitive' } },
@@ -155,7 +181,7 @@ export class EquiposService {
       this.prisma.equipo.count({ where }),
     ]);
 
-    return buildPaginatedResult(data, total, page, limit);
+    return buildPaginatedResult(data.map(mapEquipo), total, page, limit);
   }
 
   async findOne(tenantId: string, id: string) {
@@ -170,7 +196,7 @@ export class EquiposService {
       throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
     }
 
-    return equipo;
+    return mapEquipo(equipo);
   }
 
   async create(tenantId: string, dto: CreateEquipoDto) {
@@ -201,13 +227,20 @@ export class EquiposService {
       );
     }
 
-    return this.prisma.equipo.create({
+    // marcaId es opcional; si viene, debe ser una marca usable (existe, activa
+    // y de ámbito EQUIPO/AMBOS). El escalar legacy `marca` no se escribe.
+    const marcaId = normOptional(dto.marcaId);
+    if (marcaId) {
+      await this.assertMarcaUsable(tenantId, marcaId);
+    }
+
+    const equipo = await this.prisma.equipo.create({
       data: {
         tenantId,
         codigo,
         nombre,
         tipo: normOptional(dto.tipo),
-        marca: normOptional(dto.marca),
+        marcaId,
         modelo: normOptional(dto.modelo),
         numeroSerie: normOptional(dto.numeroSerie),
         ubicacion: normOptional(dto.ubicacion),
@@ -219,6 +252,7 @@ export class EquiposService {
       },
       select: DETAIL_SELECT,
     });
+    return mapEquipo(equipo);
   }
 
   async update(tenantId: string, id: string, dto: UpdateEquipoDto) {
@@ -253,13 +287,21 @@ export class EquiposService {
       }
     }
 
-    return this.prisma.equipo.update({
+    // marcaId: undefined = no tocar; null/'' = limpiar (SET NULL); id = asignar
+    // (validando que la marca sea usable para equipos).
+    const marcaId =
+      dto.marcaId !== undefined ? normNullable(dto.marcaId) : undefined;
+    if (marcaId) {
+      await this.assertMarcaUsable(tenantId, marcaId);
+    }
+
+    const actualizado = await this.prisma.equipo.update({
       where: { id },
       data: {
         ...(codigo !== undefined && { codigo }),
         ...(nombre !== undefined && { nombre }),
         ...(dto.tipo !== undefined && { tipo: normNullable(dto.tipo) }),
-        ...(dto.marca !== undefined && { marca: normNullable(dto.marca) }),
+        ...(marcaId !== undefined && { marcaId }),
         ...(dto.modelo !== undefined && { modelo: normNullable(dto.modelo) }),
         ...(dto.numeroSerie !== undefined && {
           numeroSerie: normNullable(dto.numeroSerie),
@@ -280,6 +322,7 @@ export class EquiposService {
       },
       select: DETAIL_SELECT,
     });
+    return mapEquipo(actualizado);
   }
 
   /**
@@ -295,11 +338,12 @@ export class EquiposService {
       throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
     }
 
-    return this.prisma.equipo.update({
+    const actualizado = await this.prisma.equipo.update({
       where: { id },
       data: { activo: false },
       select: DETAIL_SELECT,
     });
+    return mapEquipo(actualizado);
   }
 
   /**
@@ -314,11 +358,12 @@ export class EquiposService {
       throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
     }
 
-    return this.prisma.equipo.update({
+    const actualizado = await this.prisma.equipo.update({
       where: { id },
       data: { activo: true },
       select: DETAIL_SELECT,
     });
+    return mapEquipo(actualizado);
   }
 
   /**
@@ -340,11 +385,12 @@ export class EquiposService {
       throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
     }
 
-    return this.prisma.equipo.update({
+    const actualizado = await this.prisma.equipo.update({
       where: { id },
       data: { estadoOperativo },
       select: DETAIL_SELECT,
     });
+    return mapEquipo(actualizado);
   }
 
   // ---------- QR ----------
@@ -363,11 +409,12 @@ export class EquiposService {
       throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
     }
 
-    return this.prisma.equipo.update({
+    const actualizado = await this.prisma.equipo.update({
       where: { id },
       data: { qrToken: randomUUID() },
       select: DETAIL_SELECT,
     });
+    return mapEquipo(actualizado);
   }
 
   /**
@@ -385,7 +432,7 @@ export class EquiposService {
     if (!equipo) {
       throw new NotFoundException('Equipo no encontrado para el QR indicado');
     }
-    return equipo;
+    return mapEquipo(equipo);
   }
 
   // ---------- Resumen (ficha central del equipo) ----------
@@ -548,7 +595,7 @@ export class EquiposService {
     }
 
     return {
-      equipo,
+      equipo: mapEquipo(equipo),
       estadisticas: {
         ordenesAbiertas,
         ordenesCerradas,
@@ -766,7 +813,7 @@ export class EquiposService {
       .sort((a, b) => b.cantidadConsumida - a.cantidadConsumida);
 
     return {
-      equipo,
+      equipo: mapEquipo(equipo),
       filtros: {
         desde: query.desde ?? null,
         hasta: query.hasta ?? null,
@@ -843,5 +890,36 @@ export class EquiposService {
       throw new BadRequestException('desde no puede ser posterior a hasta');
     }
     return { ...(gte && { gte }), ...(lte && { lte }) };
+  }
+
+  /**
+   * Valida que la marca exista en el tenant, esté activa y tenga ámbito EQUIPO
+   * o AMBOS. 404 si no existe o es de otro tenant (mismo mensaje, no filtra
+   * existencia); 409 si existe pero no es usable. Espeja a
+   * InventarioService.assertMarcaUsable (que rechaza el ámbito inverso).
+   */
+  private async assertMarcaUsable(
+    tenantId: string,
+    marcaId: string,
+  ): Promise<void> {
+    const marca = await this.prisma.marca.findFirst({
+      where: { id: marcaId, tenantId },
+      select: { id: true, nombre: true, tipo: true, activo: true },
+    });
+    if (!marca) {
+      throw new NotFoundException(
+        `Marca con id "${marcaId}" no encontrada en el tenant`,
+      );
+    }
+    if (!marca.activo) {
+      throw new ConflictException(
+        `La marca "${marca.nombre}" está inactiva y no puede asignarse`,
+      );
+    }
+    if (marca.tipo === MarcaTipo.REPUESTO) {
+      throw new ConflictException(
+        `La marca "${marca.nombre}" es de ámbito REPUESTO y no aplica a equipos`,
+      );
+    }
   }
 }

@@ -169,9 +169,11 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
             <h1 className="font-semibold text-2xl tracking-tight">
               {equipo.nombre}
             </h1>
-            {(equipo.marca || equipo.modelo) && (
+            {(equipo.marca?.nombre || equipo.modelo) && (
               <p className="text-muted-foreground text-sm">
-                {[equipo.marca, equipo.modelo].filter(Boolean).join(" · ")}
+                {[equipo.marca?.nombre, equipo.modelo]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             )}
           </div>
@@ -225,7 +227,7 @@ export function EquipoDetalleClient({ id }: EquipoDetalleClientProps) {
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                 <Dato label="Tipo" value={equipo.tipo} />
-                <Dato label="Marca" value={equipo.marca} />
+                <Dato label="Marca" value={equipo.marca?.nombre ?? null} />
                 <Dato label="Modelo" value={equipo.modelo} />
                 <Dato label="N° de serie" value={equipo.numeroSerie} />
                 <Dato label="Ubicación" value={equipo.ubicacion} />

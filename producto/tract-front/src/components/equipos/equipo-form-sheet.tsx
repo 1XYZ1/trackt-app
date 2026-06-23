@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { MarcaSelect } from "@/components/marcas";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ const equipoSchema = z.object({
     .min(1, "El nombre es obligatorio")
     .max(120, "Maximo 120 caracteres"),
   tipo: z.string().max(60, "Maximo 60 caracteres").optional(),
-  marca: z.string().max(60, "Maximo 60 caracteres").optional(),
+  marcaId: z.string().optional(),
   modelo: z.string().max(60, "Maximo 60 caracteres").optional(),
   numeroSerie: z.string().max(120, "Maximo 120 caracteres").optional(),
   ubicacion: z.string().max(120, "Maximo 120 caracteres").optional(),
@@ -53,7 +54,7 @@ const EMPTY_VALUES: EquipoFormValues = {
   codigo: "",
   nombre: "",
   tipo: "",
-  marca: "",
+  marcaId: "",
   modelo: "",
   numeroSerie: "",
   ubicacion: "",
@@ -110,7 +111,7 @@ export function EquipoFormSheet({
         codigo: detalle.codigo ?? "",
         nombre: detalle.nombre ?? "",
         tipo: detalle.tipo ?? "",
-        marca: detalle.marca ?? "",
+        marcaId: detalle.marcaId ?? "",
         modelo: detalle.modelo ?? "",
         numeroSerie: detalle.numeroSerie ?? "",
         ubicacion: detalle.ubicacion ?? "",
@@ -139,7 +140,7 @@ export function EquipoFormSheet({
             codigo: values.codigo.trim(),
             nombre: values.nombre.trim(),
             tipo: optionalField(values.tipo),
-            marca: optionalField(values.marca),
+            marcaId: optionalField(values.marcaId),
             modelo: optionalField(values.modelo),
             numeroSerie: optionalField(values.numeroSerie),
             ubicacion: optionalField(values.ubicacion),
@@ -154,7 +155,7 @@ export function EquipoFormSheet({
           codigo: values.codigo.trim(),
           nombre: values.nombre.trim(),
           tipo: optionalField(values.tipo) ?? undefined,
-          marca: optionalField(values.marca) ?? undefined,
+          marcaId: optionalField(values.marcaId) ?? undefined,
           modelo: optionalField(values.modelo) ?? undefined,
           numeroSerie: optionalField(values.numeroSerie) ?? undefined,
           ubicacion: optionalField(values.ubicacion) ?? undefined,
@@ -247,20 +248,18 @@ export function EquipoFormSheet({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <label className="font-medium text-sm" htmlFor="marca">
-                  Marca
-                </label>
-                <Input
-                  aria-invalid={!!errors.marca}
-                  id="marca"
-                  placeholder="CAT"
-                  {...register("marca")}
+                <label className="font-medium text-sm">Marca</label>
+                <Controller
+                  control={control}
+                  name="marcaId"
+                  render={({ field }) => (
+                    <MarcaSelect
+                      onChange={(id) => field.onChange(id ?? "")}
+                      tipo="EQUIPO"
+                      value={field.value || null}
+                    />
+                  )}
                 />
-                {errors.marca && (
-                  <p className="text-destructive text-xs">
-                    {errors.marca.message}
-                  </p>
-                )}
               </div>
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="modelo">

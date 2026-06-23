@@ -13,7 +13,7 @@
  *
  * Re-ejecutable: usa UUIDs deterministicos + upserts.
  */
-import { PrismaClient, Prioridad } from '@prisma/client';
+import { MarcaTipo, PrismaClient, Prioridad } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
 
 type UserRole = 'admin' | 'jefe_taller' | 'jefe_inventario' | 'mechanic';
@@ -29,9 +29,15 @@ interface SeedEquipo {
   id: string;
   codigo: string;
   nombre: string;
+  // Texto de marca; el seed lo resuelve (o crea) en el catálogo y enlaza marcaId.
   marca: string;
   modelo: string;
   ubicacion: string;
+}
+
+interface SeedMarca {
+  nombre: string;
+  tipo: MarcaTipo;
 }
 
 type OtEstado = 'PENDIENTE' | 'EN_PROCESO' | 'CERRADA' | 'CANCELADA';
@@ -92,6 +98,8 @@ interface SeedRepuesto {
   unidad: string;
   stockMinimo: number;
   stockInicial: number;
+  // Marca explícita (opcional); si se omite se infiere por categoría.
+  marcaNombre?: string;
 }
 
 interface SeedTenant {
@@ -1489,14 +1497,110 @@ async function seedUsers(t: SeedTenant) {
   }
 }
 
+// Catálogo de marcas demo (mismo set por tenant; cada uno crea sus propias
+// filas tenant-scoped). Amplio y realista para poblar los selectores.
+const CATALOGO_MARCAS: SeedMarca[] = [
+  // Equipos (maquinaria pesada minera/forestal/construcción).
+  ...[
+    'Caterpillar',
+    'Komatsu',
+    'Sandvik',
+    'Volvo',
+    'Liebherr',
+    'Hitachi',
+    'Atlas Copco',
+    'Epiroc',
+    'John Deere',
+    'Doosan',
+    'Terex',
+    'JCB',
+    'Hyundai',
+    'Tigercat',
+    'Ponsse',
+    'BOMAG',
+  ].map((nombre) => ({ nombre, tipo: MarcaTipo.EQUIPO })),
+  // Repuestos/insumos (filtros, lubricantes, neumáticos, rodamientos...).
+  ...[
+    'Shell',
+    'Mobil',
+    'Castrol',
+    'Donaldson',
+    'Fleetguard',
+    'Mann-Filter',
+    'Wix',
+    'Baldwin',
+    'SKF',
+    'Gates',
+    'Michelin',
+    'Bridgestone',
+    'Continental',
+  ].map((nombre) => ({ nombre, tipo: MarcaTipo.REPUESTO })),
+  // Ambos ámbitos (motores y componentes que aplican a equipo y repuesto).
+  ...['Cummins', 'Bosch', 'Parker', 'Detroit Diesel'].map((nombre) => ({
+    nombre,
+    tipo: MarcaTipo.AMBOS,
+  })),
+];
+
+// Marca por defecto para cada categoría de repuesto demo (debe existir en el
+// catálogo con ámbito REPUESTO o AMBOS).
+const MARCA_POR_CATEGORIA: Record<string, string> = {
+  Filtros: 'Donaldson',
+  Aceites: 'Shell',
+  Frenos: 'Bosch',
+  Eléctricos: 'Bosch',
+  Hidráulica: 'Parker',
+  Neumáticos: 'Michelin',
+};
+
+/**
+ * Resuelve el id de una marca por nombre dentro del ámbito pedido (o AMBOS).
+ * Si no existe, la crea en el ámbito indicado (robustez: cubre nombres de
+ * equipos demo que no estén en el catálogo base). Idempotente.
+ */
+async function resolveMarcaId(
+  tenantId: string,
+  nombre: string,
+  ambito: MarcaTipo,
+): Promise<string | undefined> {
+  if (!nombre) return undefined;
+  const existente = await prisma.marca.findFirst({
+    where: { tenantId, nombre, tipo: { in: [ambito, MarcaTipo.AMBOS] } },
+    select: { id: true },
+  });
+  if (existente) return existente.id;
+  const creada = await prisma.marca.upsert({
+    where: { tenantId_nombre_tipo: { tenantId, nombre, tipo: ambito } },
+    create: { tenantId, nombre, tipo: ambito },
+    update: {},
+    select: { id: true },
+  });
+  return creada.id;
+}
+
+async function seedMarcas(t: SeedTenant) {
+  for (const m of CATALOGO_MARCAS) {
+    await prisma.marca.upsert({
+      where: {
+        tenantId_nombre_tipo: { tenantId: t.id, nombre: m.nombre, tipo: m.tipo },
+      },
+      create: { tenantId: t.id, nombre: m.nombre, tipo: m.tipo },
+      update: { activo: true }, // reactivar si quedó inactiva
+    });
+  }
+}
+
 async function seedEquipos(t: SeedTenant) {
   for (const eq of t.equipos) {
+    const marcaId = await resolveMarcaId(t.id, eq.marca, MarcaTipo.EQUIPO);
     await prisma.equipo.upsert({
       where: { tenantId_codigo: { tenantId: t.id, codigo: eq.codigo } },
-      create: { ...eq, tenantId: t.id },
+      // Se conserva el texto legacy `marca` (via ...eq) y se enlaza marcaId.
+      create: { ...eq, tenantId: t.id, marcaId },
       update: {
         nombre: eq.nombre,
         marca: eq.marca,
+        marcaId,
         modelo: eq.modelo,
         ubicacion: eq.ubicacion,
       },
@@ -1514,6 +1618,11 @@ async function seedRepuestos(t: SeedTenant) {
   if (!t.repuestos || t.repuestos.length === 0) return;
 
   for (const rep of t.repuestos) {
+    const marcaNombre = rep.marcaNombre ?? MARCA_POR_CATEGORIA[rep.categoria];
+    const marcaId = marcaNombre
+      ? await resolveMarcaId(t.id, marcaNombre, MarcaTipo.REPUESTO)
+      : undefined;
+
     const repuesto = await prisma.repuesto.upsert({
       where: { tenantId_codigo: { tenantId: t.id, codigo: rep.codigo } },
       create: {
@@ -1524,6 +1633,7 @@ async function seedRepuestos(t: SeedTenant) {
         categoria: rep.categoria,
         unidad: rep.unidad,
         stockMinimo: rep.stockMinimo,
+        marcaId,
       },
       update: {
         nombre: rep.nombre,
@@ -1531,6 +1641,7 @@ async function seedRepuestos(t: SeedTenant) {
         categoria: rep.categoria,
         unidad: rep.unidad,
         stockMinimo: rep.stockMinimo,
+        marcaId,
       },
     });
 
@@ -1626,13 +1737,14 @@ async function seedEventos(t: SeedTenant) {
 async function seedSingleTenant(t: SeedTenant) {
   await seedTenantRow(t);
   await seedUsers(t);
+  await seedMarcas(t);
   await seedEquipos(t);
   await seedRepuestos(t);
   await seedOrdenes(t);
   await seedTickets(t);
   await seedEventos(t);
   console.log(
-    `✓ ${t.id} — ${t.users.length} users, ${t.equipos.length} equipos, ${t.repuestos?.length ?? 0} repuestos, ${t.ordenes.length} OT, ${t.tickets.length} tickets, ${t.eventos.length} eventos`,
+    `✓ ${t.id} — ${t.users.length} users, ${CATALOGO_MARCAS.length} marcas, ${t.equipos.length} equipos, ${t.repuestos?.length ?? 0} repuestos, ${t.ordenes.length} OT, ${t.tickets.length} tickets, ${t.eventos.length} eventos`,
   );
 }
 

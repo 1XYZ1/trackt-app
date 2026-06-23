@@ -132,7 +132,10 @@ model Equipo {
   codigo           String
   nombre           String
   tipo             String?
+  // marca (texto libre) se conserva por compatibilidad; marcaId es la fuente
+  // de verdad (catálogo). Equipos nuevos usan marcaId; el texto queda legacy.
   marca            String?
+  marcaId          String?               @map("marca_id")
   modelo           String?
   numeroSerie      String?               @map("numero_serie")
   ubicacion        String?
@@ -148,6 +151,7 @@ model Equipo {
   updatedAt        DateTime              @updatedAt @map("updated_at")
 
   tenant         Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marcaRef       Marca?                         @relation(fields: [marcaId], references: [id], onDelete: SetNull)
   ordenes        OrdenTrabajo[]
   repuestos      EquipoRepuesto[]
   plantillas     EquipoPlantillaMantenimiento[]
@@ -157,12 +161,13 @@ model Equipo {
   @@index([tenantId])
   @@index([tenantId, activo])
   @@index([tenantId, estadoOperativo])
+  @@index([marcaId])
   @@map("equipos")
 }
 
 // Catálogo de marcas (datos maestros) para equipos y repuestos.
-// Equipo.marca (texto libre) se mantiene por compatibilidad; la migración
-// progresiva a marcaId se hará cuando el frontend consuma el catálogo.
+// Equipos y repuestos referencian el catálogo vía marcaId. En Equipo se
+// conserva además la columna marca (texto libre) como legacy no-destructivo.
 model Marca {
   id        String    @id @default(cuid())
   tenantId  String    @map("tenant_id")
@@ -175,6 +180,7 @@ model Marca {
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   repuestos Repuesto[]
+  equipos   Equipo[]
 
   @@unique([tenantId, nombre, tipo])
   @@index([tenantId, activo])

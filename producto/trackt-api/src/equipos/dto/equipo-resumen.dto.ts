@@ -59,7 +59,8 @@ export interface EquipoResumenDto {
     codigo: string;
     nombre: string;
     tipo: string | null;
-    marca: string | null;
+    marca: { id: string; nombre: string } | null;
+    marcaId: string | null;
     modelo: string | null;
     numeroSerie: string | null;
     ubicacion: string | null;

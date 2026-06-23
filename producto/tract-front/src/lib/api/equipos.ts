@@ -11,8 +11,10 @@ export type Equipo = {
   codigo: string;
   nombre: string;
   tipo: string | null;
-  // Nullable en BD: el backend devuelve null si el campo se limpió.
-  marca: string | null;
+  // Marca del catálogo: objeto resuelto (o null) + su id. El backend ya no
+  // expone el texto libre legacy en este campo.
+  marca: { id: string; nombre: string } | null;
+  marcaId: string | null;
   modelo: string | null;
   ubicacion: string | null;
   estadoOperativo: EquipoEstadoOperativo;
@@ -87,7 +89,7 @@ export type CreateEquipoPayload = {
   codigo: string;
   nombre: string;
   tipo?: string;
-  marca?: string;
+  marcaId?: string;
   modelo?: string;
   numeroSerie?: string;
   ubicacion?: string;
@@ -103,7 +105,7 @@ export type UpdateEquipoPayload = {
   codigo?: string;
   nombre?: string;
   tipo?: string | null;
-  marca?: string | null;
+  marcaId?: string | null;
   modelo?: string | null;
   numeroSerie?: string | null;
   ubicacion?: string | null;

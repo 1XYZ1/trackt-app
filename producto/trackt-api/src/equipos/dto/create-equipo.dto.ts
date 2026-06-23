@@ -26,10 +26,11 @@ export class CreateEquipoDto {
   @MaxLength(60)
   tipo?: string;
 
+  // Referencia al catálogo de marcas (ámbito EQUIPO o AMBOS).
   @IsOptional()
   @IsString()
   @MaxLength(60)
-  marca?: string;
+  marcaId?: string;
 
   @IsOptional()
   @IsString()

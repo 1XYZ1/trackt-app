@@ -47,6 +47,9 @@ function buildPrismaMock() {
     repuesto: {
       findMany: jest.fn(),
     },
+    marca: {
+      findFirst: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -84,7 +87,6 @@ describe('EquiposService', () => {
       const result = await service.create(TENANT, {
         codigo: 'EQ-100',
         nombre: 'Excavadora',
-        marca: 'CAT',
         modelo: 'M320',
         ubicacion: 'Mina 1',
       });
@@ -108,7 +110,6 @@ describe('EquiposService', () => {
         codigo: '  eq-100 ',
         nombre: '  Excavadora  ',
         tipo: ' Pesado ',
-        marca: ' CAT ',
         numeroSerie: ' SN-9 ',
         ubicacion: '   ', // solo espacios → null (no guardar "")
       });
@@ -121,7 +122,6 @@ describe('EquiposService', () => {
       expect(args.data.codigo).toBe('EQ-100');
       expect(args.data.nombre).toBe('Excavadora');
       expect(args.data.tipo).toBe('Pesado');
-      expect(args.data.marca).toBe('CAT');
       expect(args.data.numeroSerie).toBe('SN-9');
       expect(args.data.ubicacion).toBeNull();
     });
@@ -177,6 +177,49 @@ describe('EquiposService', () => {
         tenantId: TENANT,
         codigo: 'EQ-100',
       });
+    });
+
+    it('valida y persiste marcaId cuando la marca es usable (EQUIPO/AMBOS)', async () => {
+      prisma.equipo.findUnique.mockResolvedValue(null);
+      prisma.marca.findFirst.mockResolvedValue({
+        id: 'marca-1',
+        nombre: 'Caterpillar',
+        tipo: 'EQUIPO',
+        activo: true,
+      });
+      prisma.equipo.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: EQUIPO_ID, marcaRef: null, ...data }),
+      );
+
+      await service.create(TENANT, {
+        codigo: 'EQ-100',
+        nombre: 'Excavadora',
+        marcaId: 'marca-1',
+      });
+
+      const marcaArgs = prisma.marca.findFirst.mock.calls[0][0];
+      expect(marcaArgs.where).toEqual({ id: 'marca-1', tenantId: TENANT });
+      const args = prisma.equipo.create.mock.calls[0][0];
+      expect(args.data.marcaId).toBe('marca-1');
+    });
+
+    it('rechaza marcaId de ámbito REPUESTO (ConflictException)', async () => {
+      prisma.equipo.findUnique.mockResolvedValue(null);
+      prisma.marca.findFirst.mockResolvedValue({
+        id: 'marca-rep',
+        nombre: 'Shell',
+        tipo: 'REPUESTO',
+        activo: true,
+      });
+
+      await expect(
+        service.create(TENANT, {
+          codigo: 'EQ-100',
+          nombre: 'Excavadora',
+          marcaId: 'marca-rep',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.equipo.create).not.toHaveBeenCalled();
     });
   });
 
@@ -271,7 +314,7 @@ describe('EquiposService', () => {
       );
 
       await service.update(TENANT, EQUIPO_ID, {
-        marca: ' CAT ',
+        tipo: ' CAT ',
         modelo: null, // limpiar
         ubicacion: '  ', // solo espacios → null
         estadoOperativo: EquipoEstadoOperativo.FUERA_DE_SERVICIO,
@@ -279,7 +322,7 @@ describe('EquiposService', () => {
 
       const args = prisma.equipo.update.mock.calls[0][0];
       expect(args.data).toEqual({
-        marca: 'CAT',
+        tipo: 'CAT',
         modelo: null,
         ubicacion: null,
         estadoOperativo: EquipoEstadoOperativo.FUERA_DE_SERVICIO,
@@ -444,6 +487,7 @@ describe('EquiposService', () => {
         { nombre: { contains: 'cat', mode: 'insensitive' } },
         { tipo: { contains: 'cat', mode: 'insensitive' } },
         { marca: { contains: 'cat', mode: 'insensitive' } },
+        { marcaRef: { nombre: { contains: 'cat', mode: 'insensitive' } } },
         { modelo: { contains: 'cat', mode: 'insensitive' } },
         { numeroSerie: { contains: 'cat', mode: 'insensitive' } },
         { ubicacion: { contains: 'cat', mode: 'insensitive' } },

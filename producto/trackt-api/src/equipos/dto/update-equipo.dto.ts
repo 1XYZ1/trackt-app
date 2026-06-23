@@ -32,11 +32,12 @@ export class UpdateEquipoDto {
   @MaxLength(60)
   tipo?: string | null;
 
+  // Referencia al catálogo de marcas (ámbito EQUIPO o AMBOS). null = limpiar.
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @IsString()
   @MaxLength(60)
-  marca?: string | null;
+  marcaId?: string | null;
 
   @IsOptional()
   @ValidateIf((_, value) => value !== null)

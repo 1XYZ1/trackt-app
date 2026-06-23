@@ -52,7 +52,7 @@ describe("equipos api helpers", () => {
     const { createEquipo } = await import("./equipos");
     const payload = {
       codigo: "EQ-002",
-      marca: "CAT",
+      marcaId: "m-cat",
       nombre: "Grua",
     };
 
