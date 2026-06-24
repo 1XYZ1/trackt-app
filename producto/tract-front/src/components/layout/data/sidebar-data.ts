@@ -11,6 +11,7 @@ import {
   History,
   ClipboardCheck,
   Tag,
+  Boxes,
   ListChecks,
   BarChart3,
 } from 'lucide-react';
@@ -125,6 +126,12 @@ export const sidebarData: SidebarData = {
       roles: ['admin'],
       items: [
         { title: 'Marcas', url: '/marcas', icon: Tag, roles: ['admin'] },
+        {
+          title: 'Tipos de equipo',
+          url: '/tipos-equipo',
+          icon: Boxes,
+          roles: ['admin'],
+        },
         { title: 'Usuarios', url: '/usuarios', icon: Users, roles: ['admin'] },
       ],
     },

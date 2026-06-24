@@ -50,6 +50,8 @@ const DETAIL_SELECT = {
   tipo: true,
   marcaId: true,
   marcaRef: { select: { id: true, nombre: true } },
+  tipoEquipoId: true,
+  tipoEquipoRef: { select: { id: true, nombre: true } },
   modelo: true,
   numeroSerie: true,
   ubicacion: true,
@@ -110,21 +112,33 @@ function normNullable(
 }
 
 /**
- * La relación al catálogo se selecciona como `marcaRef`; al cliente se expone
- * como `marca: { id, nombre } | null` (misma forma que el repuesto). Espeja a
- * `mapRepuesto` de InventarioService.
+ * Las relaciones al catálogo se seleccionan como `marcaRef`/`tipoEquipoRef`; al
+ * cliente se exponen como `marca`/`tipoEquipo: { id, nombre } | null` (misma
+ * forma que el repuesto). Espeja a `mapRepuesto` de InventarioService.
+ * `tipoEquipoRef` es opcional en T: la lista (LIST_SELECT) no lo trae, por eso
+ * `tipoEquipo` queda opcional en la salida.
  */
-type EquipoConMarca<T> = Omit<T, 'marcaRef'> & {
+type EquipoConMarca<T> = Omit<T, 'marcaRef' | 'tipoEquipoRef'> & {
   marca: { id: string; nombre: string } | null;
+  tipoEquipo?: { id: string; nombre: string } | null;
 };
 
 function mapEquipo<
-  T extends { marcaRef: { id: string; nombre: string } | null },
+  T extends {
+    marcaRef: { id: string; nombre: string } | null;
+    tipoEquipoRef?: { id: string; nombre: string } | null;
+  },
 >(equipo: T): EquipoConMarca<T> {
-  const { marcaRef, ...rest } = equipo;
+  const { marcaRef, tipoEquipoRef, ...rest } = equipo;
   return {
     ...rest,
     marca: marcaRef ? { id: marcaRef.id, nombre: marcaRef.nombre } : null,
+    // Solo se agrega tipoEquipo si la proyección trajo la relación (detalle).
+    ...(tipoEquipoRef !== undefined && {
+      tipoEquipo: tipoEquipoRef
+        ? { id: tipoEquipoRef.id, nombre: tipoEquipoRef.nombre }
+        : null,
+    }),
   } as EquipoConMarca<T>;
 }
 
@@ -234,23 +248,67 @@ export class EquiposService {
       await this.assertMarcaUsable(tenantId, marcaId);
     }
 
-    const equipo = await this.prisma.equipo.create({
-      data: {
-        tenantId,
-        codigo,
-        nombre,
-        tipo: normOptional(dto.tipo),
-        marcaId,
-        modelo: normOptional(dto.modelo),
-        numeroSerie: normOptional(dto.numeroSerie),
-        ubicacion: normOptional(dto.ubicacion),
-        ...(dto.estadoOperativo && { estadoOperativo: dto.estadoOperativo }),
-        fechaInstalacion: dto.fechaInstalacion,
-        fechaCompra: dto.fechaCompra,
-        metadata: dto.metadata as Prisma.InputJsonValue | undefined,
-        // activo se inicia en true por default a nivel BD.
-      },
-      select: DETAIL_SELECT,
+    // tipoEquipoId es opcional; si viene, debe ser un tipo usable del tenant.
+    // Sus repuestos default se autocopian a equipos_repuestos al crear.
+    const tipoEquipoId = normOptional(dto.tipoEquipoId);
+    if (tipoEquipoId) {
+      await this.assertTipoEquipoUsable(tenantId, tipoEquipoId);
+    }
+
+    const data: Prisma.EquipoUncheckedCreateInput = {
+      tenantId,
+      codigo,
+      nombre,
+      tipo: normOptional(dto.tipo),
+      marcaId,
+      tipoEquipoId,
+      modelo: normOptional(dto.modelo),
+      numeroSerie: normOptional(dto.numeroSerie),
+      ubicacion: normOptional(dto.ubicacion),
+      ...(dto.estadoOperativo && { estadoOperativo: dto.estadoOperativo }),
+      fechaInstalacion: dto.fechaInstalacion,
+      fechaCompra: dto.fechaCompra,
+      // El equipo nace con QR (token opaco UUID v4). POST /equipos/:id/qr lo
+      // regenera bajo demanda.
+      qrToken: randomUUID(),
+      metadata: dto.metadata as Prisma.InputJsonValue | undefined,
+      // activo se inicia en true por default a nivel BD.
+    };
+
+    // Sin tipo: un solo insert. Con tipo: insert + copia de repuestos default
+    // en la misma transacción (todo o nada).
+    if (!tipoEquipoId) {
+      const equipo = await this.prisma.equipo.create({
+        data,
+        select: DETAIL_SELECT,
+      });
+      return mapEquipo(equipo);
+    }
+
+    const equipo = await this.prisma.$transaction(async (tx) => {
+      const creado = await tx.equipo.create({ data, select: DETAIL_SELECT });
+
+      // Repuestos default del tipo (mismo tenant) → repuestos habituales del
+      // equipo. createMany con skipDuplicates: el equipo recién nace, pero el
+      // guard es defensivo. `obligatorio` no tiene columna en EquipoRepuesto.
+      const defaults = await tx.tipoEquipoRepuestoDefault.findMany({
+        where: { tenantId, tipoEquipoId },
+        select: { repuestoId: true, cantidadRef: true, observacion: true },
+      });
+      if (defaults.length > 0) {
+        await tx.equipoRepuesto.createMany({
+          data: defaults.map((d) => ({
+            tenantId,
+            equipoId: creado.id,
+            repuestoId: d.repuestoId,
+            cantidadRef: d.cantidadRef,
+            observacion: d.observacion,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return creado;
     });
     return mapEquipo(equipo);
   }
@@ -295,6 +353,16 @@ export class EquiposService {
       await this.assertMarcaUsable(tenantId, marcaId);
     }
 
+    // tipoEquipoId: misma semántica que marcaId. Cambiar el tipo en update NO
+    // recopia repuestos default (eso solo ocurre al crear el equipo).
+    const tipoEquipoId =
+      dto.tipoEquipoId !== undefined
+        ? normNullable(dto.tipoEquipoId)
+        : undefined;
+    if (tipoEquipoId) {
+      await this.assertTipoEquipoUsable(tenantId, tipoEquipoId);
+    }
+
     const actualizado = await this.prisma.equipo.update({
       where: { id },
       data: {
@@ -302,6 +370,7 @@ export class EquiposService {
         ...(nombre !== undefined && { nombre }),
         ...(dto.tipo !== undefined && { tipo: normNullable(dto.tipo) }),
         ...(marcaId !== undefined && { marcaId }),
+        ...(tipoEquipoId !== undefined && { tipoEquipoId }),
         ...(dto.modelo !== undefined && { modelo: normNullable(dto.modelo) }),
         ...(dto.numeroSerie !== undefined && {
           numeroSerie: normNullable(dto.numeroSerie),
@@ -919,6 +988,31 @@ export class EquiposService {
     if (marca.tipo === MarcaTipo.REPUESTO) {
       throw new ConflictException(
         `La marca "${marca.nombre}" es de ámbito REPUESTO y no aplica a equipos`,
+      );
+    }
+  }
+
+  /**
+   * Valida que el tipo de equipo exista en el tenant y esté activo. 404 si no
+   * existe o es de otro tenant (mismo mensaje, no filtra existencia); 409 si
+   * existe pero está inactivo. Espeja a assertMarcaUsable.
+   */
+  private async assertTipoEquipoUsable(
+    tenantId: string,
+    tipoEquipoId: string,
+  ): Promise<void> {
+    const tipoEquipo = await this.prisma.tipoEquipo.findFirst({
+      where: { id: tipoEquipoId, tenantId },
+      select: { id: true, nombre: true, activo: true },
+    });
+    if (!tipoEquipo) {
+      throw new NotFoundException(
+        `Tipo de equipo con id "${tipoEquipoId}" no encontrado en el tenant`,
+      );
+    }
+    if (!tipoEquipo.activo) {
+      throw new ConflictException(
+        `El tipo de equipo "${tipoEquipo.nombre}" está inactivo y no puede asignarse`,
       );
     }
   }

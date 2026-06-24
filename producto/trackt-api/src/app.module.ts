@@ -14,6 +14,7 @@ import { EvidenciasModule } from './evidencias/evidencias.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { MarcasModule } from './marcas/marcas.module';
+import { TiposEquipoModule } from './tipos-equipo/tipos-equipo.module';
 import { PlantillasMantenimientoModule } from './plantillas-mantenimiento/plantillas-mantenimiento.module';
 import { ProgramacionesMantenimientoModule } from './programaciones-mantenimiento/programaciones-mantenimiento.module';
 import { ReportesModule } from './reportes/reportes.module';
@@ -31,6 +32,7 @@ import { ReportesModule } from './reportes/reportes.module';
     NotificacionesModule,
     InventarioModule,
     MarcasModule,
+    TiposEquipoModule,
     PlantillasMantenimientoModule,
     ProgramacionesMantenimientoModule,
     ReportesModule,

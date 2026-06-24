@@ -39,6 +39,14 @@ export class UpdateEquipoDto {
   @MaxLength(60)
   marcaId?: string | null;
 
+  // Referencia al catálogo de tipos de equipo. null = limpiar. En update NO se
+  // recopian los repuestos default (eso solo ocurre al crear el equipo).
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(60)
+  tipoEquipoId?: string | null;
+
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @IsString()
