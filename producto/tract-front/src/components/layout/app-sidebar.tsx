@@ -53,7 +53,7 @@ export function AppSidebar({ user, role }: Props) {
   const groups = filterByRole(role, sidebarData.navGroups);
 
   return (
-    <Sidebar collapsible="icon" variant="floating">
+    <Sidebar className="cursor-pointer" collapsible="icon" variant="floating">
       <SidebarHeader>
         <TeamSwitcher teams={sidebarData.teams} />
       </SidebarHeader>
