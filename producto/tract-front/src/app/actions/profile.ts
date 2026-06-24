@@ -20,6 +20,16 @@ const profileSchema = z.object({
   fullName: z.string().trim().min(1, 'Requerido').max(120, 'Maximo 120'),
 });
 
+const passwordSchema = z
+  .object({
+    password: z.string().min(8, 'Minimo 8 caracteres').max(72, 'Maximo 72'),
+    confirm: z.string(),
+  })
+  .refine((data) => data.password === data.confirm, {
+    path: ['confirm'],
+    message: 'Las contrasenas no coinciden',
+  });
+
 export type ActionResult =
   | { ok: true }
   | { ok: false; error: string };
@@ -50,6 +60,11 @@ export async function updateProfile(formData: FormData): Promise<ActionResult> {
   if (error) {
     return { ok: false, error: error.message };
   }
+
+  // Sincronizar al user_metadata de auth (best-effort): la fuente de verdad es
+  // la tabla profiles, esto solo mantiene el JWT/metadata consistente. No es
+  // fatal si falla, por eso no se propaga el error.
+  await supabase.auth.updateUser({ data: { full_name: parsed.data.fullName } });
 
   revalidatePath('/configuracion/perfil');
   revalidatePath('/', 'layout');
@@ -101,7 +116,40 @@ export async function uploadAvatar(
     return { ok: false, error: updateError.message };
   }
 
+  // Sincronizar al user_metadata de auth (best-effort, ver nota en updateProfile).
+  await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+
   revalidatePath('/configuracion/perfil');
   revalidatePath('/', 'layout');
   return { ok: true, url: publicUrl };
+}
+
+export async function updatePassword(
+  formData: FormData,
+): Promise<ActionResult> {
+  // Exige sesion valida; updateUser opera sobre el usuario autenticado del
+  // cliente server-side, nunca se recibe un id de usuario desde el cliente.
+  await requireSession();
+
+  const parsed = passwordSchema.safeParse({
+    password: formData.get('password'),
+    confirm: formData.get('confirm'),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? 'Datos invalidos',
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true };
 }

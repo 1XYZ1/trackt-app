@@ -16,13 +16,25 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { updateProfile, uploadAvatar } from '@/app/actions/profile';
+import { updatePassword, updateProfile, uploadAvatar } from '@/app/actions/profile';
 
 const schema = z.object({
   fullName: z.string().trim().min(1, 'Requerido').max(120, 'Maximo 120'),
 });
 
 type FormValues = z.infer<typeof schema>;
+
+const passwordSchema = z
+  .object({
+    password: z.string().min(8, 'Minimo 8 caracteres').max(72, 'Maximo 72'),
+    confirm: z.string(),
+  })
+  .refine((data) => data.password === data.confirm, {
+    path: ['confirm'],
+    message: 'Las contrasenas no coinciden',
+  });
+
+type PasswordValues = z.infer<typeof passwordSchema>;
 
 type Feedback = { type: 'ok' | 'err'; msg: string } | null;
 
@@ -59,6 +71,9 @@ export function PerfilForm({
   const [localError, setLocalError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [passwordPending, startPasswordTransition] = useTransition();
+  const [passwordFeedback, setPasswordFeedback] = useState<Feedback>(null);
+
   const {
     register,
     handleSubmit,
@@ -67,6 +82,16 @@ export function PerfilForm({
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { fullName: initialFullName },
+  });
+
+  const {
+    register: registerPassword,
+    handleSubmit: handleSubmitPassword,
+    reset: resetPassword,
+    formState: { errors: passwordErrors },
+  } = useForm<PasswordValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: { password: '', confirm: '' },
   });
 
   const watchedName = watch('fullName');
@@ -134,6 +159,22 @@ export function PerfilForm({
         if (fileInputRef.current) fileInputRef.current.value = '';
       } else {
         setAvatarFeedback({ type: 'err', msg: result.error });
+      }
+    });
+  };
+
+  const onSubmitPassword = (values: PasswordValues) => {
+    setPasswordFeedback(null);
+    startPasswordTransition(async () => {
+      const fd = new FormData();
+      fd.set('password', values.password);
+      fd.set('confirm', values.confirm);
+      const result = await updatePassword(fd);
+      if (result.ok) {
+        setPasswordFeedback({ type: 'ok', msg: 'Contrasena actualizada' });
+        resetPassword();
+      } else {
+        setPasswordFeedback({ type: 'err', msg: result.error });
       }
     });
   };
@@ -228,6 +269,60 @@ export function PerfilForm({
               Subir avatar
             </Button>
             <FeedbackText feedback={avatarFeedback} />
+          </div>
+        </form>
+      </div>
+
+      <div className="border-t pt-6">
+        <div className="mb-3">
+          <p className="font-medium text-sm">Contraseña</p>
+          <p className="text-muted-foreground text-xs">
+            Minimo 8 caracteres. Se cerrara la sesion en otros dispositivos.
+          </p>
+        </div>
+
+        <form
+          className="space-y-4"
+          onSubmit={handleSubmitPassword(onSubmitPassword)}
+          noValidate
+        >
+          <div className="grid gap-4 sm:max-w-md">
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Nueva contraseña</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                autoComplete="new-password"
+                {...registerPassword('password')}
+              />
+              {passwordErrors.password && (
+                <p className="text-destructive text-xs">
+                  {passwordErrors.password.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm">Confirmar contraseña</Label>
+              <Input
+                id="confirm"
+                type="password"
+                placeholder="••••••••"
+                autoComplete="new-password"
+                {...registerPassword('confirm')}
+              />
+              {passwordErrors.confirm && (
+                <p className="text-destructive text-xs">
+                  {passwordErrors.confirm.message}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" loading={passwordPending}>
+              Cambiar contraseña
+            </Button>
+            <FeedbackText feedback={passwordFeedback} />
           </div>
         </form>
       </div>
