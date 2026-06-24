@@ -22,6 +22,9 @@ export type CreateOrdenPayload = {
   equipoId: string;
   descripcion: string;
   prioridad: OrdenPrioridad;
+  // Plantilla opcional: la OT nace con un ticket que copia el checklist de la
+  // plantilla y reserva sus insumos (igual que Programación → Generar OT).
+  plantillaId?: string;
 };
 
 export type OrdenesFilters = {
@@ -124,6 +127,41 @@ export async function descargarPdfOrden(id: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+// Mensaje de error de creación de OT. Con plantilla, el backend puede devolver
+// un 409 estructurado de stock insuficiente { message, faltantes } — lo
+// desglosamos igual que generarOt para que el usuario vea qué falta.
+async function extractCreateOrdenError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as {
+      message?: string | string[];
+      faltantes?: Array<{
+        codigo: string;
+        nombre: string;
+        requerido: number;
+        disponible: number;
+      }>;
+    };
+    if (
+      typeof body.message === "string" &&
+      body.message &&
+      body.faltantes?.length
+    ) {
+      const detalle = body.faltantes
+        .map(
+          (f) =>
+            `${f.codigo} (disponible ${f.disponible}, requerido ${f.requerido})`,
+        )
+        .join(", ");
+      return `${body.message}: ${detalle}`;
+    }
+    if (Array.isArray(body.message)) return body.message.join(", ");
+    if (typeof body.message === "string" && body.message) return body.message;
+  } catch {
+    // sin body json
+  }
+  return "No se pudo crear la orden de trabajo";
+}
+
 export async function createOrden(
   payload: CreateOrdenPayload,
 ): Promise<OrdenTrabajo> {
@@ -138,7 +176,7 @@ export async function createOrden(
   });
 
   if (!response.ok) {
-    throw new Error("No se pudo crear la orden de trabajo");
+    throw new Error(await extractCreateOrdenError(response));
   }
 
   return adaptOrden(await response.json());

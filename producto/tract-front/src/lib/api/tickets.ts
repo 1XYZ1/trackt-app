@@ -14,6 +14,12 @@ export type TicketTimelineEvent = {
   timestamp: string;
 };
 
+// Paso del checklist de mantención del ticket (copiado de la plantilla).
+export type ChecklistPaso = {
+  paso: string;
+  hecho: boolean;
+};
+
 export type TicketTrabajo = {
   id: string;
   codigo: string;
@@ -27,6 +33,8 @@ export type TicketTrabajo = {
   equipoNombre?: string | null;
   mecanico?: UsuarioResumen | null;
   createdAt?: string;
+  // Checklist de mantención (vacío si el ticket no proviene de una plantilla).
+  checklist?: ChecklistPaso[];
   timeline?: TicketTimelineEvent[];
 };
 
@@ -315,4 +323,29 @@ export function cerrarTicket(
     payload,
     "No se pudo cerrar el ticket",
   );
+}
+
+// ---------- Checklist de mantención ----------
+
+// Reemplaza el checklist completo del ticket (PATCH /tickets/:id/checklist).
+// El backend afina permisos: mechanic asignado (EN_EJECUCION) / admin / jefe.
+export async function actualizarChecklistTicket(
+  ticketId: string,
+  checklist: ChecklistPaso[],
+): Promise<TicketTrabajo> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/tickets/${ticketId}/checklist`,
+    {
+      body: JSON.stringify({ checklist }),
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo actualizar el checklist"),
+    );
+  }
+  return (await response.json()) as TicketTrabajo;
 }

@@ -1,7 +1,7 @@
 import type { TicketEstado, UsuarioResumen } from "@/components/core";
 import { authFetch } from "@/lib/api/http";
 import { createClient } from "@/lib/supabase/client";
-import type { TicketTrabajo } from "@/lib/api/tickets";
+import type { ChecklistPaso, TicketTrabajo } from "@/lib/api/tickets";
 
 const supabase = createClient();
 
@@ -26,6 +26,8 @@ export type MisTicket = {
   ordenId: string;
   ordenCodigo: string;
   mecanico?: UsuarioResumen | null;
+  // Checklist de mantención del ticket (de la plantilla). [] si no tiene.
+  checklist: ChecklistPaso[];
   evidencias: TicketEvidence[];
 };
 
@@ -51,6 +53,7 @@ const mockTickets: MisTicket[] = [
     codigo: "ITCM-1042",
     descripcion:
       "Revisar fuga hidraulica reportada durante inspeccion previa al turno.",
+    checklist: [],
     equipo: "CAT 793F - Camion CA-22",
     estado: "ASIGNADO",
     evidencias: [],
@@ -66,6 +69,7 @@ const mockTickets: MisTicket[] = [
   },
   {
     codigo: "ITCM-1043",
+    checklist: [],
     descripcion:
       "Cambiar filtro y registrar evidencia visual antes de finalizar.",
     equipo: "Komatsu WA900 - Cargador CL-08",
@@ -158,6 +162,7 @@ function adaptToMisTicket(
     ordenId: ticket.ordenId,
     ordenCodigo: ticket.ordenCodigo ?? "",
     mecanico: ticket.mecanico,
+    checklist: ticket.checklist ?? [],
     evidencias,
   };
 }

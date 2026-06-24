@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/core";
 import {
   CalendarioMes,
   GenerarOtDialog,
+  type ProgramacionFormDefaults,
   PrioridadBadge,
   ProgramacionEstadoBadge,
   ProgramacionFormSheet,
@@ -68,21 +69,43 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
   );
 }
 
-export function MantencionesClient() {
+export type MantencionesClientProps = {
+  // Preselección al llegar desde la ficha del equipo ("Programar"): abre el
+  // formulario de alta con equipo/plantilla ya elegidos.
+  initialDefaults?: ProgramacionFormDefaults | null;
+};
+
+export function MantencionesClient({
+  initialDefaults,
+}: MantencionesClientProps = {}) {
   const today = new Date();
   const [cursor, setCursor] = useState({
     month: today.getMonth(),
     year: today.getFullYear(),
   });
   const [tab, setTab] = useState("calendario");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Programacion | null>(null);
-  const [generarTarget, setGenerarTarget] = useState<Programacion | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<Programacion | null>(null);
-
   const isAdmin = useHasRole("admin");
   const isJefe = useHasRole("jefe_taller");
   const canManage = isAdmin || isJefe;
+
+  // Deep-link desde la ficha del equipo ("Programar"): abrir el alta
+  // preseleccionada en el primer render mediante estado inicial perezoso
+  // (sin efecto, para no disparar renders en cascada).
+  const hasInitialDefaults = Boolean(
+    initialDefaults?.equipoId || initialDefaults?.plantillaId,
+  );
+  const abrirAltaInicial = canManage && hasInitialDefaults;
+
+  const [formOpen, setFormOpen] = useState(abrirAltaInicial);
+  const [editing, setEditing] = useState<Programacion | null>(null);
+  // Defaults activos solo para el alta abierta desde el deep-link; se limpian
+  // al cerrar para no contaminar un alta manual posterior.
+  const [formDefaults, setFormDefaults] =
+    useState<ProgramacionFormDefaults | null>(
+      abrirAltaInicial ? (initialDefaults ?? null) : null,
+    );
+  const [generarTarget, setGenerarTarget] = useState<Programacion | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Programacion | null>(null);
 
   const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
   const desde = `${cursor.year}-${pad(cursor.month + 1)}-01T00:00:00.000Z`;
@@ -115,6 +138,7 @@ export function MantencionesClient() {
 
   const openCreate = () => {
     setEditing(null);
+    setFormDefaults(null);
     setFormOpen(true);
   };
   const openEdit = (p: Programacion) => {
@@ -410,9 +434,13 @@ export function MantencionesClient() {
 
         {canManage && (
           <ProgramacionFormSheet
+            defaults={formDefaults}
             onOpenChange={(open) => {
               setFormOpen(open);
-              if (!open) setEditing(null);
+              if (!open) {
+                setEditing(null);
+                setFormDefaults(null);
+              }
             }}
             open={formOpen}
             programacion={editing}

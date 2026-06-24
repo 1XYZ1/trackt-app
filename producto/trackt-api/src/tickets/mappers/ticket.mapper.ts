@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import {
+  ChecklistPasoDto,
   EquipoResumenDto,
   TicketResponseDto,
   TicketTimelineEventDto,
@@ -67,6 +68,36 @@ function resolveUsuario(
   return users.get(userId) ?? { id: userId };
 }
 
+/**
+ * Lee Ticket.metadata.checklist de forma defensiva → [{ paso, hecho }].
+ * Tolera metadata null/legacy y entradas malformadas (las descarta). El
+ * checklist se materializa al generar/crear desde plantilla; tickets sin
+ * receta devuelven [].
+ */
+export function readChecklist(
+  metadata: Prisma.JsonValue | null | undefined,
+): ChecklistPasoDto[] {
+  if (
+    !metadata ||
+    typeof metadata !== 'object' ||
+    Array.isArray(metadata) ||
+    !('checklist' in metadata)
+  ) {
+    return [];
+  }
+  const value = (metadata as { checklist?: unknown }).checklist;
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (e): e is { paso: string; hecho: boolean } =>
+        typeof e === 'object' &&
+        e !== null &&
+        typeof (e as { paso?: unknown }).paso === 'string' &&
+        typeof (e as { hecho?: unknown }).hecho === 'boolean',
+    )
+    .map((e) => ({ paso: e.paso, hecho: e.hecho }));
+}
+
 function baseTicketFields(
   ticket: TicketListRow,
   users: Map<string, UsuarioResumenDto>,
@@ -85,6 +116,7 @@ function baseTicketFields(
     equipoNombre: deriveEquipoNombre(equipo),
     mecanico: resolveUsuario(ticket.mecanicoId, users),
     createdAt: ticket.createdAt.toISOString(),
+    checklist: readChecklist(ticket.metadata),
   };
 }
 

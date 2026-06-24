@@ -3,6 +3,9 @@ import { OrdenTrabajoEstado, Prioridad, TicketEstado } from '@prisma/client';
 import { OrdenesService } from './ordenes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { TicketsService } from '../tickets/tickets.service';
+import { PlantillasAplicacionService } from '../plantillas-mantenimiento/plantillas-aplicacion.service';
+import { AuthUser } from '../auth/types';
 
 /**
  * Mock del PrismaService.
@@ -56,6 +59,13 @@ function buildInventarioMock() {
 
 const TENANT = 'tenant-1';
 const USER = 'user-admin';
+// create() ahora recibe el AuthUser completo; .id conserva el string original
+// para no tocar las aserciones sobre creadoPorId.
+const USER_OBJ: AuthUser = {
+  id: USER,
+  role: 'admin',
+  tenantId: TENANT,
+} as AuthUser;
 const EQUIPO_ID = 'eq-1';
 const OT_ID = 'ot-1';
 
@@ -70,6 +80,10 @@ describe('OrdenesService', () => {
     service = new OrdenesService(
       prisma as unknown as PrismaService,
       inventario as unknown as InventarioService,
+      // Camino con plantilla no se ejercita en estos tests (dto sin plantillaId);
+      // mocks vacíos bastan para el camino simple.
+      {} as unknown as TicketsService,
+      {} as unknown as PlantillasAplicacionService,
     );
   });
 
@@ -86,7 +100,7 @@ describe('OrdenesService', () => {
         Promise.resolve({ id: OT_ID, ...data }),
       );
 
-      const result = await service.create(TENANT, USER, {
+      const result = await service.create(TENANT, USER_OBJ, {
         equipoId: EQUIPO_ID,
         descripcion: 'Mantención preventiva',
         prioridad: Prioridad.ALTA,
@@ -106,7 +120,7 @@ describe('OrdenesService', () => {
       );
 
       const year = new Date().getUTCFullYear();
-      await service.create(TENANT, USER, {
+      await service.create(TENANT, USER_OBJ, {
         equipoId: EQUIPO_ID,
         descripcion: 'x',
       });
@@ -124,7 +138,7 @@ describe('OrdenesService', () => {
         Promise.resolve({ id: OT_ID, ...data }),
       );
 
-      await service.create(TENANT, USER, {
+      await service.create(TENANT, USER_OBJ, {
         equipoId: EQUIPO_ID,
         descripcion: 'x',
       });
@@ -137,7 +151,7 @@ describe('OrdenesService', () => {
       prisma.ordenTrabajo.findFirst.mockResolvedValue(null);
       prisma.ordenTrabajo.create.mockResolvedValue({ id: OT_ID });
 
-      await service.create(TENANT, USER, {
+      await service.create(TENANT, USER_OBJ, {
         equipoId: EQUIPO_ID,
         descripcion: 'x',
       });
@@ -150,7 +164,7 @@ describe('OrdenesService', () => {
       prisma.equipo.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.create(TENANT, USER, {
+        service.create(TENANT, USER_OBJ, {
           equipoId: 'no-existe',
           descripcion: 'x',
         }),

@@ -6,6 +6,7 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { EquipoSelect } from "@/components/equipos";
+import { PlantillaSelect } from "@/components/plantillas";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -19,6 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { useEquipos } from "@/hooks/use-equipos";
 import { useCreateOrden } from "@/hooks/use-ordenes";
 import type { OrdenPrioridad } from "@/lib/api/ordenes";
 import { cn } from "@/lib/utils";
@@ -28,6 +30,7 @@ const nuevaOrdenSchema = z.object({
     .string()
     .min(5, "La descripcion debe tener al menos 5 caracteres"),
   equipoId: z.string().min(1, "Selecciona un equipo"),
+  plantillaId: z.string().optional(),
   prioridad: z.enum(["BAJA", "MEDIA", "ALTA"]),
 });
 
@@ -63,25 +66,42 @@ export type NuevaOrdenSheetProps = {
 export function NuevaOrdenSheet({ onOpenChange, open }: NuevaOrdenSheetProps) {
   const router = useRouter();
   const createOrden = useCreateOrden();
+  const { data: equipos = [] } = useEquipos();
   const {
     control,
     formState: { errors },
     handleSubmit,
     register,
     reset,
+    watch,
   } = useForm<NuevaOrdenFormValues>({
     defaultValues: {
       descripcion: "",
       equipoId: "",
+      plantillaId: "",
       prioridad: "MEDIA",
     },
     resolver: zodResolver(nuevaOrdenSchema),
   });
 
+  // Tipo del equipo elegido: prioriza las plantillas de ese tipo en el select.
+  const equipoId = watch("equipoId");
+  const tipoEquipo = equipos.find((e) => e.id === equipoId)?.tipo ?? null;
+
   const onSubmit = handleSubmit(async (values) => {
     try {
-      const orden = await createOrden.mutateAsync(values);
-      toast.success("Orden de trabajo creada");
+      const orden = await createOrden.mutateAsync({
+        descripcion: values.descripcion,
+        equipoId: values.equipoId,
+        prioridad: values.prioridad,
+        // Vacío = sin plantilla (OT simple).
+        plantillaId: values.plantillaId || undefined,
+      });
+      toast.success(
+        values.plantillaId
+          ? "Orden de trabajo creada desde plantilla"
+          : "Orden de trabajo creada",
+      );
       reset();
       onOpenChange(false);
       router.push(`/ordenes/${orden.id}`);
@@ -125,6 +145,26 @@ export function NuevaOrdenSheet({ onOpenChange, open }: NuevaOrdenSheetProps) {
                   {errors.equipoId.message}
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="font-medium text-sm">Plantilla (opcional)</label>
+              <Controller
+                control={control}
+                name="plantillaId"
+                render={({ field }) => (
+                  <PlantillaSelect
+                    disabled={createOrden.isPending}
+                    onChange={(id) => field.onChange(id ?? "")}
+                    tipoEquipo={tipoEquipo}
+                    value={field.value || null}
+                  />
+                )}
+              />
+              <p className="text-muted-foreground text-xs">
+                Copia el checklist y reserva los insumos de la plantilla en el
+                primer ticket de la OT.
+              </p>
             </div>
 
             <div className="space-y-2">

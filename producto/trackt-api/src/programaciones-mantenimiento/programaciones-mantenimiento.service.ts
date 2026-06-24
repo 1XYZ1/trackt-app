@@ -20,6 +20,7 @@ import {
 import { OrdenesService } from '../ordenes/ordenes.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { PlantillasAplicacionService } from '../plantillas-mantenimiento/plantillas-aplicacion.service';
 import { CreateProgramacionDto } from './dto/create-programacion.dto';
 import { UpdateProgramacionDto } from './dto/update-programacion.dto';
 import { ListProgramacionesQueryDto } from './dto/list-programaciones-query.dto';
@@ -47,19 +48,9 @@ const MS_POR_DIA = 24 * 60 * 60 * 1000;
  * opcionalmente basados en una plantilla. La Fase 5 genera OT/tickets desde
  * programaciones PROGRAMADA (→ GENERADA) y materializa la recurrencia.
  */
-// Item de la plantilla resuelto para la reserva (con ajustes aplicados) y
-// con la ficha del repuesto para la respuesta SUGERIDA.
-export interface ItemReservaResuelto {
-  repuestoId: string;
-  cantidad: number;
-  obligatorio: boolean;
-  repuesto: {
-    codigo: string;
-    nombre: string;
-    unidad: string;
-    stockDisponible: number;
-  };
-}
+// Item de la plantilla resuelto para la reserva: re-exportado desde el helper
+// compartido para no romper imports existentes de este símbolo.
+export type { ItemReservaResuelto } from '../plantillas-mantenimiento/plantillas-aplicacion.service';
 
 @Injectable()
 export class ProgramacionesMantenimientoService {
@@ -69,6 +60,7 @@ export class ProgramacionesMantenimientoService {
     private readonly tickets: TicketsService,
     private readonly inventario: InventarioService,
     private readonly profiles: ProfileService,
+    private readonly plantillasAplicacion: PlantillasAplicacionService,
   ) {}
 
   async findAll(
@@ -350,6 +342,8 @@ export class ProgramacionesMantenimientoService {
           select: {
             id: true,
             nombre: true,
+            // metadata para copiar el checklist (metadata.checklist) al ticket.
+            metadata: true,
             items: {
               select: {
                 repuestoId: true,
@@ -396,13 +390,22 @@ export class ProgramacionesMantenimientoService {
     }
 
     const modoReserva = dto.modoReserva ?? 'AUTOMATICA';
-    const itemsReserva = this.resolverItemsReserva(
+    const itemsReserva = this.plantillasAplicacion.resolverItemsReserva(
       programacion.plantilla,
       dto.ajustarItems,
+    );
+    // Checklist de la plantilla → metadata del ticket (hecho:false por paso).
+    const checklist = this.plantillasAplicacion.buildChecklistInicial(
+      programacion.plantilla?.metadata,
     );
 
     const descripcion = programacion.descripcion ?? programacion.titulo;
     const trazabilidad = { programacionId: id };
+    // El ticket arranca con trazabilidad + checklist (si la plantilla lo trae).
+    const ticketMetadata: Record<string, unknown> = {
+      ...trazabilidad,
+      ...(checklist.length > 0 && { checklist }),
+    };
 
     const resultado = await this.prisma.$transaction(async (tx) => {
       // Guard anti doble generación: el update va condicionado al estado.
@@ -437,7 +440,7 @@ export class ProgramacionesMantenimientoService {
           titulo: programacion.titulo,
           descripcion,
           prioridad: programacion.prioridad,
-          metadata: trazabilidad,
+          metadata: ticketMetadata,
         },
       );
 
@@ -520,65 +523,6 @@ export class ProgramacionesMantenimientoService {
   }
 
   // ---------- helpers ----------
-
-  /**
-   * Resuelve los insumos de la reserva: items de la plantilla con
-   * ajustarItems aplicados (cantidad 0 excluye). 400 si se ajusta sin
-   * plantilla o se referencia un repuesto que no está en ella.
-   */
-  private resolverItemsReserva(
-    plantilla: {
-      items: Array<{
-        repuestoId: string;
-        cantidad: number;
-        obligatorio: boolean;
-        repuesto: {
-          codigo: string;
-          nombre: string;
-          unidad: string;
-          stock: { stockActual: number; stockReservado: number } | null;
-        };
-      }>;
-    } | null,
-    ajustes?: Array<{ repuestoId: string; cantidad: number }>,
-  ): ItemReservaResuelto[] {
-    if (!plantilla) {
-      if (ajustes && ajustes.length > 0) {
-        throw new BadRequestException(
-          'ajustarItems requiere que la programación tenga plantilla',
-        );
-      }
-      return [];
-    }
-
-    const ajustePorRepuesto = new Map(
-      (ajustes ?? []).map((a) => [a.repuestoId, a.cantidad]),
-    );
-    const idsPlantilla = new Set(plantilla.items.map((i) => i.repuestoId));
-    for (const repuestoId of ajustePorRepuesto.keys()) {
-      if (!idsPlantilla.has(repuestoId)) {
-        throw new BadRequestException(
-          `ajustarItems referencia el repuesto "${repuestoId}" que no está en la plantilla`,
-        );
-      }
-    }
-
-    return plantilla.items
-      .map((item) => ({
-        repuestoId: item.repuestoId,
-        cantidad: ajustePorRepuesto.get(item.repuestoId) ?? item.cantidad,
-        obligatorio: item.obligatorio,
-        repuesto: {
-          codigo: item.repuesto.codigo,
-          nombre: item.repuesto.nombre,
-          unidad: item.repuesto.unidad,
-          stockDisponible:
-            (item.repuesto.stock?.stockActual ?? 0) -
-            (item.repuesto.stock?.stockReservado ?? 0),
-        },
-      }))
-      .filter((item) => item.cantidad > 0);
-  }
 
   private async requirePlantillaActiva(tenantId: string, plantillaId: string) {
     const plantilla = await this.prisma.plantillaMantenimiento.findFirst({

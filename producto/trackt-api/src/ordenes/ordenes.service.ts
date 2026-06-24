@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,6 +20,9 @@ import {
 } from '../common/utils/pagination';
 import { siguienteCodigo } from '../common/utils/codigo.util';
 import { InventarioService } from '../inventario/inventario.service';
+import { TicketsService } from '../tickets/tickets.service';
+import { PlantillasAplicacionService } from '../plantillas-mantenimiento/plantillas-aplicacion.service';
+import { AuthUser } from '../auth/types';
 import { CreateOrdenDto } from './dto/create-orden.dto';
 import { UpdateOrdenDto } from './dto/update-orden.dto';
 import { ListOrdenesQueryDto } from './dto/list-ordenes-query.dto';
@@ -81,6 +86,11 @@ export class OrdenesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventario: InventarioService,
+    // forwardRef: TicketsService ↔ OrdenesService se referencian mutuamente
+    // (creación de OT desde plantilla materializa su primer ticket).
+    @Inject(forwardRef(() => TicketsService))
+    private readonly tickets: TicketsService,
+    private readonly plantillasAplicacion: PlantillasAplicacionService,
   ) {}
 
   // ---------- CRUD ----------
@@ -89,12 +99,16 @@ export class OrdenesService {
    * Crear OT en estado PENDIENTE con código OT-YYYY-NNNN único por tenant/año.
    * La secuencia se calcula bajo transacción + advisory lock para evitar
    * colisiones bajo concurrencia (Postgres/Supabase).
+   *
+   * Si llega `plantillaId`, la OT nace con un primer ticket que copia el
+   * checklist de la plantilla (metadata.checklist) y reserva sus insumos —
+   * misma "receta" que Programación → Generar OT. Ver crearDesdePlantillaEnTx.
    */
-  async create(tenantId: string, userId: string, dto: CreateOrdenDto) {
+  async create(tenantId: string, user: AuthUser, dto: CreateOrdenDto) {
     // Verificar que el equipo existe y pertenece al tenant antes de tomar lock
     const equipo = await this.prisma.equipo.findFirst({
       where: { id: dto.equipoId, tenantId },
-      select: { id: true },
+      select: { id: true, codigo: true, activo: true },
     });
     if (!equipo) {
       throw new NotFoundException(
@@ -102,13 +116,134 @@ export class OrdenesService {
       );
     }
 
-    return this.prisma.$transaction((tx) =>
-      this.crearEnTx(tx, tenantId, userId, {
+    if (!dto.plantillaId) {
+      return this.prisma.$transaction((tx) =>
+        this.crearEnTx(tx, tenantId, user.id, {
+          equipoId: dto.equipoId,
+          descripcion: dto.descripcion,
+          prioridad: dto.prioridad,
+        }),
+      );
+    }
+
+    // Camino con plantilla: la reserva exige equipo operable (igual que
+    // generarOt). Sin plantilla no reservamos nada, así que no lo exigimos.
+    if (!equipo.activo) {
+      throw new ConflictException(
+        `El equipo "${equipo.codigo}" está inactivo y no admite generación de OT con plantilla`,
+      );
+    }
+
+    // Plantilla del tenant y activa (mismo criterio que programaciones).
+    const plantilla = await this.prisma.plantillaMantenimiento.findFirst({
+      where: { id: dto.plantillaId, tenantId },
+      select: { id: true, nombre: true, activo: true },
+    });
+    if (!plantilla) {
+      throw new NotFoundException(
+        `Plantilla con id "${dto.plantillaId}" no encontrada`,
+      );
+    }
+    if (!plantilla.activo) {
+      throw new ConflictException(
+        `La plantilla "${plantilla.nombre}" está inactiva y no puede usarse para crear OT`,
+      );
+    }
+
+    return this.crearDesdePlantilla(tenantId, user, dto, plantilla.nombre);
+  }
+
+  /**
+   * Crea una OT a partir de una plantilla: OT → ticket (con checklist en
+   * metadata) → transición a EN_PROCESO → reserva de insumos de la plantilla.
+   * Todo en UNA transacción (atómico, como generarOt): si la reserva falla
+   * (ej. stock insuficiente → 409 con faltantes), no queda OT ni ticket a
+   * medias. Reusa el helper compartido PlantillasAplicacionService para no
+   * duplicar la resolución de items ni el copiado del checklist.
+   */
+  private async crearDesdePlantilla(
+    tenantId: string,
+    user: AuthUser,
+    dto: CreateOrdenDto,
+    plantillaNombre: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const plantilla = await this.plantillasAplicacion.loadParaAplicar(
+        tx,
+        tenantId,
+        dto.plantillaId as string,
+      );
+      // loadParaAplicar no puede ser null acá (se validó antes), pero el
+      // resolver acepta null de forma segura.
+      const itemsReserva = this.plantillasAplicacion.resolverItemsReserva(
+        plantilla,
+      );
+      const checklist = this.plantillasAplicacion.buildChecklistInicial(
+        plantilla?.metadata,
+      );
+      const trazabilidad = { plantillaId: dto.plantillaId };
+      const ticketMetadata: Record<string, unknown> = {
+        ...trazabilidad,
+        ...(checklist.length > 0 && { checklist }),
+      };
+
+      const ot = await this.crearEnTx(tx, tenantId, user.id, {
         equipoId: dto.equipoId,
         descripcion: dto.descripcion,
         prioridad: dto.prioridad,
-      }),
-    );
+        metadata: trazabilidad,
+      });
+
+      const ticket = await this.tickets.crearEnTx(tx, tenantId, user.id, ot.id, {
+        titulo: plantillaNombre,
+        descripcion: dto.descripcion,
+        prioridad: dto.prioridad,
+        metadata: ticketMetadata,
+      });
+
+      // La OT nace PENDIENTE; su primer ticket la mueve a EN_PROCESO (misma
+      // semántica atómica y guard anti-carrera que generarOt).
+      const transicion = await tx.ordenTrabajo.updateMany({
+        where: { id: ot.id, tenantId, estado: OrdenTrabajoEstado.PENDIENTE },
+        data: { estado: OrdenTrabajoEstado.EN_PROCESO },
+      });
+      if (transicion.count !== 1) {
+        throw new ConflictException(
+          `OT ${ot.id} mutó concurrentemente — no se pudo transicionar a EN_PROCESO`,
+        );
+      }
+
+      // Reserva automática con los insumos de la plantilla: misma lógica que
+      // POST /tickets/:id/reservas-repuestos. mechanic → SOLICITADA (no toca
+      // stockReservado hasta aprobación); admin/jefe → RESERVADA.
+      let reserva: Awaited<
+        ReturnType<InventarioService['crearReservaEnTx']>
+      > | null = null;
+      if (itemsReserva.length > 0) {
+        reserva = await this.inventario.crearReservaEnTx(
+          tx,
+          tenantId,
+          user,
+          ticket.id,
+          {
+            items: itemsReserva.map(({ repuestoId, cantidad }) => ({
+              repuestoId,
+              cantidad,
+            })),
+            observacion: `Reserva generada desde plantilla "${plantillaNombre}"`,
+            solicitar: user.role === 'mechanic',
+          },
+        );
+      }
+
+      // Devolver la OT con la misma forma (LIST_SELECT) que el camino simple,
+      // más el ticket/reserva creados para que el caller pueda enlazarlos.
+      return {
+        ...ot,
+        ticketGenerado: { id: ticket.id, codigo: ticket.codigo },
+        reservaGenerada: reserva ? { id: reserva.id } : null,
+      };
+    });
   }
 
   /**

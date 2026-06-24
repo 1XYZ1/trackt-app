@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { CalendarPlus, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { PlantillaSelect } from "@/components/plantillas";
@@ -149,20 +149,38 @@ export function EquipoPlantillas({ equipoId }: EquipoPlantillasProps) {
                       )}
                     </div>
                   </div>
-                  {canManage && (
-                    <Button
-                      loading={
-                        removePlantilla.isPending && removingId === a.plantilla.id
-                      }
-                      onClick={() =>
-                        handleRemove(a.plantilla.id, a.plantilla.nombre)
-                      }
-                      size="sm"
-                      variant="destructive-outline"
-                    >
-                      <Trash2 />
-                    </Button>
-                  )}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {canManage && a.plantilla.activo !== false && (
+                      <Button
+                        render={
+                          <Link
+                            href={`/mantenciones?equipo=${equipoId}&plantilla=${a.plantilla.id}`}
+                          />
+                        }
+                        size="sm"
+                        variant="outline"
+                      >
+                        <CalendarPlus />
+                        Programar
+                      </Button>
+                    )}
+                    {canManage && (
+                      <Button
+                        aria-label={`Quitar plantilla ${a.plantilla.nombre}`}
+                        loading={
+                          removePlantilla.isPending &&
+                          removingId === a.plantilla.id
+                        }
+                        onClick={() =>
+                          handleRemove(a.plantilla.id, a.plantilla.nombre)
+                        }
+                        size="sm"
+                        variant="destructive-outline"
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
