@@ -13,8 +13,16 @@
  *
  * Re-ejecutable: usa UUIDs deterministicos + upserts.
  */
-import { MarcaTipo, PrismaClient, Prioridad } from '@prisma/client';
+import {
+  MarcaTipo,
+  MovimientoInventarioTipo,
+  PrismaClient,
+  Prioridad,
+  ProgramacionMantenimientoEstado,
+  ReservaRepuestoEstado,
+} from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 
 type UserRole = 'admin' | 'jefe_taller' | 'jefe_inventario' | 'mechanic';
 
@@ -33,6 +41,9 @@ interface SeedEquipo {
   marca: string;
   modelo: string;
   ubicacion: string;
+  // Tipo (texto libre legacy); el seed lo usa para enlazar tipoEquipoId al
+  // catálogo TipoEquipo (matchEquipos). Opcional por compatibilidad.
+  tipo?: string;
 }
 
 interface SeedMarca {
@@ -102,6 +113,82 @@ interface SeedRepuesto {
   marcaNombre?: string;
 }
 
+// ----- Modelos nuevos (mantenimiento industrial) -----
+
+/** Catálogo de tipos de equipo del tenant + sus repuestos default. */
+interface SeedTipoEquipo {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  // Texto(s) que matchean Equipo.tipo / Equipo.nombre para enlazar tipoEquipoId.
+  // El seed asigna este tipo a los equipos cuyo `tipo` o `nombre` contenga
+  // alguno de estos términos (case-insensitive).
+  matchEquipos: string[];
+  // Repuestos default del tipo (códigos del catálogo del tenant).
+  repuestosDefault: {
+    repuestoCodigo: string;
+    cantidadRef: number;
+    obligatorio?: boolean;
+    observacion?: string;
+  }[];
+}
+
+/** Plantilla de mantenimiento declarativa por tenant. */
+interface SeedPlantilla {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  // Se asocia a equipos de este tipo (nombre de un SeedTipoEquipo del tenant).
+  tipoEquipoNombre: string;
+  frecuencia: string;
+  // Pasos del checklist (metadata.checklist: string[]).
+  checklist: string[];
+  // Insumos sugeridos (PlantillaMantenimientoItem).
+  items: {
+    repuestoCodigo: string;
+    cantidad: number;
+    obligatorio?: boolean;
+    observacion?: string;
+  }[];
+}
+
+/** Programación de mantenimiento declarativa por tenant. */
+interface SeedProgramacion {
+  id: string;
+  equipoId: string;
+  // Plantilla asociada (nombre de un SeedPlantilla del tenant) — opcional.
+  plantillaNombre?: string;
+  titulo: string;
+  descripcion?: string;
+  prioridad: Prioridad;
+  estado: ProgramacionMantenimientoEstado;
+  // Horas relativas a ahora: <0 pasado, >0 futuro.
+  fechaProgramadaHoras: number;
+  responsableId?: string | null;
+  recurrencia?: string;
+  // Si estado=GENERADA, IDs reales (OT/ticket/reserva) que el seed crea/usa.
+  generacion?: { otId?: string; ticketId?: string; reservaId?: string };
+}
+
+/** Línea de una reserva sembrada. */
+interface SeedReservaItem {
+  repuestoCodigo: string;
+  cantidad: number;
+}
+
+/** Reserva de repuestos declarativa, ligada a un ticket. */
+interface SeedReserva {
+  id: string;
+  ticketId: string;
+  estado: ReservaRepuestoEstado;
+  creadoPorId: string;
+  aprobadoPorId?: string | null;
+  observacion?: string;
+  // Horas atrás en que se creó la reserva (para createdAt de movimientos).
+  horasAtras: number;
+  items: SeedReservaItem[];
+}
+
 interface SeedTenant {
   id: string;
   nombre: string;
@@ -111,6 +198,11 @@ interface SeedTenant {
   tickets: SeedTicket[];
   eventos: SeedEvento[];
   repuestos?: SeedRepuesto[];
+  // ----- Modelos nuevos (opcionales por tenant) -----
+  tiposEquipo?: SeedTipoEquipo[];
+  plantillas?: SeedPlantilla[];
+  programaciones?: SeedProgramacion[];
+  reservas?: SeedReserva[];
 }
 
 const PASSWORD = 'Trackt!2026';
@@ -343,6 +435,7 @@ const demoTenant: SeedTenant = {
       marca: 'Caterpillar',
       modelo: '793F',
       ubicacion: 'Rajo principal',
+      tipo: 'Camión Minero',
     },
     {
       id: 'eq-demo-002',
@@ -351,6 +444,7 @@ const demoTenant: SeedTenant = {
       marca: 'Komatsu',
       modelo: 'WA900',
       ubicacion: 'Acopio sur',
+      tipo: 'Cargador Frontal',
     },
     {
       id: 'eq-demo-003',
@@ -359,6 +453,7 @@ const demoTenant: SeedTenant = {
       marca: 'Sandvik',
       modelo: 'LH517',
       ubicacion: 'Mina subterránea nivel 4',
+      tipo: 'LHD',
     },
   ],
   ordenes: [
@@ -685,6 +780,252 @@ const demoTenant: SeedTenant = {
       stockInicial: 4,
     },
   ],
+  tiposEquipo: [
+    {
+      id: 'te-demo-camion',
+      nombre: 'Camión Minero',
+      descripcion: 'Camión de extracción para rajo abierto.',
+      matchEquipos: ['Camión Minero', 'Camión'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidadRef: 2, obligatorio: true },
+        {
+          repuestoCodigo: 'REP-DEMO-002',
+          cantidadRef: 3,
+          obligatorio: true,
+          observacion: 'Carga sistema hidráulico de levante.',
+        },
+        { repuestoCodigo: 'REP-DEMO-003', cantidadRef: 4, obligatorio: true },
+      ],
+    },
+    {
+      id: 'te-demo-cargador',
+      nombre: 'Cargador Frontal',
+      descripcion: 'Cargador frontal de gran tonelaje.',
+      matchEquipos: ['Cargador Frontal', 'Cargador'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidadRef: 2, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-005', cantidadRef: 4, obligatorio: true },
+        {
+          repuestoCodigo: 'REP-DEMO-002',
+          cantidadRef: 2,
+          obligatorio: false,
+          observacion: 'Según nivel del estanque hidráulico.',
+        },
+      ],
+    },
+    {
+      id: 'te-demo-lhd',
+      nombre: 'LHD',
+      descripcion: 'Equipo LHD (Load-Haul-Dump) subterráneo.',
+      matchEquipos: ['LHD', 'Subterránea'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-004', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-005', cantidadRef: 2, obligatorio: false },
+      ],
+    },
+    {
+      id: 'te-demo-generador',
+      nombre: 'Generador',
+      descripcion: 'Grupo electrógeno diésel de respaldo.',
+      matchEquipos: ['Generador', 'Grupo electrógeno'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-004', cantidadRef: 1, obligatorio: true },
+      ],
+    },
+    {
+      id: 'te-demo-compresor',
+      nombre: 'Compresor',
+      descripcion: 'Compresor de aire industrial.',
+      matchEquipos: ['Compresor'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-002', cantidadRef: 1, obligatorio: false },
+      ],
+    },
+  ],
+  plantillas: [
+    {
+      id: 'pl-demo-camion-500h',
+      nombre: 'Preventivo 500 h Camión Minero',
+      descripcion: 'Mantención preventiva mayor de camión de extracción.',
+      tipoEquipoNombre: 'Camión Minero',
+      frecuencia: 'cada 500 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Inspeccionar nivel y estado del aceite de motor.',
+        'Reemplazar filtros de aceite y combustible.',
+        'Revisar presión y desgaste de neumáticos.',
+        'Verificar fugas en sistema hidráulico de levante.',
+        'Inspeccionar pastillas y discos de freno.',
+        'Registrar horómetro y cerrar checklist.',
+      ],
+      items: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidad: 2, obligatorio: true },
+        {
+          repuestoCodigo: 'REP-DEMO-002',
+          cantidad: 3,
+          obligatorio: true,
+          observacion: 'Reponer aceite hidráulico ISO 68.',
+        },
+        { repuestoCodigo: 'REP-DEMO-003', cantidad: 4, obligatorio: false },
+      ],
+    },
+    {
+      id: 'pl-demo-camion-neumaticos',
+      nombre: 'Inspección de neumáticos Camión Minero',
+      descripcion: 'Rutina de inspección y rotación de neumáticos OTR.',
+      tipoEquipoNombre: 'Camión Minero',
+      frecuencia: 'mensual',
+      checklist: [
+        'Medir presión en frío de los seis neumáticos.',
+        'Inspeccionar cortes, cristalización y desgaste irregular.',
+        'Verificar torque de tuercas de aro.',
+        'Rotar neumáticos según plan si corresponde.',
+      ],
+      items: [{ repuestoCodigo: 'REP-DEMO-006', cantidad: 1, obligatorio: false }],
+    },
+    {
+      id: 'pl-demo-cargador-250h',
+      nombre: 'Preventivo 250 h Cargador Frontal',
+      descripcion: 'Mantención preventiva de cargador frontal.',
+      tipoEquipoNombre: 'Cargador Frontal',
+      frecuencia: 'cada 250 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Cambiar filtros hidráulicos de retorno y succión.',
+        'Revisar estado de mangueras hidráulicas.',
+        'Lubricar pasadores y bujes del brazo.',
+        'Verificar nivel de aceite hidráulico.',
+        'Probar funciones de levante y volteo.',
+      ],
+      items: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidad: 2, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-005', cantidad: 4, obligatorio: true },
+      ],
+    },
+    {
+      id: 'pl-demo-lhd-overhaul',
+      nombre: 'Overhaul LHD',
+      descripcion: 'Ciclo completo de overhaul de equipo LHD subterráneo.',
+      tipoEquipoNombre: 'LHD',
+      frecuencia: 'cada 2000 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Inspeccionar tren de rodaje y tensores.',
+        'Reemplazar filtros de aceite de motor.',
+        'Verificar sensores de temperatura y presión.',
+        'Revisar sistema hidráulico y mangueras.',
+        'Pruebas de funcionamiento en vacío.',
+      ],
+      items: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidad: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-004', cantidad: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-DEMO-005', cantidad: 2, obligatorio: false },
+      ],
+    },
+  ],
+  // Reservas ligadas a tickets demo. Estados mezclados:
+  //  - RESERVADA: retiene stockReservado (no descuenta stockActual).
+  //  - SOLICITADA: pendiente de aprobación; NO toca stock.
+  //  - CONSUMIDA: descuenta stockActual + genera MovimientoInventario CONSUMO.
+  reservas: [
+    {
+      // Manguera para cambio de manguera hidráulica de pluma (ticket asignado).
+      id: 'rsv-demo-2003',
+      ticketId: 'tk-demo-2003',
+      estado: ReservaRepuestoEstado.RESERVADA,
+      creadoPorId: DEMO_MEC1.id,
+      aprobadoPorId: DEMO_ADMIN.id,
+      observacion: 'Reserva para cambio de manguera de pluma.',
+      horasAtras: 3,
+      items: [{ repuestoCodigo: 'REP-DEMO-005', cantidad: 2 }],
+    },
+    {
+      // Filtro de retorno solicitado por el mecánico (aún sin aprobar).
+      id: 'rsv-demo-2004',
+      ticketId: 'tk-demo-2004',
+      estado: ReservaRepuestoEstado.SOLICITADA,
+      creadoPorId: DEMO_MEC2.id,
+      observacion: 'Solicitud de filtro de retorno hidráulico.',
+      horasAtras: 2,
+      items: [{ repuestoCodigo: 'REP-DEMO-001', cantidad: 1 }],
+    },
+    {
+      // Filtros de succión en ejecución: reservados.
+      id: 'rsv-demo-2005',
+      ticketId: 'tk-demo-2005',
+      estado: ReservaRepuestoEstado.RESERVADA,
+      creadoPorId: DEMO_MEC3.id,
+      aprobadoPorId: DEMO_ADMIN.id,
+      observacion: 'Filtros de succión reservados para la intervención.',
+      horasAtras: 5,
+      items: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidad: 2 },
+        { repuestoCodigo: 'REP-DEMO-002', cantidad: 1 },
+      ],
+    },
+    {
+      // Overhaul cerrado: insumos consumidos (descuenta stock real).
+      id: 'rsv-demo-2008',
+      ticketId: 'tk-demo-2008',
+      estado: ReservaRepuestoEstado.CONSUMIDA,
+      creadoPorId: DEMO_MEC2.id,
+      aprobadoPorId: DEMO_ADMIN.id,
+      observacion: 'Insumos consumidos en overhaul de LHD.',
+      horasAtras: 10,
+      items: [
+        { repuestoCodigo: 'REP-DEMO-001', cantidad: 1 },
+        { repuestoCodigo: 'REP-DEMO-004', cantidad: 1 },
+      ],
+    },
+  ],
+  programaciones: [
+    {
+      // Futura, planificada (PROGRAMADA) sobre el camión.
+      id: 'prog-demo-001',
+      equipoId: 'eq-demo-001',
+      plantillaNombre: 'Preventivo 500 h Camión Minero',
+      titulo: 'Preventivo 500 h camión CA-22',
+      descripcion: 'Programado para el próximo ciclo de horómetro.',
+      prioridad: Prioridad.ALTA,
+      estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+      fechaProgramadaHoras: 24 * 14,
+      responsableId: DEMO_ADMIN.id,
+      recurrencia: 'cada 500 h',
+    },
+    {
+      // Futura, inspección mensual de neumáticos.
+      id: 'prog-demo-002',
+      equipoId: 'eq-demo-001',
+      plantillaNombre: 'Inspección de neumáticos Camión Minero',
+      titulo: 'Inspección mensual de neumáticos CA-22',
+      prioridad: Prioridad.MEDIA,
+      estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+      fechaProgramadaHoras: 24 * 30,
+      responsableId: DEMO_ADMIN.id,
+      recurrencia: 'mensual',
+    },
+    {
+      // Pasada y ya GENERADA: apunta a OT/ticket/reserva reales del overhaul.
+      id: 'prog-demo-003',
+      equipoId: 'eq-demo-003',
+      plantillaNombre: 'Overhaul LHD',
+      titulo: 'Overhaul LHD LH-03',
+      descripcion: 'Generó la OT-1005 y su ticket de overhaul.',
+      prioridad: Prioridad.MEDIA,
+      estado: ProgramacionMantenimientoEstado.GENERADA,
+      fechaProgramadaHoras: -24 * 3,
+      responsableId: DEMO_ADMIN.id,
+      recurrencia: 'cada 2000 h',
+      generacion: {
+        otId: 'ot-demo-1005',
+        ticketId: 'tk-demo-2008',
+        reservaId: 'rsv-demo-2008',
+      },
+    },
+  ],
 };
 
 // ============================================================
@@ -734,6 +1075,7 @@ const forestalTenant: SeedTenant = {
       marca: 'John Deere',
       modelo: '1270G',
       ubicacion: 'Predio Curanilahue',
+      tipo: 'Harvester',
     },
     {
       id: 'eq-forestal-002',
@@ -742,6 +1084,7 @@ const forestalTenant: SeedTenant = {
       marca: 'Tigercat',
       modelo: '630E',
       ubicacion: 'Predio Mulchén',
+      tipo: 'Skidder',
     },
     {
       id: 'eq-forestal-003',
@@ -750,6 +1093,7 @@ const forestalTenant: SeedTenant = {
       marca: 'Ponsse',
       modelo: 'Elephant King',
       ubicacion: 'Cancha de acopio Los Ángeles',
+      tipo: 'Forwarder',
     },
   ],
   ordenes: [
@@ -1014,6 +1358,196 @@ const forestalTenant: SeedTenant = {
       stockInicial: 3,
     },
   ],
+  tiposEquipo: [
+    {
+      id: 'te-for-harvester',
+      nombre: 'Harvester',
+      descripcion: 'Cosechadora forestal con cabezal procesador.',
+      matchEquipos: ['Harvester'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-FOR-001', cantidadRef: 1, obligatorio: true },
+        {
+          repuestoCodigo: 'REP-FOR-002',
+          cantidadRef: 2,
+          obligatorio: true,
+          observacion: 'Lubricación de cadena del cabezal.',
+        },
+        { repuestoCodigo: 'REP-FOR-005', cantidadRef: 1, obligatorio: false },
+      ],
+    },
+    {
+      id: 'te-for-skidder',
+      nombre: 'Skidder',
+      descripcion: 'Tractor forestal de arrastre con winche.',
+      matchEquipos: ['Skidder'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-FOR-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-FOR-003', cantidadRef: 10, obligatorio: true },
+        { repuestoCodigo: 'REP-FOR-004', cantidadRef: 1, obligatorio: false },
+      ],
+    },
+    {
+      id: 'te-for-forwarder',
+      nombre: 'Forwarder',
+      descripcion: 'Autocargador forestal de transporte.',
+      matchEquipos: ['Forwarder'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-FOR-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-FOR-006', cantidadRef: 1, obligatorio: false },
+      ],
+    },
+    {
+      id: 'te-for-feller',
+      nombre: 'Feller Buncher',
+      descripcion: 'Cosechadora de volteo y agrupado.',
+      matchEquipos: ['Feller', 'Feller Buncher'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-FOR-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-FOR-005', cantidadRef: 2, obligatorio: true },
+      ],
+    },
+  ],
+  plantillas: [
+    {
+      id: 'pl-for-harvester-250h',
+      nombre: 'Preventivo 250 h Harvester',
+      descripcion: 'Mantención del cabezal procesador y sistema hidráulico.',
+      tipoEquipoNombre: 'Harvester',
+      frecuencia: 'cada 250 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Inspeccionar sensores de presión del cabezal.',
+        'Revisar y reponer aceite de lubricación de cadena.',
+        'Verificar estado de mangueras hidráulicas de la pluma.',
+        'Cambiar filtro de aire si está saturado.',
+        'Afilar o cambiar cadena de sierra.',
+        'Pruebas de medición y troceo.',
+      ],
+      items: [
+        { repuestoCodigo: 'REP-FOR-001', cantidad: 1, obligatorio: true },
+        {
+          repuestoCodigo: 'REP-FOR-002',
+          cantidad: 2,
+          obligatorio: true,
+          observacion: 'Reponer aceite de cadena.',
+        },
+      ],
+    },
+    {
+      id: 'pl-for-skidder-transmision',
+      nombre: 'Revisión transmisión Skidder',
+      descripcion: 'Diagnóstico y mantención de transmisión y winche.',
+      tipoEquipoNombre: 'Skidder',
+      frecuencia: 'cada 500 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Inspeccionar nivel y estado del aceite de transmisión.',
+        'Revisar ruidos y holguras en la caja.',
+        'Verificar estado del cable de winche.',
+        'Comprobar carga de batería.',
+        'Prueba de marcha bajo carga.',
+      ],
+      items: [
+        { repuestoCodigo: 'REP-FOR-003', cantidad: 10, obligatorio: true },
+        { repuestoCodigo: 'REP-FOR-004', cantidad: 1, obligatorio: false },
+      ],
+    },
+    {
+      id: 'pl-for-forwarder-hidraulico',
+      nombre: 'Cambio hidráulico Forwarder',
+      descripcion: 'Cambio de aceite hidráulico y filtros del autocargador.',
+      tipoEquipoNombre: 'Forwarder',
+      frecuencia: 'cada 500 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Drenar y reponer aceite hidráulico.',
+        'Reemplazar filtros hidráulicos.',
+        'Inspeccionar grúa y pinza de carga.',
+        'Verificar presión de neumáticos.',
+      ],
+      items: [{ repuestoCodigo: 'REP-FOR-001', cantidad: 1, obligatorio: true }],
+    },
+  ],
+  reservas: [
+    {
+      // Mangueras de pluma del harvester (ticket asignado): reservadas.
+      id: 'rsv-for-4002',
+      ticketId: 'tk-forestal-4002',
+      estado: ReservaRepuestoEstado.RESERVADA,
+      creadoPorId: FOR_MEC1.id,
+      aprobadoPorId: FOR_ADMIN.id,
+      observacion: 'Cable y aceite reservados para intervención del cabezal.',
+      horasAtras: 2,
+      items: [
+        { repuestoCodigo: 'REP-FOR-002', cantidad: 2 },
+        { repuestoCodigo: 'REP-FOR-003', cantidad: 5 },
+      ],
+    },
+    {
+      // Filtros del forwarder en ejecución: solicitados por el mecánico.
+      id: 'rsv-for-4004',
+      ticketId: 'tk-forestal-4004',
+      estado: ReservaRepuestoEstado.SOLICITADA,
+      creadoPorId: FOR_MEC2.id,
+      observacion: 'Solicitud de filtro de aire para forwarder.',
+      horasAtras: 6,
+      items: [{ repuestoCodigo: 'REP-FOR-001', cantidad: 1 }],
+    },
+    {
+      // Cambio de espada cerrado: aceite de cadena consumido.
+      id: 'rsv-for-4006',
+      ticketId: 'tk-forestal-4006',
+      estado: ReservaRepuestoEstado.CONSUMIDA,
+      creadoPorId: FOR_MEC1.id,
+      aprobadoPorId: FOR_ADMIN.id,
+      observacion: 'Aceite de cadena consumido en cambio de espada.',
+      horasAtras: 20,
+      items: [{ repuestoCodigo: 'REP-FOR-002', cantidad: 3 }],
+    },
+  ],
+  programaciones: [
+    {
+      id: 'prog-for-001',
+      equipoId: 'eq-forestal-001',
+      plantillaNombre: 'Preventivo 250 h Harvester',
+      titulo: 'Preventivo 250 h Harvester HV-12',
+      descripcion: 'Programado para el próximo ciclo del cabezal.',
+      prioridad: Prioridad.ALTA,
+      estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+      fechaProgramadaHoras: 24 * 10,
+      responsableId: FOR_ADMIN.id,
+      recurrencia: 'cada 250 h',
+    },
+    {
+      id: 'prog-for-002',
+      equipoId: 'eq-forestal-002',
+      plantillaNombre: 'Revisión transmisión Skidder',
+      titulo: 'Revisión transmisión Skidder SK-04',
+      prioridad: Prioridad.MEDIA,
+      estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+      fechaProgramadaHoras: 24 * 21,
+      responsableId: FOR_ADMIN.id,
+      recurrencia: 'cada 500 h',
+    },
+    {
+      // GENERADA: el afilado/cambio de espada ya cerró su OT/ticket/reserva.
+      id: 'prog-for-003',
+      equipoId: 'eq-forestal-001',
+      plantillaNombre: 'Preventivo 250 h Harvester',
+      titulo: 'Afilado y cambio de sierra cabezal HV-12',
+      descripcion: 'Generó la OT-3004 y su ticket de cambio de espada.',
+      prioridad: Prioridad.BAJA,
+      estado: ProgramacionMantenimientoEstado.GENERADA,
+      fechaProgramadaHoras: -24 * 2,
+      responsableId: FOR_ADMIN.id,
+      recurrencia: 'mensual',
+      generacion: {
+        otId: 'ot-forestal-3004',
+        ticketId: 'tk-forestal-4006',
+        reservaId: 'rsv-for-4006',
+      },
+    },
+  ],
 };
 
 // ============================================================
@@ -1063,6 +1597,7 @@ const construccionTenant: SeedTenant = {
       marca: 'Volvo',
       modelo: 'EC480E',
       ubicacion: 'Obra Puente Bío Bío',
+      tipo: 'Excavadora',
     },
     {
       id: 'eq-construccion-002',
@@ -1071,6 +1606,7 @@ const construccionTenant: SeedTenant = {
       marca: 'JCB',
       modelo: '3CX',
       ubicacion: 'Obra Edificio Concepción',
+      tipo: 'Retroexcavadora',
     },
     {
       id: 'eq-construccion-003',
@@ -1079,6 +1615,7 @@ const construccionTenant: SeedTenant = {
       marca: 'BOMAG',
       modelo: 'BW213',
       ubicacion: 'Obra Camino Talcahuano',
+      tipo: 'Rodillo Compactador',
     },
   ],
   ordenes: [
@@ -1343,6 +1880,203 @@ const construccionTenant: SeedTenant = {
       stockInicial: 4,
     },
   ],
+  tiposEquipo: [
+    {
+      id: 'te-con-excavadora',
+      nombre: 'Excavadora',
+      descripcion: 'Excavadora hidráulica de orugas.',
+      matchEquipos: ['Excavadora'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-CON-001', cantidadRef: 2, obligatorio: true },
+        {
+          repuestoCodigo: 'REP-CON-003',
+          cantidadRef: 5,
+          obligatorio: true,
+          observacion: 'Juego de dientes de balde.',
+        },
+        { repuestoCodigo: 'REP-CON-002', cantidadRef: 2, obligatorio: false },
+      ],
+    },
+    {
+      id: 'te-con-retro',
+      nombre: 'Retroexcavadora',
+      descripcion: 'Retroexcavadora mixta cargadora.',
+      matchEquipos: ['Retroexcavadora', 'Retro'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-CON-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-CON-002', cantidadRef: 2, obligatorio: true },
+        { repuestoCodigo: 'REP-CON-004', cantidadRef: 2, obligatorio: false },
+      ],
+    },
+    {
+      id: 'te-con-rodillo',
+      nombre: 'Rodillo Compactador',
+      descripcion: 'Rodillo vibratorio para compactación.',
+      matchEquipos: ['Rodillo', 'Compactador'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-CON-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-CON-005', cantidadRef: 1, obligatorio: false },
+      ],
+    },
+    {
+      id: 'te-con-grua',
+      nombre: 'Grúa',
+      descripcion: 'Grúa hidráulica sobre camión.',
+      matchEquipos: ['Grúa', 'Grua'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-CON-001', cantidadRef: 1, obligatorio: true },
+        { repuestoCodigo: 'REP-CON-004', cantidadRef: 2, obligatorio: true },
+      ],
+    },
+    {
+      id: 'te-con-camion',
+      nombre: 'Camión Tolva',
+      descripcion: 'Camión tolva para movimiento de tierra.',
+      matchEquipos: ['Camión Tolva', 'Tolva'],
+      repuestosDefault: [
+        { repuestoCodigo: 'REP-CON-002', cantidadRef: 2, obligatorio: true },
+        { repuestoCodigo: 'REP-CON-006', cantidadRef: 1, obligatorio: false },
+      ],
+    },
+  ],
+  plantillas: [
+    {
+      id: 'pl-con-excavadora-hidraulico',
+      nombre: 'Revisión hidráulica Excavadora',
+      descripcion: 'Diagnóstico y mantención del sistema hidráulico.',
+      tipoEquipoNombre: 'Excavadora',
+      frecuencia: 'cada 500 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Medir presión del circuito hidráulico principal.',
+        'Reemplazar filtros hidráulicos.',
+        'Inspeccionar sellos de cilindros de pluma y balde.',
+        'Revisar estado de mangueras de freno y latiguillos.',
+        'Verificar desgaste de dientes de balde.',
+        'Pruebas de levante y giro.',
+      ],
+      items: [
+        { repuestoCodigo: 'REP-CON-001', cantidad: 2, obligatorio: true },
+        {
+          repuestoCodigo: 'REP-CON-003',
+          cantidad: 5,
+          obligatorio: false,
+          observacion: 'Reponer dientes de balde si hay desgaste.',
+        },
+      ],
+    },
+    {
+      id: 'pl-con-excavadora-balde',
+      nombre: 'Mantención de balde Excavadora',
+      descripcion: 'Cambio y refuerzo de dientes y adaptadores del balde.',
+      tipoEquipoNombre: 'Excavadora',
+      frecuencia: 'cada 1000 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Inspeccionar adaptadores y pasadores.',
+        'Reemplazar dientes desgastados.',
+        'Verificar soldaduras de refuerzo.',
+        'Comprobar fijación final.',
+      ],
+      items: [{ repuestoCodigo: 'REP-CON-003', cantidad: 5, obligatorio: true }],
+    },
+    {
+      id: 'pl-con-retro-motor',
+      nombre: 'Cambio de aceite Retroexcavadora',
+      descripcion: 'Cambio de aceite y filtros de motor.',
+      tipoEquipoNombre: 'Retroexcavadora',
+      frecuencia: 'cada 250 h',
+      checklist: [
+        'Bloquear y señalizar el equipo (LOTO).',
+        'Drenar aceite de motor en caliente.',
+        'Reemplazar filtro de aceite e hidráulico.',
+        'Reponer aceite de motor 15W40.',
+        'Inspeccionar mangueras de freno.',
+        'Verificar niveles y registrar horómetro.',
+      ],
+      items: [
+        { repuestoCodigo: 'REP-CON-002', cantidad: 2, obligatorio: true },
+        { repuestoCodigo: 'REP-CON-001', cantidad: 1, obligatorio: true },
+      ],
+    },
+  ],
+  reservas: [
+    {
+      // Sello de cilindro de pluma (ticket asignado): filtro reservado.
+      id: 'rsv-con-6002',
+      ticketId: 'tk-construccion-6002',
+      estado: ReservaRepuestoEstado.RESERVADA,
+      creadoPorId: CON_MEC1.id,
+      aprobadoPorId: CON_ADMIN.id,
+      observacion: 'Filtro hidráulico reservado para cambio de sello.',
+      horasAtras: 3,
+      items: [{ repuestoCodigo: 'REP-CON-001', cantidad: 1 }],
+    },
+    {
+      // Amortiguadores del rodillo en ejecución: alternador solicitado.
+      id: 'rsv-con-6004',
+      ticketId: 'tk-construccion-6004',
+      estado: ReservaRepuestoEstado.SOLICITADA,
+      creadoPorId: CON_MEC2.id,
+      observacion: 'Solicitud de filtro hidráulico para rodillo.',
+      horasAtras: 5,
+      items: [{ repuestoCodigo: 'REP-CON-001', cantidad: 1 }],
+    },
+    {
+      // Cambio de dientes cerrado: dientes de balde consumidos.
+      id: 'rsv-con-6006',
+      ticketId: 'tk-construccion-6006',
+      estado: ReservaRepuestoEstado.CONSUMIDA,
+      creadoPorId: CON_MEC1.id,
+      aprobadoPorId: CON_ADMIN.id,
+      observacion: 'Cinco dientes de balde consumidos.',
+      horasAtras: 24,
+      items: [{ repuestoCodigo: 'REP-CON-003', cantidad: 5 }],
+    },
+  ],
+  programaciones: [
+    {
+      id: 'prog-con-001',
+      equipoId: 'eq-construccion-001',
+      plantillaNombre: 'Revisión hidráulica Excavadora',
+      titulo: 'Revisión hidráulica Excavadora EX-15',
+      descripcion: 'Programada para el próximo ciclo de horómetro.',
+      prioridad: Prioridad.ALTA,
+      estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+      fechaProgramadaHoras: 24 * 12,
+      responsableId: CON_ADMIN.id,
+      recurrencia: 'cada 500 h',
+    },
+    {
+      id: 'prog-con-002',
+      equipoId: 'eq-construccion-002',
+      plantillaNombre: 'Cambio de aceite Retroexcavadora',
+      titulo: 'Cambio de aceite Retroexcavadora RT-07',
+      prioridad: Prioridad.MEDIA,
+      estado: ProgramacionMantenimientoEstado.PROGRAMADA,
+      fechaProgramadaHoras: 24 * 7,
+      responsableId: CON_ADMIN.id,
+      recurrencia: 'cada 250 h',
+    },
+    {
+      // GENERADA: el cambio de dientes ya cerró su OT/ticket/reserva.
+      id: 'prog-con-003',
+      equipoId: 'eq-construccion-001',
+      plantillaNombre: 'Mantención de balde Excavadora',
+      titulo: 'Cambio dientes balde EX-15',
+      descripcion: 'Generó la OT-5004 y su ticket de cambio de dientes.',
+      prioridad: Prioridad.BAJA,
+      estado: ProgramacionMantenimientoEstado.GENERADA,
+      fechaProgramadaHoras: -24 * 2,
+      responsableId: CON_ADMIN.id,
+      recurrencia: 'cada 1000 h',
+      generacion: {
+        otId: 'ot-construccion-5004',
+        ticketId: 'tk-construccion-6006',
+        reservaId: 'rsv-con-6006',
+      },
+    },
+  ],
 };
 
 const TENANTS: SeedTenant[] = [demoTenant, forestalTenant, construccionTenant];
@@ -1590,20 +2324,45 @@ async function seedMarcas(t: SeedTenant) {
   }
 }
 
+/**
+ * Resuelve el id del TipoEquipo (del catálogo del tenant) que corresponde a un
+ * equipo, matcheando su `tipo`/`nombre` contra los `matchEquipos` declarados.
+ * Devuelve el id determinista del spec (que seedTiposEquipo ya sembró).
+ */
+function resolveTipoEquipoId(t: SeedTenant, eq: SeedEquipo): string | undefined {
+  if (!t.tiposEquipo) return undefined;
+  const haystack = `${eq.tipo ?? ''} ${eq.nombre}`.toLowerCase();
+  for (const te of t.tiposEquipo) {
+    if (te.matchEquipos.some((m) => haystack.includes(m.toLowerCase()))) {
+      return te.id;
+    }
+  }
+  return undefined;
+}
+
 async function seedEquipos(t: SeedTenant) {
   for (const eq of t.equipos) {
     const marcaId = await resolveMarcaId(t.id, eq.marca, MarcaTipo.EQUIPO);
+    const tipoEquipoId = resolveTipoEquipoId(t, eq);
+    // qrToken: estable e idempotente — solo se genera la primera vez.
     await prisma.equipo.upsert({
       where: { tenantId_codigo: { tenantId: t.id, codigo: eq.codigo } },
       // Se conserva el texto legacy `marca` (via ...eq) y se enlaza marcaId.
-      create: { ...eq, tenantId: t.id, marcaId },
+      create: { ...eq, tenantId: t.id, marcaId, tipoEquipoId, qrToken: randomUUID() },
       update: {
         nombre: eq.nombre,
         marca: eq.marca,
         marcaId,
+        tipo: eq.tipo,
+        tipoEquipoId,
         modelo: eq.modelo,
         ubicacion: eq.ubicacion,
       },
+    });
+    // Garantiza qrToken si el registro existía sin token (idempotente).
+    await prisma.equipo.updateMany({
+      where: { tenantId: t.id, codigo: eq.codigo, qrToken: null },
+      data: { qrToken: randomUUID() },
     });
   }
 }
@@ -1634,6 +2393,7 @@ async function seedRepuestos(t: SeedTenant) {
         unidad: rep.unidad,
         stockMinimo: rep.stockMinimo,
         marcaId,
+        qrToken: randomUUID(),
       },
       update: {
         nombre: rep.nombre,
@@ -1645,6 +2405,15 @@ async function seedRepuestos(t: SeedTenant) {
       },
     });
 
+    // Garantiza qrToken si el registro existía sin token (idempotente).
+    await prisma.repuesto.updateMany({
+      where: { tenantId: t.id, codigo: rep.codigo, qrToken: null },
+      data: { qrToken: randomUUID() },
+    });
+
+    // Stock base: el stockActual/Reservado definitivo se RECALCULA luego en
+    // seedReservas (resetStockBaseline) para reflejar reservas/consumos. Aquí
+    // solo garantizamos que la fila exista con el stock inicial.
     await prisma.inventarioStock.upsert({
       where: { repuestoId: repuesto.id },
       create: {
@@ -1653,7 +2422,7 @@ async function seedRepuestos(t: SeedTenant) {
         stockActual: rep.stockInicial,
         stockReservado: 0,
       },
-      update: {}, // no sobrescribir stock real en re-ejecuciones
+      update: {}, // no sobrescribir aquí; seedReservas fija el valor coherente
     });
   }
 }
@@ -1734,17 +2503,442 @@ async function seedEventos(t: SeedTenant) {
   }
 }
 
+// ============================================================
+// Modelos nuevos de mantenimiento (tipos, plantillas, programaciones, reservas)
+// ============================================================
+
+/** Map codigo → repuesto.id para el tenant (resuelve referencias declarativas). */
+async function repuestoIdByCodigo(
+  tenantId: string,
+): Promise<Map<string, string>> {
+  const rows = await prisma.repuesto.findMany({
+    where: { tenantId },
+    select: { id: true, codigo: true },
+  });
+  return new Map(rows.map((r) => [r.codigo, r.id]));
+}
+
+/** Catálogo de tipos de equipo + sus repuestos default. Idempotente. */
+async function seedTiposEquipo(t: SeedTenant) {
+  if (!t.tiposEquipo || t.tiposEquipo.length === 0) return;
+  const repByCodigo = await repuestoIdByCodigo(t.id);
+
+  for (const te of t.tiposEquipo) {
+    await prisma.tipoEquipo.upsert({
+      where: { tenantId_nombre: { tenantId: t.id, nombre: te.nombre } },
+      create: {
+        id: te.id,
+        tenantId: t.id,
+        nombre: te.nombre,
+        descripcion: te.descripcion,
+      },
+      update: { descripcion: te.descripcion, activo: true },
+    });
+
+    for (const def of te.repuestosDefault) {
+      const repuestoId = repByCodigo.get(def.repuestoCodigo);
+      if (!repuestoId) {
+        console.warn(
+          `  [warn] tipoEquipo ${te.nombre}: repuesto ${def.repuestoCodigo} inexistente — omitido`,
+        );
+        continue;
+      }
+      await prisma.tipoEquipoRepuestoDefault.upsert({
+        where: {
+          tenantId_tipoEquipoId_repuestoId: {
+            tenantId: t.id,
+            tipoEquipoId: te.id,
+            repuestoId,
+          },
+        },
+        create: {
+          tenantId: t.id,
+          tipoEquipoId: te.id,
+          repuestoId,
+          cantidadRef: def.cantidadRef,
+          obligatorio: def.obligatorio ?? true,
+          observacion: def.observacion,
+        },
+        update: {
+          cantidadRef: def.cantidadRef,
+          obligatorio: def.obligatorio ?? true,
+          observacion: def.observacion,
+        },
+      });
+    }
+  }
+}
+
+/**
+ * EquipoRepuesto derivado de los defaults del tipo de cada equipo (coherencia).
+ * Idempotente: upsert por (tenant, equipo, repuesto).
+ */
+async function seedEquipoRepuestos(t: SeedTenant) {
+  if (!t.tiposEquipo || t.tiposEquipo.length === 0) return;
+  const tipoById = new Map(t.tiposEquipo.map((te) => [te.id, te]));
+
+  for (const eq of t.equipos) {
+    const tipoId = resolveTipoEquipoId(t, eq);
+    if (!tipoId) continue;
+    const tipo = tipoById.get(tipoId);
+    if (!tipo) continue;
+
+    for (const def of tipo.repuestosDefault) {
+      const repuesto = await prisma.repuesto.findUnique({
+        where: { tenantId_codigo: { tenantId: t.id, codigo: def.repuestoCodigo } },
+        select: { id: true },
+      });
+      if (!repuesto) continue;
+
+      await prisma.equipoRepuesto.upsert({
+        where: {
+          tenantId_equipoId_repuestoId: {
+            tenantId: t.id,
+            equipoId: eq.id,
+            repuestoId: repuesto.id,
+          },
+        },
+        create: {
+          tenantId: t.id,
+          equipoId: eq.id,
+          repuestoId: repuesto.id,
+          cantidadRef: def.cantidadRef,
+          observacion: def.observacion ?? `Habitual de ${tipo.nombre}.`,
+        },
+        update: {
+          cantidadRef: def.cantidadRef,
+          observacion: def.observacion ?? `Habitual de ${tipo.nombre}.`,
+        },
+      });
+    }
+  }
+}
+
+/**
+ * Plantillas de mantenimiento (con checklist en metadata e items) y su
+ * asociación a los equipos del tipo. Idempotente (upsert por id / compuestos).
+ */
+async function seedPlantillas(t: SeedTenant) {
+  if (!t.plantillas || t.plantillas.length === 0) return;
+  const repByCodigo = await repuestoIdByCodigo(t.id);
+  const tipoByNombre = new Map((t.tiposEquipo ?? []).map((te) => [te.nombre, te]));
+
+  for (const pl of t.plantillas) {
+    await prisma.plantillaMantenimiento.upsert({
+      where: { id: pl.id },
+      create: {
+        id: pl.id,
+        tenantId: t.id,
+        nombre: pl.nombre,
+        descripcion: pl.descripcion,
+        tipoEquipo: pl.tipoEquipoNombre,
+        frecuencia: pl.frecuencia,
+        metadata: { checklist: pl.checklist },
+      },
+      update: {
+        nombre: pl.nombre,
+        descripcion: pl.descripcion,
+        tipoEquipo: pl.tipoEquipoNombre,
+        frecuencia: pl.frecuencia,
+        activo: true,
+        metadata: { checklist: pl.checklist },
+      },
+    });
+
+    // Items (insumos sugeridos).
+    for (const it of pl.items) {
+      const repuestoId = repByCodigo.get(it.repuestoCodigo);
+      if (!repuestoId) {
+        console.warn(
+          `  [warn] plantilla ${pl.nombre}: repuesto ${it.repuestoCodigo} inexistente — omitido`,
+        );
+        continue;
+      }
+      await prisma.plantillaMantenimientoItem.upsert({
+        where: {
+          tenantId_plantillaId_repuestoId: {
+            tenantId: t.id,
+            plantillaId: pl.id,
+            repuestoId,
+          },
+        },
+        create: {
+          tenantId: t.id,
+          plantillaId: pl.id,
+          repuestoId,
+          cantidad: it.cantidad,
+          obligatorio: it.obligatorio ?? true,
+          observacion: it.observacion,
+        },
+        update: {
+          cantidad: it.cantidad,
+          obligatorio: it.obligatorio ?? true,
+          observacion: it.observacion,
+        },
+      });
+    }
+
+    // Asociación a los equipos del tipo de la plantilla.
+    const tipo = tipoByNombre.get(pl.tipoEquipoNombre);
+    if (!tipo) continue;
+    for (const eq of t.equipos) {
+      if (resolveTipoEquipoId(t, eq) !== tipo.id) continue;
+      await prisma.equipoPlantillaMantenimiento.upsert({
+        where: {
+          tenantId_equipoId_plantillaId: {
+            tenantId: t.id,
+            equipoId: eq.id,
+            plantillaId: pl.id,
+          },
+        },
+        create: { tenantId: t.id, equipoId: eq.id, plantillaId: pl.id },
+        update: {},
+      });
+    }
+  }
+}
+
+/** Programaciones de mantenimiento (estados mezclados). Idempotente por id. */
+async function seedProgramaciones(t: SeedTenant) {
+  if (!t.programaciones || t.programaciones.length === 0) return;
+  const plantillaIdByNombre = new Map(
+    (t.plantillas ?? []).map((pl) => [pl.nombre, pl.id]),
+  );
+
+  for (const pr of t.programaciones) {
+    const plantillaId = pr.plantillaNombre
+      ? plantillaIdByNombre.get(pr.plantillaNombre) ?? null
+      : null;
+    const metadata =
+      pr.estado === ProgramacionMantenimientoEstado.GENERADA && pr.generacion
+        ? { generacion: pr.generacion }
+        : undefined;
+
+    const base = {
+      tenantId: t.id,
+      equipoId: pr.equipoId,
+      plantillaId,
+      titulo: pr.titulo,
+      descripcion: pr.descripcion,
+      fechaProgramada: hoursAgo(-pr.fechaProgramadaHoras),
+      responsableId: pr.responsableId ?? null,
+      prioridad: pr.prioridad,
+      estado: pr.estado,
+      recurrencia: pr.recurrencia,
+      ...(metadata ? { metadata } : {}),
+    };
+
+    await prisma.programacionMantenimiento.upsert({
+      where: { id: pr.id },
+      create: { id: pr.id, ...base },
+      update: base,
+    });
+  }
+}
+
+/**
+ * Reservas de repuestos + items + movimientos, y RECÁLCULO del stock para que
+ * cuadre. Idempotente: borra lo sembrado antes (por ids) y lo recrea; luego fija
+ * stockActual/stockReservado de cada repuesto del tenant a su valor coherente.
+ *
+ * Consistencia (clave):
+ *  - stockReservado(repuesto) = Σ cantidades de reservas activas
+ *    (SOLICITADA + RESERVADA).
+ *  - CONSUMIDA descuenta stockActual y genera MovimientoInventario CONSUMO.
+ *  - stockActual(repuesto) = stockInicial − Σ consumos.
+ */
+async function seedReservas(t: SeedTenant) {
+  const repByCodigo = await repuestoIdByCodigo(t.id);
+  const reservas = t.reservas ?? [];
+  const reservaIds = reservas.map((r) => r.id);
+
+  // 1. Limpieza idempotente: primero movimientos ligados a estas reservas
+  //    (FK aún intacta), luego las reservas (cascade borra sus items).
+  if (reservaIds.length > 0) {
+    await prisma.movimientoInventario.deleteMany({
+      where: { tenantId: t.id, reservaId: { in: reservaIds } },
+    });
+    await prisma.reservaRepuesto.deleteMany({
+      where: { tenantId: t.id, id: { in: reservaIds } },
+    });
+  }
+
+  // 2. Acumuladores para el recálculo de stock.
+  const reservadoPorRep = new Map<string, number>(); // solo RESERVADA retiene stock
+  const consumidoPorRep = new Map<string, number>(); // CONSUMIDA
+
+  // 3. Recrear reservas + items (+ movimientos CONSUMO).
+  for (const r of reservas) {
+    const items = r.items
+      .map((it) => ({
+        repuestoId: repByCodigo.get(it.repuestoCodigo),
+        repuestoCodigo: it.repuestoCodigo,
+        cantidad: it.cantidad,
+      }))
+      .filter((it): it is { repuestoId: string; repuestoCodigo: string; cantidad: number } => {
+        if (!it.repuestoId) {
+          console.warn(
+            `  [warn] reserva ${r.id}: repuesto ${it.repuestoCodigo} inexistente — omitido`,
+          );
+          return false;
+        }
+        return true;
+      });
+
+    if (items.length === 0) continue;
+
+    await prisma.reservaRepuesto.create({
+      data: {
+        id: r.id,
+        tenantId: t.id,
+        ticketId: r.ticketId,
+        estado: r.estado,
+        creadoPorId: r.creadoPorId,
+        aprobadoPorId: r.aprobadoPorId ?? null,
+        observacion: r.observacion,
+        createdAt: hoursAgo(r.horasAtras),
+        items: {
+          create: items.map((it) => ({
+            repuestoId: it.repuestoId,
+            cantidad: it.cantidad,
+          })),
+        },
+      },
+    });
+
+    // Solo RESERVADA retiene stockReservado; SOLICITADA (pendiente de aprobación)
+    // no toca el stock hasta aprobarse — coincide con crearReservaEnTx del backend.
+    const retieneStock = r.estado === ReservaRepuestoEstado.RESERVADA;
+
+    for (const it of items) {
+      if (retieneStock) {
+        reservadoPorRep.set(
+          it.repuestoId,
+          (reservadoPorRep.get(it.repuestoId) ?? 0) + it.cantidad,
+        );
+      }
+      if (r.estado === ReservaRepuestoEstado.CONSUMIDA) {
+        consumidoPorRep.set(
+          it.repuestoId,
+          (consumidoPorRep.get(it.repuestoId) ?? 0) + it.cantidad,
+        );
+      }
+    }
+  }
+
+  // 4. Recálculo del stock para TODOS los repuestos del tenant (también los no
+  //    tocados → quedan en stockInicial / 0). stockInicial viene del spec.
+  for (const rep of t.repuestos ?? []) {
+    const repuestoId = repByCodigo.get(rep.codigo);
+    if (!repuestoId) continue;
+
+    const reservado = reservadoPorRep.get(repuestoId) ?? 0;
+    const consumido = consumidoPorRep.get(repuestoId) ?? 0;
+    const stockActual = rep.stockInicial - consumido;
+
+    await prisma.inventarioStock.update({
+      where: { repuestoId },
+      data: { stockActual, stockReservado: reservado },
+    });
+  }
+
+  // 5. Movimientos CONSUMO (uno por línea consumida). Idempotente: ya se
+  //    borraron arriba por reservaId. stockResultante = snapshot final.
+  for (const r of reservas) {
+    if (r.estado !== ReservaRepuestoEstado.CONSUMIDA) continue;
+    for (const it of r.items) {
+      const repuestoId = repByCodigo.get(it.repuestoCodigo);
+      if (!repuestoId) continue;
+      const rep = (t.repuestos ?? []).find((x) => x.codigo === it.repuestoCodigo);
+      const consumido = consumidoPorRep.get(repuestoId) ?? 0;
+      const stockResultante = (rep?.stockInicial ?? 0) - consumido;
+
+      await prisma.movimientoInventario.create({
+        data: {
+          tenantId: t.id,
+          repuestoId,
+          tipo: MovimientoInventarioTipo.CONSUMO,
+          // Efecto negativo sobre stockActual.
+          cantidad: -it.cantidad,
+          stockResultante,
+          usuarioId: r.creadoPorId,
+          ticketId: r.ticketId,
+          reservaId: r.id,
+          observacion: `Consumo por reserva ${r.id}.`,
+          createdAt: hoursAgo(r.horasAtras),
+          metadata: { seed: true },
+        },
+      });
+    }
+  }
+}
+
+/**
+ * Tickets generados desde plantilla: setea metadata.checklist con la forma
+ * { paso: string, hecho: boolean } copiando los pasos de la plantilla asociada
+ * a la programación GENERADA. Algunos pasos quedan en hecho:true (progreso).
+ * Idempotente: reconstruye el checklist en cada corrida.
+ */
+async function seedTicketChecklists(t: SeedTenant) {
+  if (!t.programaciones || t.programaciones.length === 0) return;
+  const plantillaByNombre = new Map(
+    (t.plantillas ?? []).map((pl) => [pl.nombre, pl]),
+  );
+
+  for (const pr of t.programaciones) {
+    if (pr.estado !== ProgramacionMantenimientoEstado.GENERADA) continue;
+    const ticketId = pr.generacion?.ticketId;
+    if (!ticketId || !pr.plantillaNombre) continue;
+    const plantilla = plantillaByNombre.get(pr.plantillaNombre);
+    if (!plantilla) continue;
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { metadata: true, estado: true },
+    });
+    if (!ticket) continue;
+
+    // Ticket cerrado/ejecutado → todos los pasos hechos; en otro caso, ~mitad.
+    const completo =
+      ticket.estado === 'CERRADO' || ticket.estado === 'EJECUTADO';
+    const checklist = plantilla.checklist.map((paso, idx) => ({
+      paso,
+      hecho: completo ? true : idx < Math.ceil(plantilla.checklist.length / 2),
+    }));
+
+    const prev =
+      ticket.metadata && typeof ticket.metadata === 'object'
+        ? (ticket.metadata as Record<string, unknown>)
+        : {};
+
+    await prisma.ticket.update({
+      where: { id: ticketId },
+      data: { metadata: { ...prev, checklist } },
+    });
+  }
+}
+
 async function seedSingleTenant(t: SeedTenant) {
+  // Orden por dependencias: catálogos (marcas, tipos) → repuestos(+stock) →
+  // defaults por tipo → equipos(+qr,+tipo) → equipoRepuesto → plantillas(+items)
+  // + equipoPlantilla → ordenes → tickets → programaciones → reservas(+ajuste de
+  // stock/movimientos) → checklist en tickets → eventos.
   await seedTenantRow(t);
   await seedUsers(t);
   await seedMarcas(t);
-  await seedEquipos(t);
-  await seedRepuestos(t);
+  await seedRepuestos(t); // crea repuestos(+qr) y stock base; requerido por tipos
+  await seedTiposEquipo(t); // tipos + defaults (refieren repuestos)
+  await seedEquipos(t); // enlaza tipoEquipoId + qrToken
+  await seedEquipoRepuestos(t); // derivados de los defaults del tipo
+  await seedPlantillas(t); // plantillas(+items) + asociación a equipos
   await seedOrdenes(t);
   await seedTickets(t);
+  await seedProgramaciones(t); // refiere plantillas + OT/ticket/reserva generadas
+  await seedReservas(t); // reservas(+items+movimientos) + recálculo de stock
+  await seedTicketChecklists(t); // metadata.checklist en tickets generados
   await seedEventos(t);
   console.log(
-    `✓ ${t.id} — ${t.users.length} users, ${CATALOGO_MARCAS.length} marcas, ${t.equipos.length} equipos, ${t.repuestos?.length ?? 0} repuestos, ${t.ordenes.length} OT, ${t.tickets.length} tickets, ${t.eventos.length} eventos`,
+    `✓ ${t.id} — ${t.users.length} users, ${CATALOGO_MARCAS.length} marcas, ${t.equipos.length} equipos, ${t.repuestos?.length ?? 0} repuestos, ${t.tiposEquipo?.length ?? 0} tipos, ${t.plantillas?.length ?? 0} plantillas, ${t.programaciones?.length ?? 0} programaciones, ${t.reservas?.length ?? 0} reservas, ${t.ordenes.length} OT, ${t.tickets.length} tickets, ${t.eventos.length} eventos`,
   );
 }
 
@@ -1761,11 +2955,25 @@ async function main() {
       ordenes: acc.ordenes + t.ordenes.length,
       tickets: acc.tickets + t.tickets.length,
       eventos: acc.eventos + t.eventos.length,
+      tipos: acc.tipos + (t.tiposEquipo?.length ?? 0),
+      plantillas: acc.plantillas + (t.plantillas?.length ?? 0),
+      programaciones: acc.programaciones + (t.programaciones?.length ?? 0),
+      reservas: acc.reservas + (t.reservas?.length ?? 0),
     }),
-    { users: 0, equipos: 0, ordenes: 0, tickets: 0, eventos: 0 },
+    {
+      users: 0,
+      equipos: 0,
+      ordenes: 0,
+      tickets: 0,
+      eventos: 0,
+      tipos: 0,
+      plantillas: 0,
+      programaciones: 0,
+      reservas: 0,
+    },
   );
   console.log(
-    `✓ Seed completado — ${TENANTS.length} tenants, ${totals.users} users, ${totals.equipos} equipos, ${totals.ordenes} OT, ${totals.tickets} tickets, ${totals.eventos} eventos`,
+    `✓ Seed completado — ${TENANTS.length} tenants, ${totals.users} users, ${totals.equipos} equipos, ${totals.tipos} tipos, ${totals.plantillas} plantillas, ${totals.programaciones} programaciones, ${totals.reservas} reservas, ${totals.ordenes} OT, ${totals.tickets} tickets, ${totals.eventos} eventos`,
   );
 }
 
