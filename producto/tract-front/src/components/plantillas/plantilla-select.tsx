@@ -20,6 +20,10 @@ export type PlantillaSelectProps = {
   disabled?: boolean;
   allowClear?: boolean;
   excludeIds?: string[];
+  // Si se indica, prioriza las plantillas cuyo tipoEquipo coincide (case-
+  // insensitive) con el tipo del equipo elegido: las del tipo arriba, el resto
+  // después. No oculta el resto para no bloquear al usuario si el dato no calza.
+  tipoEquipo?: string | null;
 };
 
 export function PlantillaSelect({
@@ -28,6 +32,7 @@ export function PlantillaSelect({
   excludeIds = [],
   onChange,
   placeholder = "Seleccionar plantilla",
+  tipoEquipo,
   value,
 }: PlantillaSelectProps) {
   const [open, setOpen] = useState(false);
@@ -38,12 +43,21 @@ export function PlantillaSelect({
   const filtered = useMemo(() => {
     const exclude = new Set(excludeIds);
     const q = query.trim().toLowerCase();
-    return plantillas.filter((p) => {
+    const tipo = tipoEquipo?.trim().toLowerCase() || null;
+    const matches = plantillas.filter((p) => {
       if (exclude.has(p.id)) return false;
       if (!q) return true;
       return p.nombre.toLowerCase().includes(q);
     });
-  }, [plantillas, query, excludeIds]);
+    if (!tipo) return matches;
+    // Ordenar: plantillas del tipo del equipo primero (estable por nombre).
+    return [...matches].sort((a, b) => {
+      const aMatch = a.tipoEquipo?.trim().toLowerCase() === tipo ? 0 : 1;
+      const bMatch = b.tipoEquipo?.trim().toLowerCase() === tipo ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+      return a.nombre.localeCompare(b.nombre);
+    });
+  }, [plantillas, query, excludeIds, tipoEquipo]);
 
   const select = (id: string | null) => {
     onChange(id);

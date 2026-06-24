@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -22,6 +23,7 @@ import { ReasignarTicketDto } from './dto/reasignar-ticket.dto';
 import { FinalizarTicketDto } from './dto/finalizar-ticket.dto';
 import { ValidarTicketDto } from './dto/validar-ticket.dto';
 import { CerrarTicketDto } from './dto/cerrar-ticket.dto';
+import { ActualizarChecklistDto } from './dto/actualizar-checklist.dto';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -130,5 +132,18 @@ export class TicketsController {
   ) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.ticketsService.cerrar(tenantId, req.user.id, id, dto);
+  }
+
+  // Avance del checklist de mantención. mechanic asignado (durante
+  // EN_EJECUCION) / admin / jefe_taller — el service afina los permisos.
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Patch(':id/checklist')
+  async actualizarChecklist(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Body() dto: ActualizarChecklistDto,
+  ) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.ticketsService.actualizarChecklist(tenantId, req.user, id, dto);
   }
 }

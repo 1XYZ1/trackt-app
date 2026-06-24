@@ -5,6 +5,8 @@ import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { MarcaSelect } from "@/components/marcas";
+import { TipoEquipoSelect } from "@/components/tipos-equipo";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -20,8 +22,33 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useCreateEquipo, useEquipo, useUpdateEquipo } from "@/hooks/use-equipos";
-import type { Equipo, EquipoEstadoOperativo } from "@/lib/api/equipos";
+import type {
+  CreateEquipoPayload,
+  Equipo,
+  EquipoEstadoOperativo,
+  UpdateEquipoPayload,
+} from "@/lib/api/equipos";
 import { cn } from "@/lib/utils";
+
+// El backend (CreateEquipoDto.tipoEquipoId) ya acepta el tipo de equipo del
+// catálogo. Hasta que los tipos de @/lib/api/equipos lo declaren explícitamente,
+// se extienden localmente para tipar el campo en los payloads sin romper el
+// contrato existente.
+type CreateEquipoPayloadConTipo = CreateEquipoPayload & {
+  tipoEquipoId?: string;
+};
+type UpdateEquipoPayloadConTipo = UpdateEquipoPayload & {
+  tipoEquipoId?: string | null;
+};
+
+// `tipoEquipoId` puede venir del detalle aunque el tipo aún no lo declare.
+const readTipoEquipoId = (equipo: unknown): string => {
+  if (equipo && typeof equipo === "object" && "tipoEquipoId" in equipo) {
+    const value = (equipo as { tipoEquipoId?: unknown }).tipoEquipoId;
+    return typeof value === "string" ? value : "";
+  }
+  return "";
+};
 
 const equipoSchema = z.object({
   codigo: z
@@ -33,7 +60,8 @@ const equipoSchema = z.object({
     .min(1, "El nombre es obligatorio")
     .max(120, "Maximo 120 caracteres"),
   tipo: z.string().max(60, "Maximo 60 caracteres").optional(),
-  marca: z.string().max(60, "Maximo 60 caracteres").optional(),
+  tipoEquipoId: z.string().optional(),
+  marcaId: z.string().optional(),
   modelo: z.string().max(60, "Maximo 60 caracteres").optional(),
   numeroSerie: z.string().max(120, "Maximo 120 caracteres").optional(),
   ubicacion: z.string().max(120, "Maximo 120 caracteres").optional(),
@@ -53,7 +81,8 @@ const EMPTY_VALUES: EquipoFormValues = {
   codigo: "",
   nombre: "",
   tipo: "",
-  marca: "",
+  tipoEquipoId: "",
+  marcaId: "",
   modelo: "",
   numeroSerie: "",
   ubicacion: "",
@@ -110,7 +139,8 @@ export function EquipoFormSheet({
         codigo: detalle.codigo ?? "",
         nombre: detalle.nombre ?? "",
         tipo: detalle.tipo ?? "",
-        marca: detalle.marca ?? "",
+        tipoEquipoId: readTipoEquipoId(detalle),
+        marcaId: detalle.marcaId ?? "",
         modelo: detalle.modelo ?? "",
         numeroSerie: detalle.numeroSerie ?? "",
         ubicacion: detalle.ubicacion ?? "",
@@ -133,35 +163,36 @@ export function EquipoFormSheet({
 
     try {
       if (isEdit && equipo) {
-        await updateEquipo.mutateAsync({
-          id: equipo.id,
-          payload: {
-            codigo: values.codigo.trim(),
-            nombre: values.nombre.trim(),
-            tipo: optionalField(values.tipo),
-            marca: optionalField(values.marca),
-            modelo: optionalField(values.modelo),
-            numeroSerie: optionalField(values.numeroSerie),
-            ubicacion: optionalField(values.ubicacion),
-            estadoOperativo: values.estadoOperativo,
-            fechaInstalacion: optionalField(values.fechaInstalacion),
-            fechaCompra: optionalField(values.fechaCompra),
-          },
-        });
+        const payload: UpdateEquipoPayloadConTipo = {
+          codigo: values.codigo.trim(),
+          nombre: values.nombre.trim(),
+          tipo: optionalField(values.tipo),
+          tipoEquipoId: optionalField(values.tipoEquipoId),
+          marcaId: optionalField(values.marcaId),
+          modelo: optionalField(values.modelo),
+          numeroSerie: optionalField(values.numeroSerie),
+          ubicacion: optionalField(values.ubicacion),
+          estadoOperativo: values.estadoOperativo,
+          fechaInstalacion: optionalField(values.fechaInstalacion),
+          fechaCompra: optionalField(values.fechaCompra),
+        };
+        await updateEquipo.mutateAsync({ id: equipo.id, payload });
         toast.success("Equipo actualizado");
       } else {
-        await createEquipo.mutateAsync({
+        const payload: CreateEquipoPayloadConTipo = {
           codigo: values.codigo.trim(),
           nombre: values.nombre.trim(),
           tipo: optionalField(values.tipo) ?? undefined,
-          marca: optionalField(values.marca) ?? undefined,
+          tipoEquipoId: optionalField(values.tipoEquipoId) ?? undefined,
+          marcaId: optionalField(values.marcaId) ?? undefined,
           modelo: optionalField(values.modelo) ?? undefined,
           numeroSerie: optionalField(values.numeroSerie) ?? undefined,
           ubicacion: optionalField(values.ubicacion) ?? undefined,
           estadoOperativo: values.estadoOperativo,
           fechaInstalacion: optionalField(values.fechaInstalacion) ?? undefined,
           fechaCompra: optionalField(values.fechaCompra) ?? undefined,
-        });
+        };
+        await createEquipo.mutateAsync(payload);
         toast.success("Equipo creado");
       }
       reset(EMPTY_VALUES);
@@ -247,21 +278,38 @@ export function EquipoFormSheet({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <label className="font-medium text-sm" htmlFor="marca">
-                  Marca
-                </label>
-                <Input
-                  aria-invalid={!!errors.marca}
-                  id="marca"
-                  placeholder="CAT"
-                  {...register("marca")}
+                <label className="font-medium text-sm">Tipo de equipo</label>
+                <Controller
+                  control={control}
+                  name="tipoEquipoId"
+                  render={({ field }) => (
+                    <TipoEquipoSelect
+                      onChange={(id) => field.onChange(id ?? "")}
+                      value={field.value || null}
+                    />
+                  )}
                 />
-                {errors.marca && (
-                  <p className="text-destructive text-xs">
-                    {errors.marca.message}
-                  </p>
-                )}
+                <p className="text-muted-foreground text-xs">
+                  Del catálogo. Sus repuestos default se asocian al crear.
+                </p>
               </div>
+              <div className="space-y-2">
+                <label className="font-medium text-sm">Marca</label>
+                <Controller
+                  control={control}
+                  name="marcaId"
+                  render={({ field }) => (
+                    <MarcaSelect
+                      onChange={(id) => field.onChange(id ?? "")}
+                      tipo="EQUIPO"
+                      value={field.value || null}
+                    />
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="font-medium text-sm" htmlFor="modelo">
                   Modelo

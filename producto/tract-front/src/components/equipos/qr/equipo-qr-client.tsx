@@ -97,7 +97,7 @@ export function EquipoQrClient({ token }: { token: string }) {
   };
 
   const modelo =
-    [equipo.tipo, equipo.marca, equipo.modelo].filter(Boolean).join(" · ") ||
+    [equipo.tipo, equipo.marca?.nombre, equipo.modelo].filter(Boolean).join(" · ") ||
     "Sin datos de modelo";
 
   return (

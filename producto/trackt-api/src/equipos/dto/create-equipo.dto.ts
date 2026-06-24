@@ -26,10 +26,18 @@ export class CreateEquipoDto {
   @MaxLength(60)
   tipo?: string;
 
+  // Referencia al catálogo de marcas (ámbito EQUIPO o AMBOS).
   @IsOptional()
   @IsString()
   @MaxLength(60)
-  marca?: string;
+  marcaId?: string;
+
+  // Referencia al catálogo de tipos de equipo. Si viene, sus repuestos default
+  // se autocopian a los repuestos habituales del equipo al crearlo.
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  tipoEquipoId?: string;
 
   @IsOptional()
   @IsString()

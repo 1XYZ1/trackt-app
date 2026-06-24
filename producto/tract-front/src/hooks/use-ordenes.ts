@@ -46,7 +46,12 @@ export function useCreateOrden() {
   return useMutation({
     mutationFn: (payload: CreateOrdenPayload) => createOrden(payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["ordenes"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["ordenes"] }),
+        // Con plantilla, la OT nace con un ticket (y reserva): refrescar el
+        // kanban/lista de tickets para que aparezca.
+        queryClient.invalidateQueries({ queryKey: ["tickets"] }),
+      ]);
     },
   });
 }

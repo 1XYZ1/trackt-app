@@ -109,19 +109,21 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  equipos          Equipo[]
-  ordenes          OrdenTrabajo[]
-  tickets          Ticket[]
-  notificaciones   Notificacion[]
-  repuestos        Repuesto[]
-  reservas         ReservaRepuesto[]
-  movimientos      MovimientoInventario[]
-  marcas           Marca[]
-  equiposRepuestos EquipoRepuesto[]
-  plantillas        PlantillaMantenimiento[]
-  plantillasItems   PlantillaMantenimientoItem[]
-  equiposPlantillas EquipoPlantillaMantenimiento[]
-  programaciones    ProgramacionMantenimiento[]
+  equipos                    Equipo[]
+  ordenes                    OrdenTrabajo[]
+  tickets                    Ticket[]
+  notificaciones             Notificacion[]
+  repuestos                  Repuesto[]
+  reservas                   ReservaRepuesto[]
+  movimientos                MovimientoInventario[]
+  marcas                     Marca[]
+  equiposRepuestos           EquipoRepuesto[]
+  plantillas                 PlantillaMantenimiento[]
+  plantillasItems            PlantillaMantenimientoItem[]
+  equiposPlantillas          EquipoPlantillaMantenimiento[]
+  programaciones             ProgramacionMantenimiento[]
+  tiposEquipo                TipoEquipo[]
+  tiposEquipoRepuestoDefault TipoEquipoRepuestoDefault[]
 
   @@map("tenants")
 }
@@ -132,7 +134,13 @@ model Equipo {
   codigo           String
   nombre           String
   tipo             String?
+  // marca (texto libre) se conserva por compatibilidad; marcaId es la fuente
+  // de verdad (catálogo). Equipos nuevos usan marcaId; el texto queda legacy.
   marca            String?
+  marcaId          String?               @map("marca_id")
+  // tipo de equipo del catálogo (fuente de verdad); el texto `tipo` queda
+  // legacy. Sus repuestos default se autocopian al crear el equipo.
+  tipoEquipoId     String?               @map("tipo_equipo_id")
   modelo           String?
   numeroSerie      String?               @map("numero_serie")
   ubicacion        String?
@@ -148,6 +156,8 @@ model Equipo {
   updatedAt        DateTime              @updatedAt @map("updated_at")
 
   tenant         Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marcaRef       Marca?                         @relation(fields: [marcaId], references: [id], onDelete: SetNull)
+  tipoEquipoRef  TipoEquipo?                    @relation(fields: [tipoEquipoId], references: [id], onDelete: SetNull)
   ordenes        OrdenTrabajo[]
   repuestos      EquipoRepuesto[]
   plantillas     EquipoPlantillaMantenimiento[]
@@ -157,12 +167,14 @@ model Equipo {
   @@index([tenantId])
   @@index([tenantId, activo])
   @@index([tenantId, estadoOperativo])
+  @@index([marcaId])
+  @@index([tipoEquipoId])
   @@map("equipos")
 }
 
 // Catálogo de marcas (datos maestros) para equipos y repuestos.
-// Equipo.marca (texto libre) se mantiene por compatibilidad; la migración
-// progresiva a marcaId se hará cuando el frontend consuma el catálogo.
+// Equipos y repuestos referencian el catálogo vía marcaId. En Equipo se
+// conserva además la columna marca (texto libre) como legacy no-destructivo.
 model Marca {
   id        String    @id @default(cuid())
   tenantId  String    @map("tenant_id")
@@ -175,10 +187,56 @@ model Marca {
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   repuestos Repuesto[]
+  equipos   Equipo[]
 
   @@unique([tenantId, nombre, tipo])
   @@index([tenantId, activo])
   @@map("marcas")
+}
+
+// Catálogo de tipos de equipo (datos maestros) por tenant. Equipo.tipo (texto
+// libre) se conserva como legacy; tipoEquipoId es la fuente de verdad y permite
+// asociar repuestos default que se autocopian a equipos_repuestos al crear un
+// equipo de ese tipo. Espejo del patrón de Marca.
+model TipoEquipo {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  nombre      String
+  descripcion String?
+  activo      Boolean  @default(true)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant           Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  equipos          Equipo[]
+  repuestosDefault TipoEquipoRepuestoDefault[]
+
+  @@unique([tenantId, nombre])
+  @@index([tenantId, activo])
+  @@map("tipos_equipo")
+}
+
+// Repuestos default de un tipo de equipo. Al crear un equipo con tipoEquipoId,
+// estas filas se copian a equipos_repuestos (repuestos habituales del equipo).
+model TipoEquipoRepuestoDefault {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  tipoEquipoId String   @map("tipo_equipo_id")
+  repuestoId   String   @map("repuesto_id")
+  cantidadRef  Int?     @map("cantidad_ref") // cantidad de referencia por mantención
+  obligatorio  Boolean  @default(true)
+  observacion  String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tipoEquipo TipoEquipo @relation(fields: [tipoEquipoId], references: [id], onDelete: Cascade)
+  repuesto   Repuesto   @relation(fields: [repuestoId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, tipoEquipoId, repuestoId])
+  @@index([tenantId, tipoEquipoId])
+  @@index([repuestoId])
+  @@map("tipos_equipo_repuesto_default")
 }
 
 // Repuestos/insumos habituales de un equipo. Base para plantillas de
@@ -211,7 +269,7 @@ model PlantillaMantenimiento {
   nombre      String
   descripcion String?
   tipoEquipo  String?  @map("tipo_equipo") // matchea Equipo.tipo (texto libre)
-  frecuencia  String?  // texto libre ("mensual", "500 horas"); se formaliza en Fase 4
+  frecuencia  String? // texto libre ("mensual", "500 horas"); se formaliza en Fase 4
   activo      Boolean  @default(true)
   metadata    Json?
   createdAt   DateTime @default(now()) @map("created_at")
@@ -420,18 +478,22 @@ model Repuesto {
   codigoFabricante String?  @map("codigo_fabricante")
   ubicacionBodega  String?  @map("ubicacion_bodega")
   proveedor        String?
+  // Token estable para identificar el repuesto vía QR (espejo de Equipo.qrToken).
+  // El front renderiza el QR a partir de la URL navegable; no se persiste imagen.
+  qrToken          String?  @unique @map("qr_token")
   activo           Boolean  @default(true)
   metadata         Json?
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  marca           Marca?                       @relation(fields: [marcaId], references: [id], onDelete: SetNull)
-  stock           InventarioStock?
-  items           ReservaRepuestoItem[]
-  movimientos     MovimientoInventario[]
-  equipos         EquipoRepuesto[]
-  plantillasItems PlantillaMantenimientoItem[]
+  tenant             Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marca              Marca?                       @relation(fields: [marcaId], references: [id], onDelete: SetNull)
+  stock              InventarioStock?
+  items              ReservaRepuestoItem[]
+  movimientos        MovimientoInventario[]
+  equipos            EquipoRepuesto[]
+  plantillasItems    PlantillaMantenimientoItem[]
+  tiposEquipoDefault TipoEquipoRepuestoDefault[]
 
   @@unique([tenantId, codigo])
   @@index([tenantId, activo])
@@ -455,16 +517,16 @@ model InventarioStock {
 }
 
 model ReservaRepuesto {
-  id            String               @id @default(cuid())
-  tenantId      String               @map("tenant_id")
-  ticketId      String               @map("ticket_id")
+  id            String                @id @default(cuid())
+  tenantId      String                @map("tenant_id")
+  ticketId      String                @map("ticket_id")
   estado        ReservaRepuestoEstado @default(RESERVADA)
-  creadoPorId   String               @map("creado_por_id") // auth.users.id
-  aprobadoPorId String?              @map("aprobado_por_id") // auth.users.id
+  creadoPorId   String                @map("creado_por_id") // auth.users.id
+  aprobadoPorId String?               @map("aprobado_por_id") // auth.users.id
   observacion   String?
   metadata      Json?
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
 
   tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   ticket      Ticket                 @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -491,18 +553,18 @@ model ReservaRepuestoItem {
 }
 
 model MovimientoInventario {
-  id               String                   @id @default(cuid())
-  tenantId         String                   @map("tenant_id")
-  repuestoId       String                   @map("repuesto_id")
-  tipo             MovimientoInventarioTipo
-  cantidad         Int // positivo o negativo; el signo describe el efecto sobre stockActual o stockReservado
-  stockResultante  Int                      @map("stock_resultante") // snapshot post-movimiento de stockActual
-  usuarioId        String                   @map("usuario_id") // auth.users.id
-  ticketId         String?                  @map("ticket_id")
-  reservaId        String?                  @map("reserva_id")
-  observacion      String?
-  metadata         Json?
-  createdAt        DateTime                 @default(now()) @map("created_at")
+  id              String                   @id @default(cuid())
+  tenantId        String                   @map("tenant_id")
+  repuestoId      String                   @map("repuesto_id")
+  tipo            MovimientoInventarioTipo
+  cantidad        Int // positivo o negativo; el signo describe el efecto sobre stockActual o stockReservado
+  stockResultante Int                      @map("stock_resultante") // snapshot post-movimiento de stockActual
+  usuarioId       String                   @map("usuario_id") // auth.users.id
+  ticketId        String?                  @map("ticket_id")
+  reservaId       String?                  @map("reserva_id")
+  observacion     String?
+  metadata        Json?
+  createdAt       DateTime                 @default(now()) @map("created_at")
 
   tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   repuesto Repuesto         @relation(fields: [repuestoId], references: [id], onDelete: Cascade)

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TicketEstado } from "@/components/core";
 import {
+  actualizarChecklistTicket,
   asignarTicket,
   cerrarTicket,
   createTicketFromOrden,
@@ -15,6 +16,7 @@ import {
   validarTicket,
   type AsignarTicketPayload,
   type CerrarTicketPayload,
+  type ChecklistPaso,
   type CreateTicketPayload,
   type FinalizarTicketRawPayload,
   type ReasignarTicketPayload,
@@ -227,6 +229,25 @@ export function useCargaMecanicos() {
   return useQuery({
     queryFn: getCargaMecanicos,
     queryKey: ["tickets", "carga-mecanicos"],
+  });
+}
+
+/**
+ * Actualiza el checklist de mantención del ticket. Escribe el ticket fresco en
+ * la cache de detalle ["tickets", id] e invalida la vista del mecánico
+ * (["mis-tickets", id]) para que ambos detalles queden consistentes.
+ */
+export function useActualizarChecklist(ticketId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (checklist: ChecklistPaso[]) =>
+      actualizarChecklistTicket(ticketId, checklist),
+    onSuccess: async (ticket) => {
+      queryClient.setQueryData(["tickets", ticketId], ticket);
+      await queryClient.invalidateQueries({
+        queryKey: ["mis-tickets", ticketId],
+      });
+    },
   });
 }
 

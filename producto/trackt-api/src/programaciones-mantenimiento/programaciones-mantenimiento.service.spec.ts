@@ -9,6 +9,7 @@ import { OrdenesService } from '../ordenes/ordenes.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { InventarioService } from '../inventario/inventario.service';
 import { ProfileService } from '../auth/profile.service';
+import { PlantillasAplicacionService } from '../plantillas-mantenimiento/plantillas-aplicacion.service';
 import { AuthUser } from '../auth/types';
 
 function buildPrismaMock() {
@@ -123,12 +124,18 @@ describe('ProgramacionesMantenimientoService', () => {
     tickets = buildTicketsMock();
     inventario = buildInventarioMock();
     profiles = buildProfilesMock();
+    // Helper real: resolverItemsReserva/buildChecklistInicial son puros (sin
+    // DB); generarOt no llama loadParaAplicar, así que el prisma mock basta.
+    const plantillasAplicacion = new PlantillasAplicacionService(
+      prisma as unknown as PrismaService,
+    );
     service = new ProgramacionesMantenimientoService(
       prisma as unknown as PrismaService,
       ordenes as unknown as OrdenesService,
       tickets as unknown as TicketsService,
       inventario as unknown as InventarioService,
       profiles as unknown as ProfileService,
+      plantillasAplicacion,
     );
   });
 

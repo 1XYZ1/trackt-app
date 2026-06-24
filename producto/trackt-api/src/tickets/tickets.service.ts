@@ -32,6 +32,7 @@ import { ReasignarTicketDto } from './dto/reasignar-ticket.dto';
 import { FinalizarTicketDto } from './dto/finalizar-ticket.dto';
 import { ValidarTicketDto } from './dto/validar-ticket.dto';
 import { CerrarTicketDto } from './dto/cerrar-ticket.dto';
+import { ActualizarChecklistDto } from './dto/actualizar-checklist.dto';
 import { CargaMecanicoDto } from './dto/carga-mecanicos-response.dto';
 import {
   TicketResponseDto,
@@ -661,6 +662,70 @@ export class TicketsService {
           mensaje: `${ticket.codigo} cerrado`,
         },
       );
+    }
+
+    return this.loadTicketResponse(tenantId, ticketId);
+  }
+
+  /**
+   * Actualizar el checklist de mantención del ticket (metadata.checklist).
+   * - Roles: admin, jefe_taller, o el mecánico asignado (validado acá; el
+   *   controller deja entrar a los tres roles).
+   * - El mecánico solo puede marcar pasos mientras el ticket está EN_EJECUCION
+   *   (es cuando ejecuta el trabajo). admin/jefe pueden ajustarlo en cualquier
+   *   estado abierto (corrección/seguimiento), no sobre tickets cerrados.
+   * - Reemplaza el checklist completo preservando el resto de metadata.
+   * - Persistencia idempotente vía updateMany guardado por id+tenant.
+   */
+  async actualizarChecklist(
+    tenantId: string,
+    user: AuthUser,
+    ticketId: string,
+    dto: ActualizarChecklistDto,
+  ): Promise<TicketResponseDto> {
+    const ticket = await this.prisma.ticket.findFirst({
+      where: { id: ticketId, tenantId },
+      select: { id: true, estado: true, mecanicoId: true, metadata: true },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket con id "${ticketId}" no encontrado`);
+    }
+
+    const esMecanico = user.role === 'mechanic';
+    if (esMecanico && ticket.mecanicoId !== user.id) {
+      // Mismo mensaje que NotFound para no filtrar existencia (igual que findOne).
+      throw new NotFoundException(`Ticket con id "${ticketId}" no encontrado`);
+    }
+
+    // Estados cerrados/cancelados no admiten cambios al checklist.
+    const cerrados: TicketEstado[] = [
+      TicketEstado.CERRADO,
+      TicketEstado.CANCELADO,
+    ];
+    if (cerrados.includes(ticket.estado)) {
+      throw new ConflictException(
+        `No se puede modificar el checklist de un ticket en estado ${ticket.estado}`,
+      );
+    }
+    // El mecánico marca pasos durante la ejecución.
+    if (esMecanico && ticket.estado !== TicketEstado.EN_EJECUCION) {
+      throw new ConflictException(
+        `El mecánico solo puede actualizar el checklist con el ticket EN_EJECUCION (actual: ${ticket.estado})`,
+      );
+    }
+
+    const metadataActual = (ticket.metadata ?? {}) as Record<string, unknown>;
+    const nuevaMetadata: Prisma.InputJsonValue = {
+      ...metadataActual,
+      checklist: dto.checklist.map((p) => ({ paso: p.paso, hecho: p.hecho })),
+    };
+
+    const result = await this.prisma.ticket.updateMany({
+      where: { id: ticketId, tenantId },
+      data: { metadata: nuevaMetadata },
+    });
+    if (result.count !== 1) {
+      throw new ConflictException(ESTADO_CAMBIO_CONCURRENTE);
     }
 
     return this.loadTicketResponse(tenantId, ticketId);

@@ -12,7 +12,7 @@ interface RequestWithUser extends Request {
 }
 
 @UseGuards(AuthGuard, RolesGuard)
-@Roles('admin')
+@Roles('admin', 'jefe_taller')
 @Controller('usuarios')
 export class UsuariosController {
   constructor(

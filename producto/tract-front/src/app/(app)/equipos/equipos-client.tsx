@@ -279,7 +279,7 @@ export function EquiposClient() {
                               </Link>
                             </td>
                             <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
-                              {equipo.marca ?? "—"}
+                              {equipo.marca?.nombre ?? "—"}
                             </td>
                             <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground text-xs">
                               {equipo.modelo ?? "—"}
@@ -398,7 +398,7 @@ export function EquiposClient() {
                           <EstadoOperativoBadge estado={equipo.estadoOperativo} />
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
-                          {equipo.marca && <span>{equipo.marca}</span>}
+                          {equipo.marca && <span>{equipo.marca.nombre}</span>}
                           {equipo.modelo && <span>· {equipo.modelo}</span>}
                           {equipo.ubicacion && (
                             <Badge variant="secondary">{equipo.ubicacion}</Badge>

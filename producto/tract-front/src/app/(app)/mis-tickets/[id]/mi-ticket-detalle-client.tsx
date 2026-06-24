@@ -36,6 +36,7 @@ import type { TicketEvidence } from "@/lib/api/mis-tickets";
 import { PRIORIDAD_DOT, PRIORIDAD_LABEL } from "@/lib/tickets/format";
 import { cn } from "@/lib/utils";
 import { ReservasSection } from "@/components/inventario/reservas-section";
+import { TicketChecklist } from "@/components/tickets/ticket-checklist";
 
 function getPriorityVariant(priority: "BAJA" | "MEDIA" | "ALTA") {
   if (priority === "ALTA") return "error";
@@ -251,6 +252,12 @@ export function MiTicketDetalleClient({ id }: { id: string }) {
           </div>
         </CardContent>
       </Card>
+
+      <TicketChecklist
+        canEdit={ticket.estado === "EN_EJECUCION"}
+        checklist={ticket.checklist}
+        ticketId={ticket.id}
+      />
 
       <Card className="rounded-xl border-border/70">
         <CardHeader className="pb-3">

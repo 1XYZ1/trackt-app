@@ -7,6 +7,9 @@ export {
   ProgramacionEstadoBadge,
 } from "./programacion-badges";
 export { ProgramacionFormSheet } from "./programacion-form-sheet";
-export type { ProgramacionFormSheetProps } from "./programacion-form-sheet";
+export type {
+  ProgramacionFormDefaults,
+  ProgramacionFormSheetProps,
+} from "./programacion-form-sheet";
 export { ResponsableSelect } from "./responsable-select";
 export type { ResponsableSelectProps } from "./responsable-select";

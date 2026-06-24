@@ -127,7 +127,7 @@ export function EquipoSelect({
                     {equipo.codigo} - {equipo.nombre}
                   </span>
                   <span className="block truncate text-muted-foreground text-xs">
-                    {equipo.marca} {equipo.modelo}
+                    {equipo.marca?.nombre} {equipo.modelo}
                     {equipo.ubicacion ? ` - ${equipo.ubicacion}` : ""}
                   </span>
                 </span>

@@ -10,6 +10,7 @@ import {
   Pencil,
   PlusCircle,
   PowerOff,
+  QrCode,
   Sliders,
   Warehouse,
 } from "lucide-react";
@@ -18,9 +19,11 @@ import {
   AjusteStockDialog,
   DesactivarRepuestoDialog,
   EntradaStockDialog,
+  EquiposAsociadosCard,
   MovimientoBadge,
   MovimientoCantidad,
   RepuestoFormSheet,
+  RepuestoQrDialog,
   StockBar,
 } from "@/components/inventario";
 import { Badge } from "@/components/ui/badge";
@@ -38,11 +41,14 @@ import { cn } from "@/lib/utils";
 
 export function RepuestoDetalleClient({ id }: { id: string }) {
   const isAdmin = useHasRole("admin");
+  // admin y jefe_inventario gestionan el QR (regenerar). El resto solo lo ve.
+  const canManageQr = useHasRole("admin", "jefe_inventario");
   const { data: repuesto, error, isLoading } = useRepuesto(id);
   const [editOpen, setEditOpen] = useState(false);
   const [entradaOpen, setEntradaOpen] = useState(false);
   const [ajusteOpen, setAjusteOpen] = useState(false);
   const [desactivarOpen, setDesactivarOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
 
   if (isLoading) {
     return <DetalleSkeleton />;
@@ -92,39 +98,50 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
           <p className="mt-1 text-muted-foreground text-sm">{repuesto.nombre}</p>
         </div>
 
-        {isAdmin && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={() => setEntradaOpen(true)}
-              size="sm"
-              variant="outline"
-            >
-              <PlusCircle />
-              Entrada
-            </Button>
-            <Button
-              onClick={() => setAjusteOpen(true)}
-              size="sm"
-              variant="outline"
-            >
-              <Sliders />
-              Ajustar
-            </Button>
-            <Button onClick={() => setEditOpen(true)} size="sm" variant="outline">
-              <Pencil />
-              Editar
-            </Button>
-            <Button
-              disabled={!repuesto.activo}
-              onClick={() => setDesactivarOpen(true)}
-              size="sm"
-              variant="destructive-outline"
-            >
-              <PowerOff />
-              Desactivar
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {/* Visible a todos los roles: ver/copiar el QR del repuesto. */}
+          <Button onClick={() => setQrOpen(true)} size="sm" variant="outline">
+            <QrCode />
+            Código QR
+          </Button>
+          {isAdmin && (
+            <>
+              <Button
+                onClick={() => setEntradaOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <PlusCircle />
+                Entrada
+              </Button>
+              <Button
+                onClick={() => setAjusteOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <Sliders />
+                Ajustar
+              </Button>
+              <Button
+                onClick={() => setEditOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <Pencil />
+                Editar
+              </Button>
+              <Button
+                disabled={!repuesto.activo}
+                onClick={() => setDesactivarOpen(true)}
+                size="sm"
+                variant="destructive-outline"
+              >
+                <PowerOff />
+                Desactivar
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -266,6 +283,15 @@ export function RepuestoDetalleClient({ id }: { id: string }) {
           )}
         </CardContent>
       </Card>
+
+      <EquiposAsociadosCard equipos={repuesto.equiposAsociados} />
+
+      <RepuestoQrDialog
+        canManage={canManageQr}
+        onOpenChange={setQrOpen}
+        open={qrOpen}
+        repuesto={repuesto}
+      />
 
       {isAdmin && (
         <>

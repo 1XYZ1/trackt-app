@@ -1,8 +1,7 @@
 "use client";
 
 import { QRCodeSVG } from "qrcode.react";
-import { useState } from "react";
-import { Copy, QrCode, RefreshCw } from "lucide-react";
+import { Copy, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,25 +14,20 @@ import {
   DialogPopup,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useGenerarQr } from "@/hooks/use-equipos";
 import type { EquipoDetalle } from "@/lib/api/equipos";
 
 export type QrDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   equipo: EquipoDetalle | null;
+  /**
+   * Conservada por compatibilidad con los llamadores. El QR nace por defecto,
+   * así que el diálogo es solo de consulta y no usa este flag.
+   */
   canManage?: boolean;
 };
 
-export function QrDialog({
-  canManage = false,
-  equipo,
-  onOpenChange,
-  open,
-}: QrDialogProps) {
-  const generarQr = useGenerarQr();
-  const [confirmRegen, setConfirmRegen] = useState(false);
-
+export function QrDialog({ equipo, onOpenChange, open }: QrDialogProps) {
   const token = equipo?.qrToken ?? null;
 
   // El QR debe codificar la URL navegable (no el token crudo) para que la
@@ -43,20 +37,6 @@ export function QrDialog({
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
     (typeof window !== "undefined" ? window.location.origin : "");
   const qrValue = token ? `${siteUrl}/q/${token}` : "";
-
-  const handleGenerar = () => {
-    if (!equipo) return;
-    generarQr.mutate(equipo.id, {
-      onSuccess: () => {
-        toast.success(token ? "QR regenerado" : "QR generado");
-        setConfirmRegen(false);
-      },
-      onError: (err) =>
-        toast.error(
-          err instanceof Error ? err.message : "No se pudo generar el QR",
-        ),
-    });
-  };
 
   const handleCopy = async () => {
     if (!qrValue) return;
@@ -85,77 +65,35 @@ export function QrDialog({
 
         <DialogPanel>
           <div className="flex flex-col items-center gap-4">
-            {token ? (
-              <>
-                <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-border">
-                  <QRCodeSVG level="M" size={220} value={qrValue} />
-                </div>
-                <p className="text-center text-muted-foreground text-xs">
-                  Escanéalo con la cámara para abrir la ficha del equipo.
-                </p>
-                <div className="w-full space-y-1">
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                    Enlace del QR
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs">
-                      {qrValue}
-                    </code>
-                    <Button
-                      aria-label="Copiar enlace del QR"
-                      onClick={handleCopy}
-                      size="icon"
-                      variant="outline"
-                    >
-                      <Copy />
-                    </Button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <div className="flex size-12 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/20 ring-inset">
-                  <QrCode className="size-6" />
-                </div>
-                <p className="max-w-xs text-muted-foreground text-sm">
-                  Este equipo aún no tiene un código QR generado.
-                </p>
-              </div>
-            )}
-
-            {confirmRegen && (
-              <p className="text-center text-destructive-foreground text-xs">
-                Regenerar invalida el QR impreso anterior. ¿Continuar?
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-border">
+              <QRCodeSVG level="M" size={220} value={qrValue} />
+            </div>
+            <p className="text-center text-muted-foreground text-xs">
+              Escanéalo con la cámara para abrir la ficha del equipo.
+            </p>
+            <div className="w-full space-y-1">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                Enlace del QR
               </p>
-            )}
+              <div className="flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs">
+                  {qrValue}
+                </code>
+                <Button
+                  aria-label="Copiar enlace del QR"
+                  onClick={handleCopy}
+                  size="icon"
+                  variant="outline"
+                >
+                  <Copy />
+                </Button>
+              </div>
+            </div>
           </div>
         </DialogPanel>
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Cerrar</DialogClose>
-          {canManage &&
-            (token ? (
-              confirmRegen ? (
-                <Button
-                  loading={generarQr.isPending}
-                  onClick={handleGenerar}
-                  variant="destructive"
-                >
-                  <RefreshCw />
-                  Confirmar regeneración
-                </Button>
-              ) : (
-                <Button onClick={() => setConfirmRegen(true)} variant="outline">
-                  <RefreshCw />
-                  Regenerar
-                </Button>
-              )
-            ) : (
-              <Button loading={generarQr.isPending} onClick={handleGenerar}>
-                <QrCode />
-                Generar QR
-              </Button>
-            ))}
         </DialogFooter>
       </DialogPopup>
     </Dialog>

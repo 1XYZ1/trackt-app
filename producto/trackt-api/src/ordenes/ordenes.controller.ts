@@ -48,7 +48,7 @@ export class OrdenesController {
   @Post()
   async create(@Req() req: RequestWithUser, @Body() dto: CreateOrdenDto) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
-    return this.ordenesService.create(tenantId, req.user.id, dto);
+    return this.ordenesService.create(tenantId, req.user, dto);
   }
 
   @Roles('admin', 'jefe_taller', 'mechanic')

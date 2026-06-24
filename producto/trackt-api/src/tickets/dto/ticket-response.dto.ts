@@ -25,6 +25,13 @@ export interface TicketTimelineEventDto {
   timestamp: string;
 }
 
+// Paso del checklist del ticket (copiado de la plantilla al generar/crear).
+// Vive en Ticket.metadata.checklist; el mecánico lo marca durante EN_EJECUCION.
+export interface ChecklistPasoDto {
+  paso: string;
+  hecho: boolean;
+}
+
 /**
  * Shape de respuesta de ticket consumido por el frontend
  * (matchea `TicketTrabajo` en `producto/tract-front/src/lib/api/tickets.ts`).
@@ -42,5 +49,7 @@ export interface TicketResponseDto {
   equipoNombre: string | null;
   mecanico: UsuarioResumenDto | null;
   createdAt: string;
+  // Checklist de mantención (de la plantilla). [] si el ticket no tiene receta.
+  checklist: ChecklistPasoDto[];
   timeline?: TicketTimelineEventDto[];
 }

@@ -36,6 +36,7 @@ import {
   type ValidarMode,
 } from "@/components/tickets/validar-ticket-dialog";
 import { EvidenciasGrid } from "@/components/tickets/evidencias-grid";
+import { TicketChecklist } from "@/components/tickets/ticket-checklist";
 import { ReservasSection } from "@/components/inventario";
 import { cn } from "@/lib/utils";
 
@@ -141,6 +142,11 @@ export function TicketDetalleClient({ id }: { id: string }) {
     (ticket.estado === "ASIGNADO" || ticket.estado === "EN_EJECUCION");
   const canValidar = isAdmin && ticket.estado === "EJECUTADO";
   const hasActions = canAsignar || canReasignar || canValidar;
+  // admin/jefe pueden ajustar el checklist mientras el ticket esté abierto
+  // (no CERRADO/CANCELADO). El backend reafirma estos permisos.
+  const ticketCerrado =
+    ticket.estado === "CERRADO" || ticket.estado === "CANCELADO";
+  const canEditChecklist = (isAdmin || isJefe) && !ticketCerrado;
 
   return (
     <div className="flex flex-col gap-6">
@@ -281,6 +287,12 @@ export function TicketDetalleClient({ id }: { id: string }) {
           </CardContent>
         </Card>
       </div>
+
+      <TicketChecklist
+        canEdit={canEditChecklist}
+        checklist={ticket.checklist ?? []}
+        ticketId={ticket.id}
+      />
 
       <Card className="rounded-lg border-border/70">
         <CardHeader>

@@ -68,13 +68,22 @@ const PRIORIDADES: { label: string; value: Prioridad }[] = [
 const toLocalInput = (iso: string | null | undefined) =>
   iso ? iso.slice(0, 16) : "";
 
+// Valores iniciales para el alta (ej. preseleccionar equipo + plantilla al
+// llegar desde la ficha del equipo con "Programar").
+export type ProgramacionFormDefaults = {
+  equipoId?: string;
+  plantillaId?: string;
+};
+
 export type ProgramacionFormSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   programacion?: Programacion | null;
+  defaults?: ProgramacionFormDefaults | null;
 };
 
 export function ProgramacionFormSheet({
+  defaults,
   onOpenChange,
   open,
   programacion,
@@ -108,9 +117,14 @@ export function ProgramacionFormSheet({
         recurrencia: programacion.recurrencia ?? "",
       });
     } else {
-      reset(EMPTY);
+      // Alta: arranca vacío salvo los defaults (equipo/plantilla preseleccionados).
+      reset({
+        ...EMPTY,
+        equipoId: defaults?.equipoId ?? "",
+        plantillaId: defaults?.plantillaId ?? "",
+      });
     }
-  }, [programacion, open, reset]);
+  }, [programacion, defaults, open, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
     const optionalField = (raw: string | undefined) => {

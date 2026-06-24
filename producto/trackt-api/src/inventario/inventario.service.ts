@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   MarcaTipo,
   MovimientoInventarioTipo,
@@ -38,6 +39,16 @@ const REPUESTO_DETAIL_INCLUDE = {
   stock: true,
   marca: { select: { id: true, nombre: true, tipo: true, activo: true } },
 } satisfies Prisma.RepuestoInclude;
+
+// Equipos asociados a un repuesto (lado espejo de EquiposRepuestosService.
+// ASOCIACION_INCLUDE): por cada vínculo EquipoRepuesto, datos mínimos del
+// equipo + cantidadRef/observacion de la asociación. Activos primero, luego
+// por código del equipo.
+const EQUIPOS_ASOCIADOS_INCLUDE = {
+  equipo: {
+    select: { id: true, codigo: true, nombre: true, activo: true },
+  },
+} satisfies Prisma.EquipoRepuestoInclude;
 
 const RESERVA_DETAIL_INCLUDE = {
   items: {
@@ -101,6 +112,9 @@ export class InventarioService {
             codigoFabricante: dto.codigoFabricante,
             ubicacionBodega: dto.ubicacionBodega,
             proveedor: dto.proveedor,
+            // El QR del repuesto nace al crearlo (espejo del contrato de equipos).
+            // POST /repuestos/:id/qr queda solo como utilidad para regenerarlo.
+            qrToken: randomUUID(),
             metadata: dto.metadata as Prisma.InputJsonValue | undefined,
           },
         });
@@ -223,18 +237,32 @@ export class InventarioService {
 
     // Movimientos solo para admin/jefe_taller (consistente con
     // findAllMovimientos). mechanic obtiene array vacio.
-    const verMovimientos = user.role === 'admin' || user.role === 'jefe_taller';
-    const movimientos = verMovimientos
-      ? await this.prisma.movimientoInventario.findMany({
-          where: { repuestoId: id, tenantId },
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        })
-      : [];
+    // jefe_inventario tambien ve movimientos: es su dominio.
+    const verMovimientos =
+      user.role === 'admin' ||
+      user.role === 'jefe_taller' ||
+      user.role === 'jefe_inventario';
+    const [movimientos, equiposAsociados] = await Promise.all([
+      verMovimientos
+        ? this.prisma.movimientoInventario.findMany({
+            where: { repuestoId: id, tenantId },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      this.prisma.equipoRepuesto.findMany({
+        where: { tenantId, repuestoId: id },
+        include: EQUIPOS_ASOCIADOS_INCLUDE,
+        orderBy: [{ equipo: { activo: 'desc' } }, { equipo: { codigo: 'asc' } }],
+      }),
+    ]);
 
     return {
       ...this.mapRepuesto(repuesto),
       movimientosRecientes: movimientos,
+      equiposAsociados: equiposAsociados.map((row) =>
+        this.mapEquipoAsociado(row),
+      ),
     };
   }
 
@@ -318,6 +346,63 @@ export class InventarioService {
       });
     });
     return this.mapRepuesto(updated);
+  }
+
+  // ============================================================
+  // QR — espejo de EquiposService.generarQr / findByQrToken
+  // ============================================================
+
+  /**
+   * Genera (o regenera) el token QR del repuesto. Regenerar invalida el token
+   * anterior: cualquier QR impreso previamente deja de resolver.
+   * El token es opaco (UUID v4): no codifica tenant ni id del repuesto.
+   *
+   * Nota: el qrToken nace por defecto al crear el repuesto (default a nivel
+   * BD); este endpoint queda como utilidad para regenerarlo si se filtra.
+   */
+  async generarQr(tenantId: string, id: string) {
+    const repuesto = await this.prisma.repuesto.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!repuesto) {
+      throw new NotFoundException(`Repuesto con id "${id}" no encontrado`);
+    }
+
+    const updated = await this.prisma.repuesto.update({
+      where: { id },
+      data: { qrToken: randomUUID() },
+      include: REPUESTO_DETAIL_INCLUDE,
+    });
+    return this.mapRepuesto(updated);
+  }
+
+  /**
+   * Resuelve un repuesto a partir de su token QR.
+   * Requiere autenticación y filtra por el tenant del usuario: un QR de otro
+   * tenant responde 404 (mismo mensaje que token inexistente, sin filtrar
+   * existencia). Espeja a EquiposService.findByQrToken.
+   */
+  async findByQrToken(tenantId: string, qrToken: string) {
+    const repuesto = await this.prisma.repuesto.findFirst({
+      where: { qrToken, tenantId },
+      include: REPUESTO_DETAIL_INCLUDE,
+    });
+    if (!repuesto) {
+      throw new NotFoundException('Repuesto no encontrado para el QR indicado');
+    }
+
+    // Ficha simple para la página QR mobile: stock + últimos movimientos.
+    const movimientos = await this.prisma.movimientoInventario.findMany({
+      where: { repuestoId: repuesto.id, tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    return {
+      ...this.mapRepuesto(repuesto),
+      movimientosRecientes: movimientos,
+    };
   }
 
   // ============================================================
@@ -1142,6 +1227,7 @@ export class InventarioService {
       ubicacionBodega: repuesto.ubicacionBodega,
       proveedor: repuesto.proveedor,
       activo: repuesto.activo,
+      qrToken: repuesto.qrToken,
       metadata: repuesto.metadata,
       stockActual,
       stockReservado,
@@ -1149,6 +1235,31 @@ export class InventarioService {
       bajoStock: stockDisponible <= repuesto.stockMinimo,
       createdAt: repuesto.createdAt,
       updatedAt: repuesto.updatedAt,
+    };
+  }
+
+  /**
+   * Proyección de un equipo asociado al repuesto (espejo de
+   * EquiposRepuestosService.mapAsociacion, desde el lado del repuesto):
+   * cantidadRef/observacion de la asociación + datos del equipo.
+   */
+  private mapEquipoAsociado(
+    row: Prisma.EquipoRepuestoGetPayload<{
+      include: typeof EQUIPOS_ASOCIADOS_INCLUDE;
+    }>,
+  ) {
+    return {
+      id: row.id,
+      repuestoId: row.repuestoId,
+      cantidadRef: row.cantidadRef,
+      observacion: row.observacion,
+      createdAt: row.createdAt,
+      equipo: {
+        id: row.equipo.id,
+        codigo: row.equipo.codigo,
+        nombre: row.equipo.nombre,
+        activo: row.equipo.activo,
+      },
     };
   }
 }
