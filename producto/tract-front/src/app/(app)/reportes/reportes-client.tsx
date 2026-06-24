@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Download, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -81,6 +82,27 @@ const REPORTES: ReporteDef[] = [
   },
 ];
 
+// Booleanos legibles: mapeo por nombre de columna. Cualquier otro → Sí/No.
+// Mantener coherente con la exportación CSV del backend (toCsv).
+function booleanBadge(
+  column: string,
+  value: boolean,
+): { label: string; variant: BadgeProps["variant"] } {
+  if (column === "activo") {
+    return value
+      ? { label: "Activo", variant: "success" }
+      : { label: "Inactivo", variant: "outline" };
+  }
+  if (column === "critico") {
+    return value
+      ? { label: "Crítico", variant: "warning" }
+      : { label: "Normal", variant: "outline" };
+  }
+  return value
+    ? { label: "Sí", variant: "secondary" }
+    : { label: "No", variant: "outline" };
+}
+
 export function ReportesClient() {
   const isAdmin = useHasRole("admin");
   const isJefe = useHasRole("jefe_taller");
@@ -92,9 +114,9 @@ export function ReportesClient() {
   const [estado, setEstado] = useState("");
   const [vista, setVista] = useState("");
   const [soloCriticos, setSoloCriticos] = useState(false);
-  const [ran, setRan] = useState<{ path: string; filtros: ReporteFiltros } | null>(
-    null,
-  );
+  // `ran` = el usuario ya pulsó "Ver" para este reporte. Los filtros viven en
+  // el queryKey, así que cambiarlos refetchea sin re-clickear.
+  const [ran, setRan] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   const def = REPORTES.find((r) => r.key === selectedKey) ?? REPORTES[0];
@@ -107,7 +129,7 @@ export function ReportesClient() {
     setSoloCriticos(false);
     const next = REPORTES.find((r) => r.key === key);
     setVista(next?.vistaOpciones?.[0] ?? "");
-    setRan(null);
+    setRan(false);
   };
 
   const buildFiltros = (): ReporteFiltros => {
@@ -121,20 +143,24 @@ export function ReportesClient() {
     return f;
   };
 
+  // Filtros vigentes en este render: alimentan tanto la query (vía queryKey,
+  // para que cambiarlos refetchee) como la descarga CSV.
+  const filtros = buildFiltros();
+
   const query = useQuery({
-    enabled: Boolean(ran),
-    queryFn: () => getReporteJson(ran!.path, ran!.filtros),
-    queryKey: ["reportes", ran?.path, ran?.filtros],
+    enabled: ran,
+    queryFn: () => getReporteJson(def.path, filtros),
+    queryKey: ["reportes", def.path, filtros],
   });
 
-  const handleVer = () => setRan({ filtros: buildFiltros(), path: def.path });
+  const handleVer = () => setRan(true);
 
   const handleCsv = async () => {
     setDownloading(true);
     try {
       await descargarReporteCsv(
         def.path,
-        buildFiltros(),
+        filtros,
         `${def.filenameBase}.csv`,
       );
     } catch (err) {
@@ -332,14 +358,14 @@ export function ReportesClient() {
               />
             </div>
           )}
-          {ran && query.isLoading && (
+          {ran && query.isFetching && (
             <div className="space-y-2.5 p-5">
               {Array.from({ length: 6 }).map((_, idx) => (
                 <Skeleton className="h-8 w-full" key={idx} />
               ))}
             </div>
           )}
-          {ran && query.error && (
+          {ran && !query.isFetching && query.error && (
             <div className="p-5">
               <EmptyState
                 icon="inbox"
@@ -348,7 +374,7 @@ export function ReportesClient() {
               />
             </div>
           )}
-          {ran && !query.isLoading && !query.error && rows.length === 0 && (
+          {ran && !query.isFetching && !query.error && rows.length === 0 && (
             <div className="p-5">
               <EmptyState
                 icon="inbox"
@@ -357,7 +383,7 @@ export function ReportesClient() {
               />
             </div>
           )}
-          {ran && rows.length > 0 && (
+          {ran && !query.isFetching && !query.error && rows.length > 0 && (
             <div className="max-h-[32rem] overflow-x-auto overflow-y-auto">
               <table className="w-full table-auto text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
@@ -383,6 +409,16 @@ export function ReportesClient() {
                     >
                       {columns.map((c) => {
                         const value = row[c];
+                        if (typeof value === "boolean") {
+                          const { label, variant } = booleanBadge(c, value);
+                          return (
+                            <td className="whitespace-nowrap px-4 py-2.5" key={c}>
+                              <Badge size="sm" variant={variant}>
+                                {label}
+                              </Badge>
+                            </td>
+                          );
+                        }
                         const text =
                           value === null || value === undefined
                             ? "—"

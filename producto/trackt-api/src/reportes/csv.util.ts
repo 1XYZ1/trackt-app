@@ -11,11 +11,9 @@ export function toCsv(
   const stringify = (value: unknown): string => {
     if (value === null || value === undefined) return '';
     if (typeof value === 'string') return value;
-    if (
-      typeof value === 'number' ||
-      typeof value === 'boolean' ||
-      typeof value === 'bigint'
-    ) {
+    // Booleanos legibles (coherente con los badges Sí/No de la vista web).
+    if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+    if (typeof value === 'number' || typeof value === 'bigint') {
       return String(value);
     }
     if (value instanceof Date) return value.toISOString();
