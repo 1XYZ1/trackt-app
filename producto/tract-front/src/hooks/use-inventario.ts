@@ -9,7 +9,9 @@ import {
   createReserva,
   desactivarRepuesto,
   entradaStock,
+  generarQrRepuesto,
   getMovimientos,
+  getRepuestoByQr,
   getRepuestoById,
   getRepuestos,
   getReservasByTicket,
@@ -44,8 +46,28 @@ export function useRepuesto(id?: string) {
   });
 }
 
+// Resuelve un repuesto por su token QR (página /r/[token]).
+export function useRepuestoByQr(token: string) {
+  return useQuery({
+    enabled: Boolean(token),
+    queryFn: () => getRepuestoByQr(token),
+    queryKey: [...REPUESTOS_KEY, "qr", token],
+  });
+}
+
 function invalidateRepuestos(qc: ReturnType<typeof useQueryClient>) {
   return qc.invalidateQueries({ queryKey: REPUESTOS_KEY });
+}
+
+// Genera/regenera el QR del repuesto (admin/jefe_inventario). Invalida el
+// detalle para que el nuevo token se refleje en el diálogo.
+export function useGenerarQrRepuesto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => generarQrRepuesto(id),
+    onSuccess: (_data, id) =>
+      qc.invalidateQueries({ queryKey: [...REPUESTOS_KEY, id] }),
+  });
 }
 
 export function useCreateRepuesto() {

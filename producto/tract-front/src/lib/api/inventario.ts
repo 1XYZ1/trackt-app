@@ -15,6 +15,9 @@ export type Repuesto = {
   ubicacionBodega: string | null;
   proveedor: string | null;
   activo: boolean;
+  // Token estable para el QR del repuesto (espejo de Equipo.qrToken). Nace por
+  // defecto al crear el repuesto; puede regenerarse.
+  qrToken: string | null;
   metadata: unknown;
   stockActual: number;
   stockReservado: number;
@@ -24,8 +27,29 @@ export type Repuesto = {
   updatedAt: string;
 };
 
-export type RepuestoDetalle = Repuesto & {
+// Equipo asociado al repuesto (lado espejo de EquipoRepuesto). cantidadRef =
+// cantidad de referencia por mantención.
+export type EquipoAsociado = {
+  id: string;
+  repuestoId: string;
+  cantidadRef: number | null;
+  observacion: string | null;
+  createdAt: string;
+  equipo: {
+    id: string;
+    codigo: string;
+    nombre: string;
+    activo: boolean;
+  };
+};
+
+// Ficha simple que devuelve la resolución por QR: repuesto + últimos movimientos.
+export type RepuestoQr = Repuesto & {
   movimientosRecientes: MovimientoInventario[];
+};
+
+export type RepuestoDetalle = RepuestoQr & {
+  equiposAsociados: EquipoAsociado[];
 };
 
 export type MovimientoTipo =
@@ -301,6 +325,37 @@ export async function desactivarRepuesto(id: string): Promise<Repuesto> {
   if (!response.ok) {
     throw new Error(
       await extractError(response, "No se pudo desactivar el repuesto"),
+    );
+  }
+  return (await response.json()) as Repuesto;
+}
+
+// Resuelve un repuesto por su token QR (página /r/[token]). Devuelve la ficha
+// simple con stock + últimos movimientos. Requiere auth; 404 si es de otro tenant.
+export async function getRepuestoByQr(token: string): Promise<RepuestoQr> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/inventario/repuestos/qr/${token}`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se encontró el repuesto del código QR"),
+    );
+  }
+  return (await response.json()) as RepuestoQr;
+}
+
+// Genera o regenera el token QR del repuesto (admin/jefe_inventario). Invalida
+// el token anterior. El QR nace por defecto al crear el repuesto.
+export async function generarQrRepuesto(id: string): Promise<Repuesto> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/inventario/repuestos/${id}/qr`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo generar el código QR"),
     );
   }
   return (await response.json()) as Repuesto;

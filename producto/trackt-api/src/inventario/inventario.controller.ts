@@ -58,6 +58,15 @@ export class InventarioController {
     return this.inventarioService.findAllRepuestos(tenantId, req.user, query);
   }
 
+  // Resolución por QR: declarada antes de :id para que "qr" no se capture como
+  // un id de repuesto. Requiere auth: el QR de otro tenant responde 404.
+  @Roles('admin', 'jefe_taller', 'jefe_inventario', 'mechanic')
+  @Get('repuestos/qr/:token')
+  async findByQr(@Req() req: RequestWithUser, @Param('token') token: string) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.inventarioService.findByQrToken(tenantId, token);
+  }
+
   @Roles('admin', 'jefe_taller', 'jefe_inventario', 'mechanic')
   @Get('repuestos/:id')
   async findOneRepuesto(@Req() req: RequestWithUser, @Param('id') id: string) {
@@ -85,6 +94,16 @@ export class InventarioController {
   ) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.inventarioService.desactivarRepuesto(tenantId, id);
+  }
+
+  // Genera o regenera el token QR del repuesto (invalida el anterior). El QR
+  // nace por defecto al crear el repuesto; este endpoint queda como utilidad.
+  @Roles('admin', 'jefe_inventario')
+  @HttpCode(HttpStatus.OK)
+  @Post('repuestos/:id/qr')
+  async generarQr(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    return this.inventarioService.generarQr(tenantId, id);
   }
 
   // ---------- Stock ----------
