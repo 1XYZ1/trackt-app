@@ -227,6 +227,20 @@ export async function generarQr(id: string): Promise<EquipoDetalle> {
   return (await response.json()) as EquipoDetalle;
 }
 
+// Descarga el PDF del QR del equipo (application/pdf, attachment). Lee blob, NO
+// json, y devuelve el binario para que el llamador dispare la descarga.
+export async function getEquipoQrPdf(id: string): Promise<Blob> {
+  assertApiBaseUrl();
+
+  const response = await authFetch(`${API_BASE_URL}/equipos/${id}/qr/pdf`);
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo descargar el PDF del código QR"),
+    );
+  }
+  return await response.blob();
+}
+
 export async function getEquipoByQr(token: string): Promise<EquipoDetalle> {
   assertApiBaseUrl();
 

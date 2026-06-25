@@ -487,6 +487,39 @@ export class EquiposService {
   }
 
   /**
+   * Datos necesarios para imprimir el PDF del QR del equipo: código, nombre,
+   * token QR y nombre del tenant (para el encabezado de marca). 404 si el
+   * equipo no existe en el tenant o no tiene token QR.
+   */
+  async getQrPdfData(
+    tenantId: string,
+    id: string,
+  ): Promise<{
+    codigo: string;
+    nombre: string;
+    qrToken: string;
+    tenantNombre: string;
+  }> {
+    const equipo = await this.prisma.equipo.findFirst({
+      where: { id, tenantId },
+      select: { codigo: true, nombre: true, qrToken: true },
+    });
+    if (!equipo || !equipo.qrToken) {
+      throw new NotFoundException(`Equipo con id "${id}" no encontrado`);
+    }
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { nombre: true },
+    });
+    return {
+      codigo: equipo.codigo,
+      nombre: equipo.nombre,
+      qrToken: equipo.qrToken,
+      tenantNombre: tenant?.nombre ?? 'Trackt',
+    };
+  }
+
+  /**
    * Resuelve un equipo a partir de su token QR.
    * Requiere autenticación y filtra por el tenant del usuario: un QR de otro
    * tenant responde 404 (mismo mensaje que token inexistente, sin filtrar
