@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Download, Table2 } from "lucide-react";
+import { BarChart3, Download } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/core";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -114,25 +114,11 @@ export function ReportesClient() {
   const [estado, setEstado] = useState("");
   const [vista, setVista] = useState("");
   const [soloCriticos, setSoloCriticos] = useState(false);
-  // `ran` = el usuario ya pulsó "Ver" para este reporte. Los filtros viven en
-  // el queryKey, así que cambiarlos refetchea sin re-clickear.
-  const [ran, setRan] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   const def = REPORTES.find((r) => r.key === selectedKey) ?? REPORTES[0];
 
-  const selectReport = (key: string) => {
-    setSelectedKey(key);
-    setEstado("");
-    setDesde("");
-    setHasta("");
-    setSoloCriticos(false);
-    const next = REPORTES.find((r) => r.key === key);
-    setVista(next?.vistaOpciones?.[0] ?? "");
-    setRan(false);
-  };
-
-  const buildFiltros = (): ReporteFiltros => {
+  const buildFiltros = useCallback((): ReporteFiltros => {
     const f: ReporteFiltros = {};
     if (def.filtros.includes("desde") && desde) f.desde = desde;
     if (def.filtros.includes("hasta") && hasta) f.hasta = hasta;
@@ -141,19 +127,42 @@ export function ReportesClient() {
     if (def.filtros.includes("soloCriticos") && soloCriticos)
       f.soloCriticos = true;
     return f;
-  };
+  }, [def, desde, hasta, estado, vista, soloCriticos]);
 
-  // Filtros vigentes en este render: alimentan tanto la query (vía queryKey,
-  // para que cambiarlos refetchee) como la descarga CSV.
+  // Filtros vigentes en este render: alimentan la descarga CSV (inmediata) y,
+  // tras un debounce, la query de previsualización.
   const filtros = buildFiltros();
 
-  const query = useQuery({
-    enabled: ran,
-    queryFn: () => getReporteJson(def.path, filtros),
-    queryKey: ["reportes", def.path, filtros],
-  });
+  // `filtrosDebounced` alimenta el queryKey. Se actualiza 300ms después de la
+  // última edición de filtros para no spamear la API al teclear/clickear.
+  const [filtrosDebounced, setFiltrosDebounced] =
+    useState<ReporteFiltros>(filtros);
 
-  const handleVer = () => setRan(true);
+  useEffect(() => {
+    const t = setTimeout(() => setFiltrosDebounced(buildFiltros()), 300);
+    return () => clearTimeout(t);
+  }, [buildFiltros]);
+
+  const selectReport = (key: string) => {
+    setSelectedKey(key);
+    setEstado("");
+    setDesde("");
+    setHasta("");
+    setSoloCriticos(false);
+    const next = REPORTES.find((r) => r.key === key);
+    const nextVista = next?.vistaOpciones?.[0] ?? "";
+    setVista(nextVista);
+    // Reset inmediato del queryKey: el nuevo reporte carga sin esperar debounce.
+    const nextFiltros: ReporteFiltros = {};
+    if (next?.filtros.includes("vista") && nextVista) nextFiltros.vista = nextVista;
+    setFiltrosDebounced(nextFiltros);
+  };
+
+  const query = useQuery({
+    enabled: true,
+    queryFn: () => getReporteJson(def.path, filtrosDebounced),
+    queryKey: ["reportes", def.path, filtrosDebounced],
+  });
 
   const handleCsv = async () => {
     setDownloading(true);
@@ -276,7 +285,7 @@ export function ReportesClient() {
                   onValueChange={(value) => setVista((value as string) ?? "")}
                   value={vista || null}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-44">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -329,10 +338,6 @@ export function ReportesClient() {
             )}
 
             <div className="flex gap-2">
-              <Button onClick={handleVer} variant="outline">
-                <Table2 />
-                Ver
-              </Button>
               <Button loading={downloading} onClick={handleCsv}>
                 <Download />
                 Descargar CSV
@@ -349,23 +354,14 @@ export function ReportesClient() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {!ran && (
-            <div className="p-5">
-              <EmptyState
-                icon="search"
-                message="Selecciona un reporte y pulsa Ver para previsualizar, o descarga el CSV."
-                title="Sin datos cargados"
-              />
-            </div>
-          )}
-          {ran && query.isFetching && (
+          {query.isFetching && (
             <div className="space-y-2.5 p-5">
               {Array.from({ length: 6 }).map((_, idx) => (
                 <Skeleton className="h-8 w-full" key={idx} />
               ))}
             </div>
           )}
-          {ran && !query.isFetching && query.error && (
+          {!query.isFetching && query.error && (
             <div className="p-5">
               <EmptyState
                 icon="inbox"
@@ -374,7 +370,7 @@ export function ReportesClient() {
               />
             </div>
           )}
-          {ran && !query.isFetching && !query.error && rows.length === 0 && (
+          {!query.isFetching && !query.error && rows.length === 0 && (
             <div className="p-5">
               <EmptyState
                 icon="inbox"
@@ -383,7 +379,7 @@ export function ReportesClient() {
               />
             </div>
           )}
-          {ran && !query.isFetching && !query.error && rows.length > 0 && (
+          {!query.isFetching && !query.error && rows.length > 0 && (
             <div className="max-h-[32rem] overflow-x-auto overflow-y-auto">
               <table className="w-full table-auto text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
