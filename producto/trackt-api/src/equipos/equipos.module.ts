@@ -5,8 +5,10 @@ import { EquiposRepuestosController } from './equipos-repuestos.controller';
 import { EquiposRepuestosService } from './equipos-repuestos.service';
 import { EquiposPlantillasController } from './equipos-plantillas.controller';
 import { EquiposPlantillasService } from './equipos-plantillas.service';
+import { QrModule } from '../common/qr/qr.module';
 
 @Module({
+  imports: [QrModule],
   controllers: [
     EquiposController,
     EquiposRepuestosController,

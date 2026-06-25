@@ -378,6 +378,40 @@ export class InventarioService {
   }
 
   /**
+   * Datos necesarios para imprimir el PDF del QR del repuesto: código, nombre,
+   * token QR y nombre del tenant (para el encabezado de marca). 404 si el
+   * repuesto no existe en el tenant o no tiene token QR. Espeja a
+   * EquiposService.getQrPdfData.
+   */
+  async getQrPdfData(
+    tenantId: string,
+    id: string,
+  ): Promise<{
+    codigo: string;
+    nombre: string;
+    qrToken: string;
+    tenantNombre: string;
+  }> {
+    const repuesto = await this.prisma.repuesto.findFirst({
+      where: { id, tenantId },
+      select: { codigo: true, nombre: true, qrToken: true },
+    });
+    if (!repuesto || !repuesto.qrToken) {
+      throw new NotFoundException(`Repuesto con id "${id}" no encontrado`);
+    }
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { nombre: true },
+    });
+    return {
+      codigo: repuesto.codigo,
+      nombre: repuesto.nombre,
+      qrToken: repuesto.qrToken,
+      tenantNombre: tenant?.nombre ?? 'Trackt',
+    };
+  }
+
+  /**
    * Resuelve un repuesto a partir de su token QR.
    * Requiere autenticación y filtra por el tenant del usuario: un QR de otro
    * tenant responde 404 (mismo mensaje que token inexistente, sin filtrar

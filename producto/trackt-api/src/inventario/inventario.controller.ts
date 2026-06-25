@@ -9,8 +9,11 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -23,6 +26,8 @@ import { ListRepuestosQueryDto } from './dto/list-repuestos-query.dto';
 import { EntradaStockDto } from './dto/entrada-stock.dto';
 import { AjusteStockDto } from './dto/ajuste-stock.dto';
 import { ListMovimientosQueryDto } from './dto/list-movimientos-query.dto';
+import { QrPdfService } from '../common/qr/qr-pdf.service';
+import { SITE_URL } from '../common/qr/qr-url';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -34,6 +39,7 @@ export class InventarioController {
   constructor(
     private readonly inventarioService: InventarioService,
     private readonly tenantService: TenantService,
+    private readonly qrPdfService: QrPdfService,
   ) {}
 
   // ---------- Repuestos ----------
@@ -72,6 +78,30 @@ export class InventarioController {
   async findOneRepuesto(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.inventarioService.findOneRepuesto(tenantId, req.user, id);
+  }
+
+  // PDF descargable del código QR del repuesto, personalizado por tenant.
+  @Roles('admin', 'jefe_taller', 'jefe_inventario', 'mechanic')
+  @Get('repuestos/:id/qr/pdf')
+  async qrPdf(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    const data = await this.inventarioService.getQrPdfData(tenantId, id);
+    const buffer = await this.qrPdfService.buildQrPdf({
+      tenantNombre: data.tenantNombre,
+      titulo: 'Código QR del repuesto',
+      codigo: data.codigo,
+      nombre: data.nombre,
+      url: `${SITE_URL}/r/${data.qrToken}`,
+    });
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="QR-${data.codigo}.pdf"`,
+    });
+    return new StreamableFile(buffer);
   }
 
   @Roles('admin', 'jefe_inventario')

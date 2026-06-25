@@ -9,8 +9,11 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -22,6 +25,8 @@ import { TenantService } from '../common/tenant/tenant.service';
 import { AuthUser } from '../auth/types';
 import { HistorialQueryDto } from './dto/historial-query.dto';
 import { CambiarEstadoOperativoDto } from './dto/cambiar-estado-operativo.dto';
+import { QrPdfService } from '../common/qr/qr-pdf.service';
+import { SITE_URL } from '../common/qr/qr-url';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -33,6 +38,7 @@ export class EquiposController {
   constructor(
     private readonly equiposService: EquiposService,
     private readonly tenantService: TenantService,
+    private readonly qrPdfService: QrPdfService,
   ) {}
 
   @Roles('admin', 'jefe_taller', 'mechanic')
@@ -62,6 +68,30 @@ export class EquiposController {
   async findOne(@Req() req: RequestWithUser, @Param('id') id: string) {
     const tenantId = this.tenantService.resolveTenantId(req.user);
     return this.equiposService.findOne(tenantId, id);
+  }
+
+  // PDF descargable del código QR del equipo, personalizado por tenant.
+  @Roles('admin', 'jefe_taller', 'mechanic')
+  @Get(':id/qr/pdf')
+  async qrPdf(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const tenantId = this.tenantService.resolveTenantId(req.user);
+    const data = await this.equiposService.getQrPdfData(tenantId, id);
+    const buffer = await this.qrPdfService.buildQrPdf({
+      tenantNombre: data.tenantNombre,
+      titulo: 'Código QR del equipo',
+      codigo: data.codigo,
+      nombre: data.nombre,
+      url: `${SITE_URL}/q/${data.qrToken}`,
+    });
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="QR-${data.codigo}.pdf"`,
+    });
+    return new StreamableFile(buffer);
   }
 
   // Ficha central del equipo: datos + estadísticas + últimas OTs/tickets + alertas.

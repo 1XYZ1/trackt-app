@@ -345,6 +345,21 @@ export async function getRepuestoByQr(token: string): Promise<RepuestoQr> {
   return (await response.json()) as RepuestoQr;
 }
 
+// Descarga el PDF del QR del repuesto (application/pdf, attachment). Lee blob,
+// NO json, y devuelve el binario para que el llamador dispare la descarga.
+export async function getRepuestoQrPdf(id: string): Promise<Blob> {
+  assertApiBaseUrl();
+  const response = await authFetch(
+    `${API_BASE_URL}/inventario/repuestos/${id}/qr/pdf`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      await extractError(response, "No se pudo descargar el PDF del código QR"),
+    );
+  }
+  return await response.blob();
+}
+
 // Genera o regenera el token QR del repuesto (admin/jefe_inventario). Invalida
 // el token anterior. El QR nace por defecto al crear el repuesto.
 export async function generarQrRepuesto(id: string): Promise<Repuesto> {

@@ -1,12 +1,12 @@
 "use client";
 
 import { QRCodeSVG } from "qrcode.react";
-import { Copy, QrCode } from "lucide-react";
+import { useState } from "react";
+import { Copy, Download, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -14,7 +14,8 @@ import {
   DialogPopup,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { EquipoDetalle } from "@/lib/api/equipos";
+import { getEquipoQrPdf, type EquipoDetalle } from "@/lib/api/equipos";
+import { downloadBlob } from "@/lib/utils";
 
 export type QrDialogProps = {
   open: boolean;
@@ -28,6 +29,7 @@ export type QrDialogProps = {
 };
 
 export function QrDialog({ equipo, onOpenChange, open }: QrDialogProps) {
+  const [downloading, setDownloading] = useState(false);
   const token = equipo?.qrToken ?? null;
 
   // El QR debe codificar la URL navegable (no el token crudo) para que la
@@ -45,6 +47,21 @@ export function QrDialog({ equipo, onOpenChange, open }: QrDialogProps) {
       toast.success("Enlace copiado");
     } catch {
       toast.error("No se pudo copiar el enlace");
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!equipo || !token) return;
+    setDownloading(true);
+    try {
+      const blob = await getEquipoQrPdf(equipo.id);
+      downloadBlob(blob, `QR-${equipo.codigo}.pdf`);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No se pudo descargar el PDF",
+      );
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -75,25 +92,27 @@ export function QrDialog({ equipo, onOpenChange, open }: QrDialogProps) {
               <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
                 Enlace del QR
               </p>
-              <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs">
-                  {qrValue}
-                </code>
-                <Button
-                  aria-label="Copiar enlace del QR"
-                  onClick={handleCopy}
-                  size="icon"
-                  variant="outline"
-                >
-                  <Copy />
-                </Button>
-              </div>
+              <code className="block w-full truncate rounded-md bg-secondary px-2 py-1.5 font-mono text-xs">
+                {qrValue}
+              </code>
             </div>
           </div>
         </DialogPanel>
 
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>Cerrar</DialogClose>
+          <Button
+            disabled={!token}
+            loading={downloading}
+            onClick={handleDownload}
+            variant="outline"
+          >
+            <Download />
+            Descargar PDF
+          </Button>
+          <Button disabled={!qrValue} onClick={handleCopy}>
+            <Copy />
+            Copiar enlace
+          </Button>
         </DialogFooter>
       </DialogPopup>
     </Dialog>
