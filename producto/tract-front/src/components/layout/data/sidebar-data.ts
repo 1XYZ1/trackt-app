@@ -4,7 +4,6 @@ import {
   Wrench,
   ClipboardList,
   Ticket,
-  CheckCircle2,
   Users,
   Gauge,
   Package,
@@ -82,12 +81,6 @@ export const sidebarData: SidebarData = {
           url: '/tickets',
           icon: Ticket,
           roles: ['admin', 'jefe_taller'],
-        },
-        {
-          title: 'Pendientes de validar',
-          url: '/tickets?estado=EJECUTADO',
-          icon: CheckCircle2,
-          roles: ['admin'],
         },
         {
           title: 'Carga de mecánicos',

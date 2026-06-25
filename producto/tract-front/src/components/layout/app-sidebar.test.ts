@@ -25,7 +25,6 @@ describe("filterByRole", () => {
       "Administración",
     ]);
     expect(titlesFrom(groups)).toContain("Usuarios");
-    expect(titlesFrom(groups)).toContain("Pendientes de validar");
   });
 
   it("oculta administracion para jefe de taller", () => {
@@ -38,7 +37,6 @@ describe("filterByRole", () => {
       "Inventario",
     ]);
     expect(titlesFrom(groups)).not.toContain("Usuarios");
-    expect(titlesFrom(groups)).not.toContain("Pendientes de validar");
   });
 
   it("muestra solo el grupo Inventario para jefe de inventario", () => {
